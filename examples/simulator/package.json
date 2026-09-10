@@ -1,0 +1,22 @@
+{
+  "name": "@drawcall/physics-simulator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@drawcall/physics": "workspace:*",
+    "@drawcall/physics-rapier": "workspace:*",
+    "three": "^0.185.1",
+    "@drawcall/physics-usd": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1"
+  }
+}

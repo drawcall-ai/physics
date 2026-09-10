@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>USDZ physics simulator</title>
+    <style>
+      body {
+        margin: 0;
+        background: #18212c;
+        color: white;
+        font: 16px system-ui;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      aside {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        max-width: 320px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0;
+      }
+      button {
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      output {
+        display: block;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <aside>
+      <h1>USDZ physics simulator</h1>
+      <p>
+        Open a USDZ, simulate it, or record a video. Starts with a ragdoll. Drag to orbit;
+        scroll to zoom.
+      </p>
+      <input type="file" accept=".usdz,.usda" aria-label="Open USDZ" />
+      <button id="pause">Pause</button>
+      <button id="record">Record video</button>
+      <button id="reset" disabled>Reset</button>
+      <button
+        id="export"
+        title="Resets the scene and exports its authored pose"
+        disabled
+      >
+        Export USDZ
+      </button>
+      <output>Loading physics…</output>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

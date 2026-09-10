@@ -1,0 +1,36 @@
+{
+  "name": "@drawcall/physics-usd",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "peerDependencies": {
+    "@drawcall/physics": "^0.1.0",
+    "three": ">=0.185.0 <0.186.0"
+  },
+  "devDependencies": {
+    "@drawcall/physics": "workspace:*",
+    "@types/three": "^0.185.0",
+    "three": "^0.185.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  }
+}
