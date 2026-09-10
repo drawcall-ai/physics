@@ -1,5 +1,5 @@
 {
-  "name": "@drawcall/physics-simulator",
+  "name": "@drawcall/example-ragdoll",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,7 @@
   "dependencies": {
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
-    "three": "^0.185.1",
-    "@drawcall/physics-usd": "workspace:*"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.0",

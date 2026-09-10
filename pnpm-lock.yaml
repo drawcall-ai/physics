@@ -24,7 +24,7 @@ importers:
         specifier: ^4.0.17
         version: 4.1.11(vite@8.2.2)
 
-  examples/simulator:
+  examples/car:
     dependencies:
       '@drawcall/physics':
         specifier: workspace:*
@@ -32,9 +32,28 @@ importers:
       '@drawcall/physics-rapier':
         specifier: workspace:*
         version: link:../../packages/physics-rapier
-      '@drawcall/physics-usd':
+      three:
+        specifier: ^0.185.1
+        version: 0.185.1
+    devDependencies:
+      '@types/three':
+        specifier: ^0.185.0
+        version: 0.185.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.2.1
+        version: 8.2.2
+
+  examples/ragdoll:
+    dependencies:
+      '@drawcall/physics':
         specifier: workspace:*
-        version: link:../../packages/physics-usd
+        version: link:../../packages/physics
+      '@drawcall/physics-rapier':
+        specifier: workspace:*
+        version: link:../../packages/physics-rapier
       three:
         specifier: ^0.185.1
         version: 0.185.1

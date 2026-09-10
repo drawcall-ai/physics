@@ -220,3 +220,11 @@ it("reconnects a copied live joint without unregistering the authoring object", 
     world.dispose();
   }
 });
+
+for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
+  it(`rejects invalid solver iteration count ${solverIterations}`, async () => {
+    await expect(setupWorld({ solverIterations })).rejects.toThrow(
+      "solverIterations must be a positive integer",
+    );
+  });
+}

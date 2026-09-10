@@ -16,6 +16,8 @@ world.update(deltaSeconds);
 
 `setupWorld()` initializes Rapier and installs the new default world. Objects capture their world when constructed. A later setup affects only new objects. Joints use their connected bodies' world.
 
+`setupWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
+
 Each body requires at least one collider before materialization. Registration is deferred until stepping or requesting body/joint controls. Configure geometry and transforms before those calls. New bodies and joints can be created at any time, including before-step callbacks, without resetting existing simulation state. Colliders follow child additions/removals, geometry changes, collider properties and materials. Body damping, gravity scale, and body type update live; `canSleep` is fixed at creation. Velocity options specify initial/reset velocity; controls change current velocity.
 
 Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Drives, limits and connected-contact flags update before each step. Changing joint transforms afterward does not move captured anchors. Editing explicit frame options after creation throws; dispose and create a new joint to change its anchors. Axis and distance-limit changes recreate the constraint while retaining its anchors. Disable/re-enable a joint with `joint.options.enabled`.

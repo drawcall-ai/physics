@@ -1,0 +1,24 @@
+body {
+  margin: 0;
+  background: #18212c;
+  color: white;
+  font: 14px system-ui;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+}
+nav {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  pointer-events: none;
+}
+p {
+  margin: 8px 0;
+}
+output {
+  display: block;
+}

@@ -18,7 +18,9 @@ import {
 } from "./body.js";
 import { drive, joint, jointState } from "./joints.js";
 
-export type RapierOptions = PhysicsOptions;
+export interface RapierOptions extends PhysicsOptions {
+  solverIterations?: number;
+}
 
 type JointBinding = {
   body0: RigidBody | null;
@@ -57,7 +59,15 @@ export class RapierWorld implements PhysicsWorld {
     const gravity = new Vector3(...(options.gravity ?? [0, -9.81, 0]));
     if (![gravity.x, gravity.y, gravity.z].every(Number.isFinite))
       throw new Error("Gravity must be finite.");
+    if (
+      options.solverIterations !== undefined &&
+      (!Number.isInteger(options.solverIterations) ||
+        options.solverIterations < 1)
+    )
+      throw new Error("solverIterations must be a positive integer.");
     this.backend = new api.World(gravity);
+    if (options.solverIterations !== undefined)
+      this.backend.numSolverIterations = options.solverIterations;
     this.backend.timestep = this.fixedDelta;
   }
   register(object: RigidBody | Joint): void {

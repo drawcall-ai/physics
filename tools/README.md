@@ -31,8 +31,8 @@ CPU simulation supports macOS, Linux, and Windows. Viewing/recording needs an
 OpenGL-capable environment; `--check` needs no display. Initial runs compile Warp
 kernels and may take longer. Videos show Newton's rendering of the imported scene.
 
-The browser app in `examples/simulator` remains a local development demo, not an
-independent interoperability check.
+The browser scenes in `examples/` are local physics examples, not independent
+interoperability checks.
 
 ## Static-body interoperability
 

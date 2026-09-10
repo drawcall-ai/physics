@@ -13,14 +13,12 @@ pnpm install
 pnpm check
 ```
 
-## Ragdoll simulator
+## Examples
 
-Run `pnpm --filter @drawcall/physics-simulator dev` and open the Vite URL.
-The simulator starts with a ragdoll using automatic colliders, spherical joints,
-and limited elbows and knees. Open a USDZ from disk to simulate it; Record video
-restarts the simulation and Stop & save video downloads a WebM.
-
-See [examples/simulator](examples/simulator) for the small Three.js application.
+Run `pnpm --filter @drawcall/example-ragdoll dev` or
+`pnpm --filter @drawcall/example-car dev`, then open the Vite URL.
+The examples demonstrate an articulated ragdoll and a powered car with suspension
+on a bump course. See [examples](examples) for controls and source.
 
 ## Authoring contracts
 
@@ -63,11 +61,6 @@ See [examples/simulator](examples/simulator) for the small Three.js application.
 Adapters report unsupported features instead of discarding them. See each package
 for its simulation and interchange limitations. Geometry and visual material
 ownership remains with the application.
-
-## Runnable physics example
-
-See [`examples/simulator`](examples/simulator) for a simulated ragdoll with automatic
-colliders, ball joints, limited elbows and knees, reset, USDZ import/export, and video recording.
 
 ## Third-party verification
 
