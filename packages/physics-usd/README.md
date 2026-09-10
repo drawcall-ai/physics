@@ -50,7 +50,7 @@ The package pins Three's 0.185 minor series because its USD parser/composer modu
 `pnpm test` performs real USDZ roundtrips and imports independently authored USDA. `pnpm typecheck` also checks tests. For independent OpenUSD validation, install Python `usd-core` and run:
 
 ```sh
-node scripts/fixture.mjs /tmp/door.usdz
+node scripts/fixture.ts /tmp/door.usdz
 python scripts/validate.py /tmp/door.usdz
 ```
 

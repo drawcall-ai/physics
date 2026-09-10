@@ -1,0 +1,43 @@
+name: Publish Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build, typecheck, and test
+        run: pnpm check
+      - name: Set release versions
+        run: node tools/set-release-version.ts "$RELEASE_TAG"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: Pack packages
+        run: pnpm --filter "./packages/*" -r pack --pack-destination "$RUNNER_TEMP/packages"
+      - name: Publish core
+        run: npm publish "$RUNNER_TEMP/packages/drawcall-physics-${RELEASE_TAG#v}.tgz" --access public --provenance --tag latest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: Publish Rapier adapter
+        run: npm publish "$RUNNER_TEMP/packages/drawcall-physics-rapier-${RELEASE_TAG#v}.tgz" --access public --provenance --tag latest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: Publish USD adapter
+        run: npm publish "$RUNNER_TEMP/packages/drawcall-physics-usd-${RELEASE_TAG#v}.tgz" --access public --provenance --tag latest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
