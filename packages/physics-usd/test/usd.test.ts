@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   Matrix4,
+  Object3D,
   BoxGeometry,
   Group,
   Mesh,
@@ -11,6 +12,7 @@ import {
 } from "three";
 import {
   clone,
+  resolveCollider,
   AuthoringWorld,
   setDefaultWorld,
   getDefaultWorld,
@@ -28,7 +30,11 @@ import {
   Joint,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
-import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
+import {
+  PhysicsUSDExporter,
+  PhysicsUSDLoader,
+  PhysicsUSDScene,
+} from "../src/index.js";
 
 let world: AuthoringWorld;
 beforeEach(() => {
@@ -536,5 +542,65 @@ it("exports static groups without rigid-body schemas and preserves their compoun
     expect(copy.options.type).toBe("static");
     expect(copy.getColliders()).toHaveLength(2);
     expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
-  } finally { loaded.dispose(); }
+  } finally {
+    loaded.dispose();
+  }
+});
+
+it("roundtrips scaled visuals, colliders and joint anchors without accumulating scale", async () => {
+  const { scene, door, hinge } = doorAssembly();
+  const assembly = door.parent;
+  if (!assembly) throw new Error("Missing assembly");
+  assembly.scale.setScalar(2);
+  door.scale.set(1, 2, 1);
+  const mesh = door.children[0];
+  if (!(mesh instanceof Mesh)) throw new Error("Missing door mesh");
+  mesh.scale.setScalar(0.5);
+  scene.updateMatrixWorld(true);
+  const matrix = mesh.matrixWorld.clone();
+  const anchors = [
+    hinge.getFrame(0, new Matrix4()),
+    hinge.getFrame(1, new Matrix4()),
+  ];
+  let source: Object3D = assembly;
+  for (let iteration = 0; iteration < 2; iteration++) {
+    const result = new PhysicsUSDLoader().parse(
+      await new PhysicsUSDExporter().parseAsync(source),
+    );
+    result.updateMatrixWorld(true);
+    const loaded = result.getObjectsByProperty("isObject3D", true);
+    const body = loaded.find(
+      (object) => object instanceof RigidBody && object.name === "Door",
+    );
+    const joint = loaded.find((object) => object instanceof RevoluteJoint);
+    if (!(body instanceof RigidBody) || !(joint instanceof RevoluteJoint))
+      throw new Error("Missing physics");
+    const visual = body.children.find((object) => object instanceof Mesh);
+    if (!visual) throw new Error("Missing visual");
+    visual.matrixWorld.elements.forEach((value, index) =>
+      expect(value).toBeCloseTo(matrix.elements[index] ?? Infinity, 5),
+    );
+    const collider = body.getColliders()[0];
+    if (!collider) throw new Error("Missing collider");
+    const shape = resolveCollider(body, collider).shape;
+    if (shape.kind !== "box") throw new Error("Expected box");
+    shape.size.forEach((value, index) =>
+      expect(value).toBeCloseTo([0.98, 4, 0.06][index] ?? Infinity, 5),
+    );
+    for (const index of [0, 1] as const) {
+      const expected = anchors[index];
+      if (!expected) throw new Error("Missing anchor");
+      joint
+        .getFrame(index, new Matrix4())
+        .elements.forEach((value, i) =>
+          expect(value).toBeCloseTo(expected.elements[i] ?? Infinity, 5),
+        );
+    }
+    if (source instanceof PhysicsUSDScene) source.dispose();
+    source = result;
+  }
+  if (source instanceof PhysicsUSDScene) source.dispose();
+  expect(assembly.scale.toArray()).toEqual([2, 2, 2]);
+  expect(door.scale.toArray()).toEqual([1, 2, 1]);
+  expect(mesh.scale.toArray()).toEqual([0.5, 0.5, 0.5]);
 });

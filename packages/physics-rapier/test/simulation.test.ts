@@ -64,6 +64,7 @@ describe("RapierWorld", () => {
     body.add(a, b);
     scene.add(body);
 
+    simulation.step();
     simulation.body(body).applyImpulse(new Vector3(10, 0, 0));
     simulation.step();
     expect(simulation.body(body).getVelocity().linear.x).toBeCloseTo(0.5, 5);
@@ -238,6 +239,7 @@ describe("RapierWorld", () => {
     kinematic.position.x = 5;
     scene.add(body, kinematic);
 
+    simulation.step();
     simulation.body(body).applyForce(new Vector3(60, 0, 0));
     simulation.step();
     const velocity = simulation.body(body).getVelocity().linear.x;

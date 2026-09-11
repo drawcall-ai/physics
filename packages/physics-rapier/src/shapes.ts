@@ -1,17 +1,17 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import type { Collider, RigidBody, Shape } from "@drawcall/physics";
+import { resolveCollider } from "@drawcall/physics";
+import type { RigidBody, Shape } from "@drawcall/physics";
 import { Quaternion, Vector3 } from "three";
 
 type API = typeof Rapier;
 
 export function collider(
   api: API,
-  source: Collider,
+  resolved: ReturnType<typeof resolveCollider>,
   body: RigidBody,
 ): Rapier.ColliderDesc {
-  const shape = source.shape();
+  const { collider: source, shape, matrix } = resolved;
   const material = body.getMaterial(source);
-  const matrix = body.matrixWorld.clone().invert().multiply(source.matrixWorld);
   const position = new Vector3().setFromMatrixPosition(matrix);
   const quaternion = new Quaternion().setFromRotationMatrix(matrix);
   if (material.staticFriction !== material.dynamicFriction)

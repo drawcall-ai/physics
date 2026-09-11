@@ -1,13 +1,13 @@
-import { Group, Matrix4, Mesh } from "three";
+import { Group, Mesh, type Object3D } from "three";
 import {
   Collider,
-  assertRigidTransform,
   BoxCollider,
   SphereCollider,
   CapsuleCollider,
   CylinderCollider,
   MeshCollider,
 } from "./objects.js";
+import { splitTransform } from "./transforms.js";
 import { autoShape, validateShape } from "./shapes.js";
 import type { AutoColliders, Vec3, PhysicsMaterial } from "./objects.js";
 import { getDefaultWorld } from "./world.js";
@@ -108,12 +108,15 @@ export class RigidBody extends Group {
         ? []
         : meshes;
     const colliders = sources.map((object) => {
-      assertRigidTransform(
-        new Matrix4()
-          .copy(this.matrixWorld)
-          .invert()
-          .multiply(object.matrixWorld),
-      );
+      let node: Object3D | null = object;
+      while (node && node !== this) {
+        if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
+          throw new Error(
+            `Collider requires positive scale: ${node.name || node.type}`,
+          );
+        node = node.parent;
+      }
+      splitTransform(object.matrixWorld, object.name || object.type);
       let collider: Collider;
       if (object instanceof Collider) collider = object;
       else {
@@ -140,6 +143,7 @@ export class RigidBody extends Group {
           collider.quaternion,
           collider.scale,
         );
+        collider.source = object;
         collider.name = object.name;
         collider.updateMatrixWorld(true);
       }
@@ -198,10 +202,23 @@ export class RigidBody extends Group {
   validate(): void {
     if (this.disposed) throw new Error("Cannot validate a disposed rigid body");
     this.updateWorldMatrix(true, true);
-    assertRigidTransform(this.matrixWorld);
-    let parent = this.parent;
+    splitTransform(this.matrix, this.name || this.type);
+    splitTransform(this.matrixWorld, this.name || this.type);
+    if (this.parent && this.options.type !== "static") {
+      const { scale } = splitTransform(this.parent.matrixWorld);
+      if (
+        Math.abs(scale.x - scale.y) > 1e-6 ||
+        Math.abs(scale.x - scale.z) > 1e-6
+      )
+        throw new Error("Moving bodies require uniform ancestor scale");
+    }
+    let parent: Object3D | null = this;
     while (parent) {
-      if (parent instanceof RigidBody)
+      if (Math.min(parent.scale.x, parent.scale.y, parent.scale.z) <= 0)
+        throw new Error(
+          `Body requires positive scale: ${parent.name || parent.type}`,
+        );
+      if (parent !== this && parent instanceof RigidBody)
         throw new Error("Nested rigid bodies are not supported");
       parent = parent.parent;
     }

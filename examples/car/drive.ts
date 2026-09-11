@@ -11,6 +11,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
   };
   const body = world.body(car.chassis);
   const wheels = car.wheels;
+  let active = false;
   let elapsed = 0;
   let steering = 0;
   let completed = false;
@@ -19,6 +20,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     completed: false,
   };
   const unsubscribe = world.onBeforeStep((dt) => {
+    if (!active) return;
     elapsed += dt;
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
       car.chassis.quaternion,
@@ -71,6 +73,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     );
   });
   const after = world.onAfterStep(() => {
+    active = true;
     telemetry.speed = body
       .getVelocity()
       .linear.dot(

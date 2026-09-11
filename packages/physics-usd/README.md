@@ -18,7 +18,7 @@ imported.dispose();
 
 The exporter delegates visual geometry, materials, textures, cameras, and ZIP assets to Three.js `USDZExporter`. It adds a standard USDA root layer with a `subLayers` reference to the visual layer. Untyped definitions add physics schemas without replacing visual prim types. No patched Three.js source or serialized JavaScript physics metadata is used.
 
-A temporary visual copy receives deterministic unique prim names. The original hierarchy is not mutated; standard USD `displayName` metadata retains original object names. The exported root includes physics materials, joints, and the physics scene so referencing the default prim includes the physical mechanism. Colliders come from each body’s `getColliders()` method and exported as invisible collision geometry beneath their body. The exporter bakes the external ancestor transform into an attached export root, keeping world joint anchors consistent.
+A temporary visual copy receives deterministic unique prim names. The original hierarchy is not mutated; standard USD `displayName` metadata retains original object names. The exported root includes physics materials, joints, and the physics scene so referencing the default prim includes the physical mechanism. Colliders come from each body’s `getColliders()` method and are resolved with the same scale conversion as Rapier. The temporary copy gives each body a rigid world transform, moves authored scale into its visual children, and exports baked invisible collision geometry beneath the body. Export resolves the fully composed hierarchy without requiring a simulation step. The exporter bakes the external ancestor transform into an attached export root, keeping world joint anchors consistent.
 
 Supported mapping:
 
@@ -42,7 +42,6 @@ The package rejects unsupported semantics rather than silently dropping them: se
 
 Export rejects assemblies spanning multiple worlds because simulation ownership
 is not represented by this adapter. Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
-
 
 ## Verification
 

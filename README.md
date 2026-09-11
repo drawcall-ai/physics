@@ -103,11 +103,22 @@ collider overrides, body defaults, and the default physics material.
 Validation rejects invalid transforms, limits, and settings before adapters consume them.
 `getColliders()` and `getFrame()` validate automatically; adapters can also call `validate()`
 when checking mutable settings without generating shapes or recalculating anchors.
-No parallel graph or pose records are required.
+`resolveCollider(body, collider)` returns a rigid body-local matrix and a shape
+with authored world scale baked into its dimensions or copied mesh vertices.
+`collider.source` identifies the authored collider or mesh. Source geometry is not mutated.
+`joint.getFrame()` accounts for scale in anchor positions; explicit frame rotations
+remain body-local. Numeric limits, drive settings, mass, and velocities retain their
+physical units.
+
+Boxes support positive nonuniform scale. Spheres and capsules require uniform scale;
+cylinders allow independent Y scale with equal X/Z scale. Mesh vertices support
+positive nonuniform scale. Moving bodies require uniform ancestor scale, because
+rotation beneath a nonuniform ancestor can introduce shear. Body-local nonuniform
+scale is supported for compatible shapes.
 Automatic colliders are generated per visual mesh: unchanged primitives retain their shapes;
 other dynamic geometry uses a convex hull and other static geometry uses triangles.
 
-V1 rejects scaled/sheared physics transforms, nested bodies, partial draw ranges,
+Physics rejects zero/negative scale, shear, nested bodies, partial draw ranges,
 and automatic colliders on instanced, skinned, or morph-deformed meshes. Triangle
 colliders require static bodies. Explicit colliders take precedence over meshes; removing them restores automatic generation
 unless `colliders: false` disables it. Standalone collision geometry requires a static body wrapper.
