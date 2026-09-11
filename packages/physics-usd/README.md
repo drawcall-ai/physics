@@ -43,7 +43,6 @@ The package rejects unsupported semantics rather than silently dropping them: se
 Export rejects assemblies spanning multiple worlds because simulation ownership
 is not represented by this adapter. Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
 
-The package pins Three's 0.185 minor series because its USD parser/composer modules are internal integration surfaces. Upgrade that boundary with interchange regression tests.
 
 ## Verification
 

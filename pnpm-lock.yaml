@@ -71,7 +71,7 @@ importers:
   packages/physics:
     dependencies:
       three:
-        specifier: '>=0.185.0 <0.186.0'
+        specifier: '>=0.185.0'
         version: 0.185.1
 
   packages/physics-rapier:

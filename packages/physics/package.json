@@ -21,7 +21,7 @@
     "prepack": "pnpm run build && node ../../tools/prepare-package.ts"
   },
   "peerDependencies": {
-    "three": ">=0.185.0 <0.186.0"
+    "three": ">=0.185.0"
   },
   "description": "Physics scene objects, automatic colliders, and joints for Three.js.",
   "license": "MIT",
