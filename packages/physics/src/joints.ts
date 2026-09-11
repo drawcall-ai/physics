@@ -1,5 +1,6 @@
-import { Object3D, Matrix4 } from "three";
+import { Object3D, Matrix4, Vector3 } from "three";
 import { RigidBody } from "./body.js";
+import { splitTransform } from "./transforms.js";
 import { assertRigidTransform } from "./objects.js";
 import type { PhysicsWorld } from "./world.js";
 
@@ -152,10 +153,9 @@ export class Joint<
       throw new Error("Distance limits must be nonnegative");
     if (this instanceof AxisJoint && this.options.drive)
       validateDrive(this.options.drive);
-    assertRigidTransform(this.matrixWorld);
-    if (this.options.body0)
-      assertRigidTransform(this.options.body0.matrixWorld);
-    assertRigidTransform(this.options.body1.matrixWorld);
+    splitTransform(this.matrixWorld);
+    if (this.options.body0) splitTransform(this.options.body0.matrixWorld);
+    splitTransform(this.options.body1.matrixWorld);
     if (this.options.frame0) assertRigidTransform(this.options.frame0);
     if (this.options.frame1) assertRigidTransform(this.options.frame1);
   }
@@ -163,11 +163,21 @@ export class Joint<
   getFrame(index: 0 | 1, target: Matrix4): Matrix4 {
     this.validate();
     const frame = index === 0 ? this.options.frame0 : this.options.frame1;
-    if (frame) return target.copy(frame);
     const body = index === 0 ? this.options.body0 : this.options.body1;
+    if (frame) {
+      target.copy(frame);
+      if (body)
+        target.setPosition(
+          new Vector3()
+            .setFromMatrixPosition(frame)
+            .multiply(splitTransform(body.matrixWorld).scale),
+        );
+      return target;
+    }
+    target.copy(splitTransform(this.matrixWorld).pose);
     return body
-      ? target.copy(body.matrixWorld).invert().multiply(this.matrixWorld)
-      : target.copy(this.matrixWorld);
+      ? target.premultiply(splitTransform(body.matrixWorld).pose.invert())
+      : target;
   }
 }
 export class FixedJoint extends Joint {}

@@ -12,6 +12,7 @@ setDefaultWorld(world);
 const scene = new Scene();
 const assembly = new Group();
 assembly.position.set(2, 3, 4);
+assembly.scale.setScalar(Number(process.argv[3] ?? 1));
 assembly.rotation.y = Math.PI / 4;
 const frame = new RigidBody({ type: "static" });
 frame.name = "Frame";

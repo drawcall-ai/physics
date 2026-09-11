@@ -125,7 +125,6 @@ export class RapierWorld implements PhysicsWorld {
   }
   reset(): void {
     this.assertActive();
-    this.flush();
     for (const [object, { body, initial }] of this.bodies) {
       body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
       body.setRotation(new Quaternion().setFromRotationMatrix(initial), true);
@@ -154,19 +153,17 @@ export class RapierWorld implements PhysicsWorld {
     clearDefaultWorld(this);
   }
   body(object: RigidBody): BodyControls {
-    this.flush();
-    this.getBody(object);
+    this.assertActive();
     return new BodyControls(() => this.getBody(object), object);
   }
   joint(object: Joint) {
-    this.flush();
+    this.assertActive();
     const resolve = () => {
       this.assertActive();
       const target = this.joints.get(object)?.target;
       if (!target) throw new Error("Joint is not active in this world.");
       return target;
     };
-    resolve();
     return { getState: () => jointState(resolve()) };
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
@@ -189,7 +186,10 @@ export class RapierWorld implements PhysicsWorld {
   private getBody(object: RigidBody): Rapier.RigidBody {
     this.assertActive();
     const binding = this.bodies.get(object);
-    if (!binding) throw new Error("Body is not part of this world.");
+    if (!binding)
+      throw new Error(
+        "Body is not part of the active simulation; wait for its first physics step.",
+      );
     return binding.body;
   }
   private flush(): void {

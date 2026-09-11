@@ -76,10 +76,10 @@ describe("physics objects", () => {
     body.add(new Mesh(new BoxGeometry().translate(1, 0, 0)));
     expect(body.getColliders()[0]?.shape().kind).toBe("mesh");
   });
-  it("rejects scale and nested bodies", () => {
+  it("accepts scale and rejects nested bodies", () => {
     const { root, door } = doorAssembly();
     root.scale.setScalar(2);
-    expect(() => door.getColliders()).toThrow("unit scale");
+    expect(door.getColliders()).toHaveLength(1);
     root.scale.setScalar(1);
     door.add(new BoxCollider());
     expect(door.getColliders()).toEqual([door.children[1]]);
@@ -195,7 +195,7 @@ it("uses explicit colliders before inspecting visual geometry and regenerates wh
   body.add(mesh, new Group().add(collider));
   expect(body.getColliders()).toEqual([collider]);
   collider.removeFromParent();
-  expect(() => body.getColliders()).toThrow("unit scale");
+  expect(body.getColliders()[0]).toBeInstanceOf(BoxCollider);
   mesh.scale.setScalar(1);
   expect(body.getColliders()[0]).toBeInstanceOf(BoxCollider);
 });

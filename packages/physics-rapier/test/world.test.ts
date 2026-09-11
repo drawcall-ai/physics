@@ -12,7 +12,7 @@ function box() {
 it("adds bodies after stepping without resetting existing velocities or poses", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const first = box();
-  world.body(first).setVelocity({ linear: new Vector3(2, 0, 0) });
+  first.options.linearVelocity = [2, 0, 0];
   world.step();
   const previous = first.position.x;
   const second = box();
@@ -35,7 +35,7 @@ it("adds joints after bodies are already simulating", async () => {
   for (let i = 0; i < 60; i++) world.step();
   expect(body.position.y).toBeCloseTo(anchor, 2);
   body.dispose();
-  expect(() => world.joint(joint)).toThrow("not active");
+  expect(() => world.joint(joint).getState()).toThrow("not active");
   world.step();
   world.dispose();
 });
@@ -65,7 +65,7 @@ it("captures worlds at construction and disposes pending joints with their body"
   const joint = new FixedJoint({ body0: null, body1: a });
   a.dispose();
   first.step();
-  expect(() => first.joint(joint)).toThrow("not active");
+  expect(() => first.joint(joint).getState()).toThrow("not active");
   first.dispose();
   expect(box().world).toBe(second);
   second.dispose();
@@ -171,6 +171,7 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   const joint = new FixedJoint({ body0: null, body1: body });
   joint.position.y = 3;
   const controls = world.joint(joint);
+  world.step();
   joint.options.enabled = false;
   for (let i = 0; i < 15; i++) world.step();
   expect(body.position.y).toBeLessThan(3);
@@ -187,6 +188,7 @@ it("uses world matrices for teleport and rejects nonrigid transforms", async () 
   const body = box();
   const controls = world.body(body);
   const matrix = new Matrix4().makeTranslation(2, 3, 4);
+  world.step();
   controls.teleport(matrix);
   const target = new Matrix4();
   expect(controls.getMatrix(target)).toBe(target);

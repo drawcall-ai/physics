@@ -19,6 +19,7 @@ export interface ColliderOptions {
   collisionGroups?: CollisionGroups;
 }
 export abstract class Collider extends Object3D {
+  source: Object3D = this;
   collisionGroups?: CollisionGroups;
   material?: PhysicsMaterial;
   sensor = false;

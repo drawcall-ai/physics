@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collider scale checks</title>
+    <style>
+      nav {
+        max-width: min(760px, calc(100vw - 32px));
+      }
+      select {
+        max-width: 100%;
+        margin-bottom: 8px;
+      }
+      details {
+        margin-top: 10px;
+      }
+      ol {
+        max-height: 180px;
+        overflow: auto;
+        padding-left: 24px;
+        background: #18212cee;
+      }
+      li {
+        margin: 5px 0;
+      }
+      output {
+        display: block;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas aria-label="Collider scaling and contact demonstration"></canvas>
+    <nav>
+      <strong>Collider scale checks</strong>
+      <p>
+        Every collider · auto + explicit · body / ancestor / collider / combined
+        scale
+      </p>
+      <p>
+        Gold compounds fall and spin. Kinematic lifts move up and down, carrying
+        teal test cubes.
+      </p>
+      <p>
+        Falling compounds use 3 convex colliders. Static triangle meshes use 3
+        mesh children, with no explicit colliders.
+      </p>
+      <select aria-label="Scale case"></select
+      ><br />
+      <button id="compound">Falling compound</button>
+      <button id="kinematic">Moving kinematic lift</button>
+      <button id="recreate">Remove &amp; recreate</button>
+      <button id="check">Run all checks</button>
+      <p>N next case · X remove · R recreate · P pause · drag to orbit</p>
+      <output></output>
+      <details>
+        <summary>Running checks…</summary>
+        <ol id="results"></ol>
+      </details>
+    </nav>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

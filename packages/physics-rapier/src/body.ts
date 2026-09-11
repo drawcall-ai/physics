@@ -1,13 +1,17 @@
 import type {
   RigidBody as AuthoredBody,
-  Collider,
   PhysicsBodyControls,
+  Collider,
 } from "@drawcall/physics";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import { collider } from "./shapes.js";
-import { Matrix4, Quaternion, Vector3 } from "three";
-import { assertRigidTransform } from "@drawcall/physics";
+import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
+import {
+  assertRigidTransform,
+  splitTransform,
+  resolveCollider,
+} from "@drawcall/physics";
 
 export class BodyControls implements PhysicsBodyControls {
   constructor(
@@ -18,7 +22,7 @@ export class BodyControls implements PhysicsBodyControls {
     const body = this.resolve();
     return target.compose(
       new Vector3().copy(body.translation()),
-      new Quaternion().copy(body.rotation()),
+      new Quaternion().copy(body.rotation()).normalize(),
       new Vector3(1, 1, 1),
     );
   }
@@ -70,10 +74,12 @@ export class BodyControls implements PhysicsBodyControls {
 }
 
 export function synchronize(object: AuthoredBody, body: RigidBody): void {
+  if (!object.matrixAutoUpdate)
+    object.scale.copy(splitTransform(object.matrix).scale);
   const p = body.translation(),
     q = body.rotation();
   object.position.set(p.x, p.y, p.z);
-  object.quaternion.set(q.x, q.y, q.z, q.w);
+  object.quaternion.set(q.x, q.y, q.z, q.w).normalize();
   if (object.parent) {
     object.parent.updateWorldMatrix(true, false);
     object.parent.worldToLocal(object.position);
@@ -91,6 +97,8 @@ export interface BodyBinding {
   shapes: string;
   settings: string;
   canSleep: boolean;
+  scale: Vector3;
+  colliderScales: Map<Object3D, Vector3>;
 }
 
 export function createBody(
@@ -105,17 +113,20 @@ export function createBody(
       : options.type === "kinematic"
         ? api.RigidBodyDesc.kinematicPositionBased()
         : api.RigidBodyDesc.dynamic();
-  const position = new Vector3().setFromMatrixPosition(object.matrixWorld);
+  const { pose, scale } = splitTransform(object.matrixWorld);
+  const position = new Vector3().setFromMatrixPosition(pose);
   desc
     .setTranslation(position.x, position.y, position.z)
-    .setRotation(new Quaternion().setFromRotationMatrix(object.matrixWorld))
+    .setRotation(new Quaternion().setFromRotationMatrix(pose))
     .setCanSleep(options.canSleep ?? true)
     .setLinvel(...(options.linearVelocity ?? [0, 0, 0]))
     .setAngvel(new Vector3(...(options.angularVelocity ?? [0, 0, 0])));
   const body = world.createRigidBody(desc);
   const binding: BodyBinding = {
     body,
-    initial: object.matrixWorld.clone(),
+    initial: pose,
+    scale,
+    colliderScales: new Map(),
     shapes: "",
     settings: "",
     canSleep: options.canSleep ?? true,
@@ -139,6 +150,10 @@ export function refreshBody(
   if (binding.canSleep !== (options.canSleep ?? true)) {
     throw new Error("canSleep cannot change after a body is created.");
   }
+  if (splitTransform(object.matrixWorld).scale.distanceTo(binding.scale) > 1e-6)
+    throw new Error(
+      "Body scale cannot change after its first physics step; recreate the body",
+    );
   const colliders = object.getColliders();
   const shapes = JSON.stringify([
     options.mass,
@@ -146,7 +161,21 @@ export function refreshBody(
   ]);
   const body = binding.body;
   if (shapes !== binding.shapes) {
-    const descriptors = colliders.map((shape) => collider(api, shape, object));
+    const resolved = colliders.map((collider) =>
+      resolveCollider(
+        object,
+        collider,
+        binding.colliderScales.get(collider.source),
+      ),
+    );
+    for (const { collider, scale } of resolved) {
+      const captured = binding.colliderScales.get(collider.source);
+      if (captured && captured.distanceTo(scale) > 1e-6)
+        throw new Error(
+          `Collider scale cannot change after its first physics step: ${object.name}/${collider.name || collider.type} (${captured.toArray()} → ${scale.toArray()}); recreate the body`,
+        );
+    }
+    const descriptors = resolved.map((shape) => collider(api, shape, object));
     const next: Rapier.Collider[] = [];
     try {
       for (const desc of descriptors)
@@ -170,6 +199,12 @@ export function refreshBody(
     body.recomputeMassPropertiesFromColliders();
     body.wakeUp();
     binding.shapes = shapes;
+    binding.colliderScales = new Map(
+      resolved.map(({ collider, scale }) => [
+        collider.source,
+        binding.colliderScales.get(collider.source) ?? scale,
+      ]),
+    );
   }
   const settings = JSON.stringify([
     options.type,
@@ -193,8 +228,8 @@ export function refreshBody(
 }
 
 function shapeKey(source: Collider, body: AuthoredBody): unknown {
-  const { sensor, collisionGroups } = source;
   const shape = source.shape();
+  const { sensor, collisionGroups } = source;
   const material = body.getMaterial(source);
   const shapeData =
     shape.kind === "mesh"
@@ -213,5 +248,12 @@ function shapeKey(source: Collider, body: AuthoredBody): unknown {
     .invert()
     .multiply(source.matrixWorld)
     .elements.map((value) => Math.round(value * 1e10) / 1e10);
-  return [shapeData, transform, material, sensor, collisionGroups];
+  return [
+    source.source.uuid,
+    shapeData,
+    transform,
+    material,
+    sensor,
+    collisionGroups,
+  ];
 }

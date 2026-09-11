@@ -2,7 +2,13 @@ import { Group, Matrix4, Object3D, Scene } from "three";
 import { USDZExporter } from "three/addons/exporters/USDZExporter.js";
 import type { USDZExporterOptions } from "three/addons/exporters/USDZExporter.js";
 import { strToU8, unzipSync } from "fflate";
-import { Collider, Joint, RigidBody } from "@drawcall/physics";
+import {
+  Collider,
+  Joint,
+  RigidBody,
+  resolveCollider,
+  splitTransform,
+} from "@drawcall/physics";
 import type { PhysicsMaterial, Vec3 } from "@drawcall/physics";
 import { writeJoint } from "./joints.js";
 import { PhysicsUSDScene } from "../scene.js";
@@ -76,6 +82,19 @@ export class PhysicsUSDExporter {
           ? new Group().copy(object, false)
           : object.clone(false);
       clone.name = name;
+      clone.matrixAutoUpdate = false;
+      clone.matrix.copy(object.matrix);
+      if (object instanceof RigidBody) {
+        clone.matrix.copy(splitTransform(object.matrixWorld).pose);
+        if (object.parent)
+          clone.matrix.premultiply(object.parent.matrixWorld.clone().invert());
+      }
+      if (object.parent instanceof RigidBody)
+        clone.matrix.premultiply(
+          new Matrix4().makeScale(
+            ...splitTransform(object.parent.matrixWorld).scale.toArray(),
+          ),
+        );
       const prim = new Prim(name, "");
       prim.displayName = object.name;
       if (!object.visible)
@@ -93,8 +112,11 @@ export class PhysicsUSDExporter {
     const clone = copy(scene, stage, "/Root/Scenes/Scene");
     if (!clone)
       throw new Error("Cannot export a collider or joint as the scene root");
-    clone.matrix.copy(scene.matrixWorld);
-    clone.matrix.decompose(clone.position, clone.quaternion, clone.scale);
+    clone.matrix.copy(
+      scene instanceof RigidBody
+        ? splitTransform(scene.matrixWorld).pose
+        : scene.matrixWorld,
+    );
     visuals.add(clone);
     visuals.updateMatrixWorld(true);
     const materials = new Prim("PhysicsMaterials", "Scope");
@@ -154,13 +176,11 @@ export class PhysicsUSDExporter {
           materialPath = `/Root/PhysicsMaterials/${material.name}`;
           materialPaths.set(materialKey, materialPath);
         }
+        const resolved = resolveCollider(body, collider);
         const shape = shapePrim(
           `Collider${index}`,
-          collider.shape(),
-          new Matrix4()
-            .copy(body.matrixWorld)
-            .invert()
-            .multiply(collider.matrixWorld),
+          resolved.shape,
+          resolved.matrix,
         );
         shape.schemas.push("PhysicsCollisionAPI", "MaterialBindingAPI");
         shape.properties.push(
