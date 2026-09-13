@@ -137,12 +137,12 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   const stop =
     spec.type === "kinematic"
       ? world.onAfterStep((delta) => {
-          const controls = world.body(target);
-          initial ??= controls.getMatrix();
+          target.updateWorldMatrix(true, false);
+          initial ??= splitTransform(target.matrixWorld).pose;
           time += delta;
           const position = new T.Vector3().setFromMatrixPosition(initial);
           position.y += 0.65 * Math.sin(time * 1.3);
-          controls.setKinematicTarget(initial.clone().setPosition(position));
+          target.setKinematicTarget(initial.clone().setPosition(position));
         })
       : undefined;
   return {

@@ -2,7 +2,7 @@ import { Object3D, Matrix4, Vector3 } from "three";
 import { RigidBody } from "./body.js";
 import { splitTransform } from "./transforms.js";
 import { assertRigidTransform } from "./objects.js";
-import type { PhysicsWorld } from "./world.js";
+import type { PhysicsWorld, PhysicsJointState } from "./world.js";
 
 export interface JointDrive {
   type?: "force" | "acceleration";
@@ -47,6 +47,10 @@ export class Joint<
     this.world.unregister(this);
     this.removeFromParent();
     this.#disposed = true;
+  }
+
+  getState(): PhysicsJointState {
+    return this.world.getJointState(this);
   }
 
   override clone(recursive = true): this {

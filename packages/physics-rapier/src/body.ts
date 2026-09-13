@@ -1,99 +1,31 @@
-import type {
-  RigidBody as AuthoredBody,
-  PhysicsBodyControls,
-  Collider,
-} from "@drawcall/physics";
+import type { RigidBody as AuthoredBody, Collider } from "@drawcall/physics";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import { collider } from "./shapes.js";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
-  assertRigidTransform,
+  setWorldPose,
+  initialVelocity,
+  type PhysicsVelocity,
   splitTransform,
   resolveCollider,
 } from "@drawcall/physics";
 
-export class BodyControls implements PhysicsBodyControls {
-  constructor(
-    private readonly resolve: () => RigidBody,
-    private readonly object: AuthoredBody,
-  ) {}
-  getMatrix(target = new Matrix4()): Matrix4 {
-    const body = this.resolve();
-    return target.compose(
+export function synchronize(object: AuthoredBody, body: RigidBody): void {
+  setWorldPose(
+    object,
+    new Matrix4().compose(
       new Vector3().copy(body.translation()),
       new Quaternion().copy(body.rotation()).normalize(),
       new Vector3(1, 1, 1),
-    );
-  }
-  getVelocity() {
-    const body = this.resolve();
-    return {
-      linear: new Vector3().copy(body.linvel()),
-      angular: new Vector3().copy(body.angvel()),
-    };
-  }
-  setVelocity(value: { linear?: Vector3; angular?: Vector3 }): void {
-    const body = this.resolve();
-    if (value.linear) body.setLinvel(value.linear, true);
-    if (value.angular) body.setAngvel(value.angular, true);
-  }
-  setKinematicTarget(matrix: Matrix4): void {
-    if (this.object.options.type !== "kinematic")
-      throw new Error("Kinematic targets require a kinematic body.");
-    assertRigidTransform(matrix);
-    const body = this.resolve();
-    body.setNextKinematicTranslation(
-      new Vector3().setFromMatrixPosition(matrix),
-    );
-    body.setNextKinematicRotation(
-      new Quaternion().setFromRotationMatrix(matrix),
-    );
-  }
-  teleport(matrix: Matrix4): void {
-    assertRigidTransform(matrix);
-    const body = this.resolve();
-    body.setTranslation(new Vector3().setFromMatrixPosition(matrix), true);
-    body.setRotation(new Quaternion().setFromRotationMatrix(matrix), true);
-    synchronize(this.object, body);
-  }
-  applyImpulse(impulse: Vector3, point?: Vector3): void {
-    if (point) this.resolve().applyImpulseAtPoint(impulse, point, true);
-    else this.resolve().applyImpulse(impulse, true);
-  }
-  applyForce(force: Vector3, point?: Vector3): void {
-    if (point) this.resolve().addForceAtPoint(force, point, true);
-    else this.resolve().addForce(force, true);
-  }
-  wake(): void {
-    this.resolve().wakeUp();
-  }
-  sleep(): void {
-    this.resolve().sleep();
-  }
-}
-
-export function synchronize(object: AuthoredBody, body: RigidBody): void {
-  if (!object.matrixAutoUpdate)
-    object.scale.copy(splitTransform(object.matrix).scale);
-  const p = body.translation(),
-    q = body.rotation();
-  object.position.set(p.x, p.y, p.z);
-  object.quaternion.set(q.x, q.y, q.z, q.w).normalize();
-  if (object.parent) {
-    object.parent.updateWorldMatrix(true, false);
-    object.parent.worldToLocal(object.position);
-    object.quaternion.premultiply(
-      object.parent.getWorldQuaternion(new Quaternion()).invert(),
-    );
-  }
-  object.updateMatrix();
-  object.updateMatrixWorld(true);
+    ),
+  );
 }
 
 export interface BodyBinding {
   body: Rapier.RigidBody;
   initial: Matrix4;
+  velocity: PhysicsVelocity;
   shapes: string;
   settings: string;
   canSleep: boolean;
@@ -115,16 +47,18 @@ export function createBody(
         : api.RigidBodyDesc.dynamic();
   const { pose, scale } = splitTransform(object.matrixWorld);
   const position = new Vector3().setFromMatrixPosition(pose);
+  const velocity = initialVelocity(object);
   desc
     .setTranslation(position.x, position.y, position.z)
     .setRotation(new Quaternion().setFromRotationMatrix(pose))
     .setCanSleep(options.canSleep ?? true)
-    .setLinvel(...(options.linearVelocity ?? [0, 0, 0]))
-    .setAngvel(new Vector3(...(options.angularVelocity ?? [0, 0, 0])));
+    .setLinvel(velocity.linear.x, velocity.linear.y, velocity.linear.z)
+    .setAngvel(velocity.angular);
   const body = world.createRigidBody(desc);
   const binding: BodyBinding = {
     body,
     initial: pose,
+    velocity,
     scale,
     colliderScales: new Map(),
     shapes: "",
@@ -152,7 +86,7 @@ export function refreshBody(
   }
   if (splitTransform(object.matrixWorld).scale.distanceTo(binding.scale) > 1e-6)
     throw new Error(
-      "Body scale cannot change after its first physics step; recreate the body",
+      "Body scale cannot change after backend initialization; recreate the body",
     );
   const colliders = object.getColliders();
   const shapes = JSON.stringify([
@@ -172,7 +106,7 @@ export function refreshBody(
       const captured = binding.colliderScales.get(collider.source);
       if (captured && captured.distanceTo(scale) > 1e-6)
         throw new Error(
-          `Collider scale cannot change after its first physics step: ${object.name}/${collider.name || collider.type} (${captured.toArray()} → ${scale.toArray()}); recreate the body`,
+          `Collider scale cannot change after backend initialization: ${object.name}/${collider.name || collider.type} (${captured.toArray()} → ${scale.toArray()}); recreate the body`,
         );
     }
     const descriptors = resolved.map((shape) => collider(api, shape, object));

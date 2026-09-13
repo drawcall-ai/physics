@@ -9,7 +9,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     brake: 0,
     automatic: true,
   };
-  const body = world.body(car.chassis);
+  const body = car.chassis;
   const wheels = car.wheels;
   let active = false;
   let elapsed = 0;

@@ -10,7 +10,7 @@ test("powered car crosses the bump course and brakes with independent suspension
   const car = createCar(world);
   createRoad(world);
   const driver = driveCar(world, car);
-  const suspensions = car.wheels.map((wheel) => world.joint(wheel.spring));
+  const suspensions = car.wheels.map((wheel) => wheel.spring);
   let peakCompression = 0;
   let asymmetry = 0;
   let maxRearYaw = 0;

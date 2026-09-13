@@ -65,14 +65,12 @@ describe("RapierWorld", () => {
     scene.add(body);
 
     simulation.step();
-    simulation.body(body).applyImpulse(new Vector3(10, 0, 0));
+    body.applyImpulse(new Vector3(10, 0, 0));
     simulation.step();
-    expect(simulation.body(body).getVelocity().linear.x).toBeCloseTo(0.5, 5);
-    simulation
-      .body(body)
-      .applyImpulse(new Vector3(0, 1, 0), new Vector3(3, 0, 0));
+    expect(body.getVelocity().linear.x).toBeCloseTo(0.5, 5);
+    body.applyImpulse(new Vector3(0, 1, 0), new Vector3(3, 0, 0));
     simulation.step();
-    expect(simulation.body(body).getVelocity().angular.z).toBeGreaterThan(0);
+    expect(body.getVelocity().angular.z).toBeGreaterThan(0);
     simulation.dispose();
   });
   it("honors collision membership and filter masks", async () => {
@@ -119,18 +117,15 @@ describe("RapierWorld", () => {
     expect(falling.position.y).toBeLessThan(0);
     simulation.dispose();
   });
-  it("releases disposed bodies and invalidates retained controls", async () => {
+  it("releases disposed bodies and rejects further operations", async () => {
     const simulation = await setupWorld();
     const body = box();
-    const controls = simulation.body(body);
     body.dispose();
     simulation.step();
-    expect(() => controls.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-      "not part",
-    );
+    expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow("disposed");
     simulation.dispose();
   });
-  it("drops a body onto a floor, resets its pose, and invalidates disposed controls", async () => {
+  it("drops a body onto a floor, resets its pose, and rejects disposed access", async () => {
     const simulation = await setupWorld();
     const scene = new Group();
     const floor = box("static"),
@@ -139,13 +134,12 @@ describe("RapierWorld", () => {
     falling.position.y = 3;
     scene.add(floor, falling);
 
-    const controls = simulation.body(falling);
     steps(simulation);
     expect(falling.position.y).toBeCloseTo(0.5, 1);
     simulation.reset();
     expect(falling.position.y).toBe(3);
     simulation.dispose();
-    expect(() => controls.getMatrix()).toThrow("disposed");
+    expect(() => falling.getVelocity()).toThrow("disposed");
   });
   it("drives a hinge under rotated parents while preserving its anchor", async () => {
     const simulation = await setupWorld({
@@ -169,8 +163,8 @@ describe("RapierWorld", () => {
     assembly.add(frame, door, hinge);
 
     steps(simulation, 240);
-    expect(simulation.joint(hinge).getState().angle).toBeCloseTo(1, 1);
-    expect(simulation.joint(hinge).getState().distance).toBeLessThan(0.01);
+    expect(hinge.getState().angle).toBeCloseTo(1, 1);
+    expect(hinge.getState().distance).toBeLessThan(0.01);
     simulation.dispose();
   });
   it("drives a slider and surfaces invalid live material edits", async () => {
@@ -198,9 +192,10 @@ describe("RapierWorld", () => {
     expect(() => simulation.step()).toThrow("friction");
     body.options.material = {};
     simulation.step();
-    expect(
-      new Vector3().setFromMatrixPosition(simulation.body(body).getMatrix()).x,
-    ).toBeCloseTo(1, 1);
+    expect(new Vector3().setFromMatrixPosition(body.matrixWorld).x).toBeCloseTo(
+      1,
+      1,
+    );
     simulation.dispose();
   });
   it("supports fixed, spherical, and rope constraints", async () => {
@@ -240,14 +235,12 @@ describe("RapierWorld", () => {
     scene.add(body, kinematic);
 
     simulation.step();
-    simulation.body(body).applyForce(new Vector3(60, 0, 0));
+    body.applyForce(new Vector3(60, 0, 0));
     simulation.step();
-    const velocity = simulation.body(body).getVelocity().linear.x;
+    const velocity = body.getVelocity().linear.x;
     simulation.step();
-    expect(simulation.body(body).getVelocity().linear.x).toBeCloseTo(velocity);
-    simulation
-      .body(kinematic)
-      .setKinematicTarget(new Matrix4().makeTranslation(6, 0, 0));
+    expect(body.getVelocity().linear.x).toBeCloseTo(velocity);
+    kinematic.setKinematicTarget(new Matrix4().makeTranslation(6, 0, 0));
     simulation.step();
     expect(kinematic.position.x).toBeCloseTo(6);
     simulation.dispose();

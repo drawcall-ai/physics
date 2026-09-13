@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { Group } from "three";
+import { Group, Matrix4, Vector3 } from "three";
 import {
   AuthoringWorld,
   RigidBody,
@@ -185,4 +185,41 @@ it("registers each cloned joint once without unregistering it", () => {
     result.children,
   );
   expect(unregister).not.toHaveBeenCalled();
+});
+
+it("supports a static preview callback without a backend or step observers", () => {
+  const world = setup();
+  const body = new RigidBody({ type: "kinematic" });
+  world.unregister(body);
+  const before = vi.fn(),
+    after = vi.fn();
+  const stop = world.onBeforeStep(before);
+  world.onAfterStep(after);
+  body.setVelocity({ linear: new Vector3(2, 0, 0) });
+  body.teleport(new Matrix4().makeTranslation(1, 2, 3));
+  const joint = new RevoluteJoint({ body0: null, body1: body });
+  const onFrame = () => {
+    body.updateWorldMatrix(true, false);
+    expect(body.matrixWorld.elements[12]).toBe(1);
+    expect(body.getVelocity().linear.x).toBe(2);
+    expect(joint.getState().distance).toBeCloseTo(0);
+    body.applyImpulse(new Vector3(3, 0, 0));
+    body.applyForce(new Vector3(1, 0, 0));
+    body.sleep();
+    body.wake();
+    body.setKinematicTarget(new Matrix4().makeTranslation(9, 9, 9));
+  };
+  onFrame();
+  stop();
+  expect(body.position.toArray()).toEqual([1, 2, 3]);
+  expect(body.getVelocity().linear.x).toBe(2);
+  expect(before).not.toHaveBeenCalled();
+  expect(after).not.toHaveBeenCalled();
+  expect(() => world.step()).toThrow("cannot simulate");
+  expect(() => body.applyForce(new Vector3(NaN, 0, 0))).toThrow("finite");
+  expect(() => body.teleport(new Matrix4().makeScale(2, 2, 2))).toThrow(
+    "unit scale",
+  );
+  world.dispose();
+  expect(() => body.getVelocity()).toThrow("disposed");
 });

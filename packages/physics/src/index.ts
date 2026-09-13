@@ -5,3 +5,4 @@ export * from "./joints.js";
 export * from "./world.js";
 export * from "./clone.js";
 export * from "./transforms.js";
+export * from "./state.js";

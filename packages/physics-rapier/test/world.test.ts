@@ -19,7 +19,7 @@ it("adds bodies after stepping without resetting existing velocities or poses", 
   second.position.y = 4;
   world.step();
   expect(first.position.x).toBeGreaterThan(previous);
-  expect(world.body(first).getVelocity().linear.x).toBeCloseTo(2);
+  expect(first.getVelocity().linear.x).toBeCloseTo(2);
   expect(second.position.y).toBeCloseTo(4);
   world.dispose();
 });
@@ -35,7 +35,7 @@ it("adds joints after bodies are already simulating", async () => {
   for (let i = 0; i < 60; i++) world.step();
   expect(body.position.y).toBeCloseTo(anchor, 2);
   body.dispose();
-  expect(() => world.joint(joint).getState()).toThrow("not active");
+  expect(() => joint.getState()).toThrow("disposed");
   world.step();
   world.dispose();
 });
@@ -65,7 +65,7 @@ it("captures worlds at construction and disposes pending joints with their body"
   const joint = new FixedJoint({ body0: null, body1: a });
   a.dispose();
   first.step();
-  expect(() => first.joint(joint).getState()).toThrow("not active");
+  expect(() => joint.getState()).toThrow("disposed");
   first.dispose();
   expect(box().world).toBe(second);
   second.dispose();
@@ -85,14 +85,13 @@ it("materializes bodies created by before-step callbacks", async () => {
   world.dispose();
 });
 
-it("updates live mass and type while retaining controls", async () => {
+it("updates live mass and type without replacing the body", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const body = box();
-  const controls = world.body(body);
   body.options.mass = 2;
   world.step();
-  controls.applyImpulse(new Vector3(2, 0, 0));
-  expect(controls.getVelocity().linear.x).toBeCloseTo(1);
+  body.applyImpulse(new Vector3(2, 0, 0));
+  expect(body.getVelocity().linear.x).toBeCloseTo(1);
   body.options.type = "static";
   world.step();
   const x = body.position.x;
@@ -102,9 +101,9 @@ it("updates live mass and type while retaining controls", async () => {
   body.options.gravityScale = 0;
   body.options.linearDamping = 1;
   world.step();
-  controls.setVelocity({ linear: new Vector3(1, 0, 0) });
+  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.step();
-  expect(controls.getVelocity().linear.x).toBeLessThan(1);
+  expect(body.getVelocity().linear.x).toBeLessThan(1);
   body.options.canSleep = false;
   expect(() => world.step()).toThrow("canSleep cannot change");
   world.dispose();
@@ -153,14 +152,13 @@ it("preserves a live joint when invalid replacement settings fail", async () => 
     frame1: new Matrix4(),
     limits: [0, 2],
   });
-  const controls = world.joint(joint);
   world.step();
   joint.options.limits = [1, 2];
   expect(() => world.step()).toThrow("zero minimum");
-  expect(controls.getState().distance).toBeCloseTo(2, 1);
+  expect(joint.getState().distance).toBeCloseTo(2, 1);
   joint.options.limits = [0, 2];
   world.step();
-  expect(controls.getState().distance).toBeCloseTo(2, 1);
+  expect(joint.getState().distance).toBeCloseTo(2, 1);
   world.dispose();
 });
 
@@ -170,34 +168,30 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   body.position.y = 3;
   const joint = new FixedJoint({ body0: null, body1: body });
   joint.position.y = 3;
-  const controls = world.joint(joint);
   world.step();
   joint.options.enabled = false;
   for (let i = 0; i < 15; i++) world.step();
   expect(body.position.y).toBeLessThan(3);
-  expect(() => controls.getState()).toThrow("not active");
+  expect(joint.getState().distance).toBeGreaterThanOrEqual(0);
   joint.options.enabled = true;
   for (let i = 0; i < 60; i++) world.step();
   expect(body.position.y).toBeCloseTo(3, 2);
-  expect(controls.getState().distance).toBeLessThan(0.01);
+  expect(joint.getState().distance).toBeLessThan(0.01);
   world.dispose();
 });
 
 it("uses world matrices for teleport and rejects nonrigid transforms", async () => {
   const world = await setupWorld();
   const body = box();
-  const controls = world.body(body);
   const matrix = new Matrix4().makeTranslation(2, 3, 4);
   world.step();
-  controls.teleport(matrix);
-  const target = new Matrix4();
-  expect(controls.getMatrix(target)).toBe(target);
-  expect(target.elements).toEqual(matrix.elements);
+  body.teleport(matrix);
+  expect(body.matrixWorld.elements).toEqual(matrix.elements);
   expect(body.position.toArray()).toEqual([2, 3, 4]);
-  expect(() => controls.teleport(new Matrix4().makeScale(2, 1, 1))).toThrow(
+  expect(() => body.teleport(new Matrix4().makeScale(2, 1, 1))).toThrow(
     "unit scale",
   );
-  expect(controls.getMatrix().elements).toEqual(matrix.elements);
+  expect(body.matrixWorld.elements).toEqual(matrix.elements);
   world.dispose();
 });
 
