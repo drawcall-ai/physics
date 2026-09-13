@@ -137,7 +137,6 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   const stop =
     spec.type === "kinematic"
       ? world.onAfterStep((delta) => {
-          target.updateWorldMatrix(true, false);
           initial ??= splitTransform(target.matrixWorld).pose;
           time += delta;
           const position = new T.Vector3().setFromMatrixPosition(initial);
