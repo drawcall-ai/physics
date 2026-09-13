@@ -1,5 +1,6 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
+  jointState,
   DistanceJoint,
   FixedJoint,
   PrismaticJoint,
@@ -101,7 +102,7 @@ export function drive(
   );
 }
 
-export function jointState(target: Rapier.ImpulseJoint) {
+export function readJointState(target: Rapier.ImpulseJoint) {
   const first = target.body1(),
     second = target.body2();
   const frame = (
@@ -122,23 +123,10 @@ export function jointState(target: Rapier.ImpulseJoint) {
       ),
     );
   };
-  const a = frame(first, target.anchor1(), target.frameX1());
-  const b = frame(second, target.anchor2(), target.frameX2());
-  const rotation = new Quaternion().setFromRotationMatrix(a);
-  const relative = rotation
-    .clone()
-    .invert()
-    .multiply(new Quaternion().setFromRotationMatrix(b));
-  const axis = new Vector3(1, 0, 0).applyQuaternion(rotation);
-  const position0 = new Vector3().setFromMatrixPosition(a);
-  const position1 = new Vector3().setFromMatrixPosition(b);
-  return {
-    angle: 2 * Math.atan2(relative.x, relative.w),
-    angularVelocity: new Vector3()
-      .copy(second.angvel())
-      .sub(first.angvel())
-      .dot(axis),
-    position: position1.clone().sub(position0).dot(axis),
-    distance: position0.distanceTo(position1),
-  };
+  return jointState(
+    frame(first, target.anchor1(), target.frameX1()),
+    frame(second, target.anchor2(), target.frameX2()),
+    new Vector3().copy(first.angvel()),
+    new Vector3().copy(second.angvel()),
+  );
 }

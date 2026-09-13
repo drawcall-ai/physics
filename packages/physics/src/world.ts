@@ -125,6 +125,7 @@ export class AuthoringWorld implements PhysicsWorld {
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
     this.assertObject(object);
+    object.validate();
     setWorldPose(object, matrix);
   }
   setKinematicTarget(object: RigidBody, _matrix: Matrix4): void {

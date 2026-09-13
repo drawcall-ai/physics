@@ -34,17 +34,13 @@ export function validateVector(value: Vector3): void {
     throw new Error("Physics vectors must be finite");
 }
 export function setWorldPose(object: RigidBody, pose: Matrix4): void {
-  object.validate();
-  const localScale = object.matrixAutoUpdate
-    ? object.scale.clone()
-    : splitTransform(object.matrix).scale;
+  object.updateWorldMatrix(true, false);
   const scale = splitTransform(object.matrixWorld).scale;
   const matrix = pose.clone().scale(scale);
   if (object.parent)
     matrix.premultiply(object.parent.matrixWorld.clone().invert());
   splitTransform(matrix);
-  matrix.decompose(object.position, object.quaternion, new Vector3());
-  object.scale.copy(localScale);
+  matrix.decompose(object.position, object.quaternion, object.scale);
   object.updateMatrix();
   object.updateMatrixWorld(true);
 }
@@ -79,6 +75,20 @@ export function authoredJointState(
     a.multiply(rotation);
     b.multiply(rotation);
   }
+  return jointState(
+    a,
+    b,
+    object.options.body0?.getVelocity().angular ?? new Vector3(),
+    object.options.body1.getVelocity().angular,
+  );
+}
+
+export function jointState(
+  a: Matrix4,
+  b: Matrix4,
+  angular0: Vector3,
+  angular1: Vector3,
+): PhysicsJointState {
   const rotation = new Quaternion().setFromRotationMatrix(a);
   const relative = rotation
     .clone()
@@ -89,10 +99,7 @@ export function authoredJointState(
   const position1 = new Vector3().setFromMatrixPosition(b);
   return {
     angle: 2 * Math.atan2(relative.x, relative.w),
-    angularVelocity: object.options.body1
-      .getVelocity()
-      .angular.sub(object.options.body0?.getVelocity().angular ?? new Vector3())
-      .dot(axis),
+    angularVelocity: angular1.clone().sub(angular0).dot(axis),
     position: position1.clone().sub(position0).dot(axis),
     distance: position0.distanceTo(position1),
   };

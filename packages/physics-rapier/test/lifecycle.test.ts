@@ -50,7 +50,7 @@ it("reads and writes velocity while staged, then initializes from the completed 
   expect(body.getWorldPosition(new Vector3()).x).toBeCloseTo(
     2 + 3 * world.fixedDelta,
   );
-  expect(body.scale.toArray()).toEqual([1, 1, 1]);
+  expect(body.scale.distanceTo(new Vector3(1, 1, 1))).toBeLessThan(1e-6);
 });
 
 it("initializes on a short update without advancing time and prepares before observers", async () => {
@@ -95,7 +95,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
     body.getWorldPosition(new Vector3()).distanceTo(new Vector3(4, 8, 12)),
   ).toBeLessThan(1e-5);
   expect(body.getVelocity().linear.x).toBe(2);
-  expect(body.scale.toArray()).toEqual([1, 2, 3]);
+  expect(body.scale.distanceTo(new Vector3(1, 2, 3))).toBeLessThan(1e-6);
 });
 
 for (const axis of ["X", "Y", "Z"] as const) {
@@ -179,3 +179,33 @@ for (const kind of ["spherical", "distance"] as const) {
       expect(ready[key]).toBeCloseTo(initial[key], 5);
   });
 }
+
+it("preserves world scale through static teleport and reset under a nonuniform parent", async () => {
+  const world = await setup();
+  const body = new RigidBody({ type: "static" });
+  body.add(new BoxCollider());
+  const parent = new Group().add(body);
+  parent.scale.set(2, 3, 4);
+  world.update(0);
+  const scale = body.getWorldScale(new Vector3());
+  body.teleport(new Matrix4().makeRotationZ(Math.PI / 2));
+  expect(body.getWorldScale(new Vector3()).distanceTo(scale)).toBeLessThan(
+    1e-6,
+  );
+  world.step();
+  expect(body.getWorldScale(new Vector3()).distanceTo(scale)).toBeLessThan(
+    1e-6,
+  );
+  world.reset();
+  expect(body.getWorldScale(new Vector3()).distanceTo(scale)).toBeLessThan(
+    1e-6,
+  );
+  expect(body.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-6);
+  const pose = body.matrixWorld.clone();
+  expect(() => body.teleport(new Matrix4().makeRotationZ(Math.PI / 4))).toThrow(
+    "shear",
+  );
+  expect(body.matrixWorld.elements).toEqual(pose.elements);
+  world.step();
+  expect(body.matrixWorld.elements).toEqual(pose.elements);
+});

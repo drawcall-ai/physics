@@ -26,7 +26,9 @@ it("captures scale at initialization, including bodies added and removed during 
     const first = spawn(-4, 2);
     for (let i = 0; i < 180; i++) world.step();
     expect(first.body.getWorldPosition(new Vector3()).y).toBeCloseTo(1, 1);
-    expect(first.body.scale.toArray()).toEqual([2, 2, 2]);
+    expect(first.body.scale.distanceTo(new Vector3(2, 2, 2))).toBeLessThan(
+      1e-6,
+    );
     first.body.dispose();
     expect(() => first.body.getVelocity()).toThrow("disposed");
     const second = spawn(4, 3);
@@ -88,10 +90,10 @@ it("captures scaled joints added during simulation and preserves scale through t
     expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(6);
     joint.dispose();
     body.teleport(new Matrix4().makeTranslation(0, 2, 0));
-    expect(body.scale.toArray()).toEqual([1, 2, 1]);
+    expect(body.scale.distanceTo(new Vector3(1, 2, 1))).toBeLessThan(1e-6);
     world.reset();
     expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(6);
-    expect(body.scale.toArray()).toEqual([1, 2, 1]);
+    expect(body.scale.distanceTo(new Vector3(1, 2, 1))).toBeLessThan(1e-6);
   } finally {
     world.dispose();
   }

@@ -20,7 +20,7 @@ import {
   refreshBody,
   type BodyBinding,
 } from "./body.js";
-import { drive, joint, jointState } from "./joints.js";
+import { drive, joint, readJointState } from "./joints.js";
 
 export interface RapierOptions extends PhysicsOptions {
   solverIterations?: number;
@@ -132,6 +132,7 @@ export class RapierWorld implements PhysicsWorld {
   reset(): void {
     this.assertActive();
     for (const [object, { body, initial, velocity }] of this.bodies) {
+      object.validate();
       body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
       body.setRotation(new Quaternion().setFromRotationMatrix(initial), true);
       body.setLinvel(velocity.linear, true);
@@ -171,6 +172,7 @@ export class RapierWorld implements PhysicsWorld {
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
     this.assertObject(object);
+    object.validate();
     setWorldPose(object, matrix);
     const body = this.bodies.get(object)?.body;
     if (!body) return;
@@ -205,7 +207,7 @@ export class RapierWorld implements PhysicsWorld {
   getJointState(object: Joint) {
     this.assertObject(object);
     const binding = this.joints.get(object);
-    if (binding?.target) return jointState(binding.target);
+    if (binding?.target) return readJointState(binding.target);
     return authoredJointState(
       object,
       binding ? [binding.frame0, binding.frame1] : undefined,
