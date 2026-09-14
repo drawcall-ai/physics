@@ -30,7 +30,7 @@ it("creates one triangle collider per transformed mesh child", async () => {
       "Mesh",
       "Mesh",
     ]);
-    world.step();
+    world.update(world.fixedDelta);
     expect(
       item.target.getColliders().map((collider) => collider.shape()),
     ).toMatchObject([
@@ -54,7 +54,7 @@ it("moves the scaled kinematic lift and carries its falling cube", async () => {
   let high = -Infinity;
   try {
     for (let step = 0; step < 360; step++) {
-      world.step();
+      world.update(world.fixedDelta);
       low = Math.min(low, item.target.position.y);
       high = Math.max(high, item.target.position.y);
       if (step > 120) expect(Math.abs(item.gap())).toBeLessThan(0.06);
@@ -73,7 +73,7 @@ it("drops and rotates one body with three automatically generated convex collide
   if (!spec) throw new Error("Missing compound case");
   const item = specimen(world, spec, true);
   try {
-    for (let step = 0; step < 30; step++) world.step();
+    for (let step = 0; step < 30; step++) world.update(world.fixedDelta);
     expect(item.target.position.y).toBeLessThan(-0.5);
     expect(Math.abs(item.target.quaternion.w)).toBeLessThan(0.99);
     expect(

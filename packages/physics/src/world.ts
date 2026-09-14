@@ -1,6 +1,12 @@
 import type { Matrix4, Vector3 } from "three";
 import { Joint } from "./joints.js";
 import { RigidBody } from "./body.js";
+import {
+  initialVelocity,
+  setInitialVelocity,
+  setWorldPose,
+  authoredJointState,
+} from "./state.js";
 import type { Vec3 } from "./objects.js";
 
 export interface PhysicsOptions {
@@ -14,18 +20,6 @@ export interface PhysicsVelocity {
   angular: Vector3;
 }
 
-export interface PhysicsBodyControls {
-  getMatrix(target?: Matrix4): Matrix4;
-  getVelocity(): PhysicsVelocity;
-  setVelocity(value: Partial<PhysicsVelocity>): void;
-  setKinematicTarget(matrix: Matrix4): void;
-  teleport(matrix: Matrix4): void;
-  applyImpulse(impulse: Vector3, worldPoint?: Vector3): void;
-  applyForce(force: Vector3, worldPoint?: Vector3): void;
-  wake(): void;
-  sleep(): void;
-}
-
 export interface PhysicsJointState {
   angle: number;
   angularVelocity: number;
@@ -33,21 +27,23 @@ export interface PhysicsJointState {
   distance: number;
 }
 
-export interface PhysicsJointControls {
-  getState(): PhysicsJointState;
-}
-
 export interface PhysicsWorld {
   register(object: RigidBody | Joint): void;
   unregister(object: RigidBody | Joint): void;
   readonly fixedDelta: number;
-  readonly maxSubsteps: number;
   update(delta: number): void;
-  step(): void;
   reset(): void;
   dispose(): void;
-  body(object: RigidBody): PhysicsBodyControls;
-  joint(object: Joint): PhysicsJointControls;
+  /** Backend integration; scene code calls methods on bodies and joints. */
+  getVelocity(object: RigidBody): PhysicsVelocity;
+  setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void;
+  teleport(object: RigidBody, matrix: Matrix4): void;
+  setKinematicTarget(object: RigidBody, matrix: Matrix4): void;
+  applyImpulse(object: RigidBody, impulse: Vector3, point?: Vector3): void;
+  applyForce(object: RigidBody, force: Vector3, point?: Vector3): void;
+  wake(object: RigidBody): void;
+  sleep(object: RigidBody): void;
+  getJointState(object: Joint): PhysicsJointState;
   onBeforeStep(callback: (delta: number) => void): () => void;
   onAfterStep(callback: (delta: number) => void): () => void;
 }
@@ -71,7 +67,6 @@ export function clearDefaultWorld(world: PhysicsWorld): void {
 /** Owns authoring objects without loading a simulation backend. */
 export class AuthoringWorld implements PhysicsWorld {
   readonly fixedDelta = 1 / 60;
-  readonly maxSubsteps = 5;
   readonly #objects = new Set<RigidBody | Joint>();
   #disposed = false;
 
@@ -111,23 +106,53 @@ export class AuthoringWorld implements PhysicsWorld {
   update(_delta: number): never {
     return this.unavailable();
   }
-  step(): never {
-    return this.unavailable();
-  }
   reset(): never {
     return this.unavailable();
   }
-  body(_object: RigidBody): never {
-    return this.unavailable();
+  getVelocity(object: RigidBody): PhysicsVelocity {
+    this.assertObject(object);
+    return initialVelocity(object);
   }
-  joint(_object: Joint): never {
-    return this.unavailable();
+  setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
+    this.assertObject(object);
+    setInitialVelocity(object, value);
   }
-  onBeforeStep(_callback: (delta: number) => void): never {
-    return this.unavailable();
+  teleport(object: RigidBody, matrix: Matrix4): void {
+    this.assertObject(object);
+    object.validate();
+    setWorldPose(object, matrix);
   }
-  onAfterStep(_callback: (delta: number) => void): never {
-    return this.unavailable();
+  setKinematicTarget(object: RigidBody, _matrix: Matrix4): void {
+    this.assertObject(object);
+  }
+  applyImpulse(object: RigidBody, _impulse: Vector3, _point?: Vector3): void {
+    this.assertObject(object);
+  }
+  applyForce(object: RigidBody, _force: Vector3, _point?: Vector3): void {
+    this.assertObject(object);
+  }
+  wake(object: RigidBody): void {
+    this.assertObject(object);
+  }
+  sleep(object: RigidBody): void {
+    this.assertObject(object);
+  }
+  getJointState(object: Joint): PhysicsJointState {
+    this.assertObject(object);
+    return authoredJointState(object);
+  }
+  onBeforeStep(_callback: (delta: number) => void): () => void {
+    if (this.#disposed) throw new Error("Physics world has been disposed");
+    return () => {};
+  }
+  onAfterStep(_callback: (delta: number) => void): () => void {
+    return this.onBeforeStep(_callback);
+  }
+  private assertObject(object: RigidBody | Joint): void {
+    if (this.#disposed) throw new Error("Physics world has been disposed");
+    if (object.disposed) throw new Error("Physics object has been disposed");
+    if (object.world !== this)
+      throw new Error("Object belongs to another world");
   }
 
   private unavailable(): never {

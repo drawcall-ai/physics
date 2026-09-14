@@ -138,8 +138,8 @@ validate support and report unsupported properties instead of ignoring them.
 
 Install `@drawcall/physics-rapier` for `await setupWorld()` and
 `@drawcall/physics-usd` for `PhysicsUSDExporter` / `PhysicsUSDLoader`. Each has one
-public entry point. The core exports `PhysicsWorld`, `PhysicsBodyControls`,
-and `PhysicsJointControls` interfaces so hosts can work with different backends.
+public entry point. The core exports `PhysicsWorld` so hosts can work with different backends.
+Scene code calls physics methods directly on bodies and joints.
 
 ## Development
 
@@ -157,3 +157,11 @@ for controls and source.
 Use [tools/simulate.py](https://github.com/drawcall-ai/physics/tree/main/tools)
 to open exported USDZ in Newton, record an MP4, or run a headless CPU check with
 an independent importer and solver.
+
+### State access and static previews
+
+`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and `joint.getState()` work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+
+`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update`, `step`, or `reset` on an authoring world still throws because it cannot simulate.
+
+The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. State operations never force early backend creation; final parent scale, collider geometry, mass, and inertia are captured together. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.

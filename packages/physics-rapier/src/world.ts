@@ -7,16 +7,20 @@ import {
   type Joint,
   type PhysicsWorld,
   type PhysicsOptions,
+  type PhysicsVelocity,
+  initialVelocity,
+  setInitialVelocity,
+  setWorldPose,
+  authoredJointState,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
-  BodyControls,
   synchronize,
   createBody,
   refreshBody,
   type BodyBinding,
 } from "./body.js";
-import { drive, joint, jointState } from "./joints.js";
+import { drive, joint, readJointState } from "./joints.js";
 
 export interface RapierOptions extends PhysicsOptions {
   solverIterations?: number;
@@ -44,7 +48,7 @@ export class RapierWorld implements PhysicsWorld {
   private readonly before = new Set<(delta: number) => void>();
   private readonly after = new Set<(delta: number) => void>();
   readonly fixedDelta: number;
-  readonly maxSubsteps: number;
+  private readonly maxSubsteps: number;
 
   constructor(
     private readonly api: typeof Rapier,
@@ -102,6 +106,7 @@ export class RapierWorld implements PhysicsWorld {
     this.assertActive();
     if (!Number.isFinite(delta) || delta < 0)
       throw new Error("delta must be finite and nonnegative.");
+    this.flush(true);
     this.elapsed = Math.min(
       this.elapsed + delta,
       this.fixedDelta * this.maxSubsteps,
@@ -111,8 +116,9 @@ export class RapierWorld implements PhysicsWorld {
       this.elapsed -= this.fixedDelta;
     }
   }
-  step(): void {
+  private step(): void {
     this.assertActive();
+    this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);
     this.flush();
     this.backend.step();
@@ -125,17 +131,12 @@ export class RapierWorld implements PhysicsWorld {
   }
   reset(): void {
     this.assertActive();
-    for (const [object, { body, initial }] of this.bodies) {
+    for (const [object, { body, initial, velocity }] of this.bodies) {
+      object.validate();
       body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
       body.setRotation(new Quaternion().setFromRotationMatrix(initial), true);
-      body.setLinvel(
-        new Vector3(...(object.options.linearVelocity ?? [0, 0, 0])),
-        true,
-      );
-      body.setAngvel(
-        new Vector3(...(object.options.angularVelocity ?? [0, 0, 0])),
-        true,
-      );
+      body.setLinvel(velocity.linear, true);
+      body.setAngvel(velocity.angular, true);
       body.resetForces(false);
       body.resetTorques(false);
       synchronize(object, body);
@@ -152,19 +153,65 @@ export class RapierWorld implements PhysicsWorld {
     this.disposed = true;
     clearDefaultWorld(this);
   }
-  body(object: RigidBody): BodyControls {
-    this.assertActive();
-    return new BodyControls(() => this.getBody(object), object);
+  getVelocity(object: RigidBody): PhysicsVelocity {
+    this.assertObject(object);
+    const body = this.bodies.get(object)?.body;
+    return body
+      ? {
+          linear: new Vector3().copy(body.linvel()),
+          angular: new Vector3().copy(body.angvel()),
+        }
+      : initialVelocity(object);
   }
-  joint(object: Joint) {
-    this.assertActive();
-    const resolve = () => {
-      this.assertActive();
-      const target = this.joints.get(object)?.target;
-      if (!target) throw new Error("Joint is not active in this world.");
-      return target;
-    };
-    return { getState: () => jointState(resolve()) };
+  setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
+    this.assertObject(object);
+    const body = this.bodies.get(object)?.body;
+    if (!body) return setInitialVelocity(object, value);
+    if (value.linear) body.setLinvel(value.linear, true);
+    if (value.angular) body.setAngvel(value.angular, true);
+  }
+  teleport(object: RigidBody, matrix: Matrix4): void {
+    this.assertObject(object);
+    object.validate();
+    setWorldPose(object, matrix);
+    const body = this.bodies.get(object)?.body;
+    if (!body) return;
+    body.setTranslation(new Vector3().setFromMatrixPosition(matrix), true);
+    body.setRotation(new Quaternion().setFromRotationMatrix(matrix), true);
+  }
+  setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
+    const body = this.getBody(object);
+    body.setNextKinematicTranslation(
+      new Vector3().setFromMatrixPosition(matrix),
+    );
+    body.setNextKinematicRotation(
+      new Quaternion().setFromRotationMatrix(matrix),
+    );
+  }
+  applyImpulse(object: RigidBody, impulse: Vector3, point?: Vector3): void {
+    const body = this.getBody(object);
+    if (point) body.applyImpulseAtPoint(impulse, point, true);
+    else body.applyImpulse(impulse, true);
+  }
+  applyForce(object: RigidBody, force: Vector3, point?: Vector3): void {
+    const body = this.getBody(object);
+    if (point) body.addForceAtPoint(force, point, true);
+    else body.addForce(force, true);
+  }
+  wake(object: RigidBody): void {
+    this.getBody(object).wakeUp();
+  }
+  sleep(object: RigidBody): void {
+    this.getBody(object).sleep();
+  }
+  getJointState(object: Joint) {
+    this.assertObject(object);
+    const binding = this.joints.get(object);
+    if (binding?.target) return readJointState(binding.target);
+    return authoredJointState(
+      object,
+      binding ? [binding.frame0, binding.frame1] : undefined,
+    );
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
     this.assertActive();
@@ -183,24 +230,32 @@ export class RapierWorld implements PhysicsWorld {
   private assertActive(): void {
     if (this.disposed) throw new Error("Physics world has been disposed.");
   }
-  private getBody(object: RigidBody): Rapier.RigidBody {
+  private assertObject(object: RigidBody | Joint): void {
     this.assertActive();
+    if (object.disposed) throw new Error("Physics object has been disposed.");
+    if (object.world !== this)
+      throw new Error("Object belongs to another world.");
+  }
+  private getBody(object: RigidBody): Rapier.RigidBody {
+    this.assertObject(object);
     const binding = this.bodies.get(object);
     if (!binding)
       throw new Error(
-        "Body is not part of the active simulation; wait for its first physics step.",
+        "Body backend is not initialized; finish assembly and call world.update(0) before simulation operations.",
       );
     return binding.body;
   }
-  private flush(): void {
+  private flush(pendingOnly = false): void {
     this.assertActive();
     for (const object of this.objects) {
-      object.validate();
       const binding = this.bodies.get(object);
+      if (pendingOnly && binding) continue;
+      object.validate();
       if (binding) refreshBody(this.api, this.backend, object, binding);
       else this.bodies.set(object, createBody(this.api, this.backend, object));
     }
     for (const object of this.constraints) {
+      if (pendingOnly && this.joints.has(object)) continue;
       if (
         !this.objects.has(object.options.body1) ||
         (object.options.body0 && !this.objects.has(object.options.body0))

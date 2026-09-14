@@ -1,4 +1,4 @@
-import { Group, Mesh, type Object3D } from "three";
+import { Group, Mesh, Matrix4, Vector3, type Object3D } from "three";
 import {
   Collider,
   BoxCollider,
@@ -7,11 +7,13 @@ import {
   CylinderCollider,
   MeshCollider,
 } from "./objects.js";
+import { assertRigidTransform } from "./objects.js";
+import { validateVector } from "./state.js";
 import { splitTransform } from "./transforms.js";
 import { autoShape, validateShape } from "./shapes.js";
 import type { AutoColliders, Vec3, PhysicsMaterial } from "./objects.js";
 import { getDefaultWorld } from "./world.js";
-import type { PhysicsWorld } from "./world.js";
+import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
 
 export interface RigidBodyOptions {
   readonly world?: PhysicsWorld;
@@ -28,12 +30,11 @@ export interface RigidBodyOptions {
 }
 export class RigidBody extends Group {
   #disposed = false;
+  readonly world: PhysicsWorld;
 
-  constructor(
-    readonly options: RigidBodyOptions = {},
-    readonly world: PhysicsWorld = options.world ?? getDefaultWorld(),
-  ) {
+  constructor(readonly options: RigidBodyOptions = {}) {
     super();
+    this.world = options.world ?? getDefaultWorld();
     this.world.register(this);
   }
 
@@ -46,6 +47,41 @@ export class RigidBody extends Group {
     this.world.unregister(this);
     this.removeFromParent();
     this.#disposed = true;
+  }
+
+  getVelocity(): PhysicsVelocity {
+    return this.world.getVelocity(this);
+  }
+  setVelocity(value: Partial<PhysicsVelocity>): void {
+    if (value.linear) validateVector(value.linear);
+    if (value.angular) validateVector(value.angular);
+    this.world.setVelocity(this, value);
+  }
+  teleport(matrix: Matrix4): void {
+    assertRigidTransform(matrix);
+    this.world.teleport(this, matrix);
+  }
+  setKinematicTarget(matrix: Matrix4): void {
+    if (this.options.type !== "kinematic")
+      throw new Error("Kinematic targets require a kinematic body");
+    assertRigidTransform(matrix);
+    this.world.setKinematicTarget(this, matrix);
+  }
+  applyImpulse(impulse: Vector3, point?: Vector3): void {
+    validateVector(impulse);
+    if (point) validateVector(point);
+    this.world.applyImpulse(this, impulse, point);
+  }
+  applyForce(force: Vector3, point?: Vector3): void {
+    validateVector(force);
+    if (point) validateVector(point);
+    this.world.applyForce(this, force, point);
+  }
+  wake(): void {
+    this.world.wake(this);
+  }
+  sleep(): void {
+    this.world.sleep(this);
   }
 
   override clone(recursive = true): this {

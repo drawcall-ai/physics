@@ -1,7 +1,6 @@
 import { setDefaultWorld } from "@drawcall/physics";
 import { RapierWorld, type RapierOptions } from "./world.js";
 export { RapierWorld, type RapierOptions } from "./world.js";
-export { BodyControls } from "./body.js";
 
 export async function setupWorld(
   options: RapierOptions = {},

@@ -137,12 +137,11 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   const stop =
     spec.type === "kinematic"
       ? world.onAfterStep((delta) => {
-          const controls = world.body(target);
-          initial ??= controls.getMatrix();
+          initial ??= splitTransform(target.matrixWorld).pose;
           time += delta;
           const position = new T.Vector3().setFromMatrixPosition(initial);
           position.y += 0.65 * Math.sin(time * 1.3);
-          controls.setKinematicTarget(initial.clone().setPosition(position));
+          target.setKinematicTarget(initial.clone().setPosition(position));
         })
       : undefined;
   return {
@@ -206,11 +205,11 @@ export function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(world, spec);
   try {
     try {
-      world.step();
+      world.update(world.fixedDelta);
       if (!spec.error && item.boundsError() > 1e-5)
         throw new Error("Collider bounds differ from visual geometry");
       if (spec.edit) item.target.scale.setScalar(2);
-      for (let i = 0; i < 239; i++) world.step();
+      for (let i = 0; i < 239; i++) world.update(world.fixedDelta);
     } catch (error) {
       if (
         spec.error &&
