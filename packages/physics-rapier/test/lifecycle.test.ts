@@ -46,7 +46,7 @@ it("reads and writes velocity while staged, then initializes from the completed 
   expect(body.getVelocity().linear.x).toBe(2);
   body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(3);
-  world.step();
+  world.update(world.fixedDelta);
   expect(body.getWorldPosition(new Vector3()).x).toBeCloseTo(
     2 + 3 * world.fixedDelta,
   );
@@ -127,7 +127,7 @@ for (const axis of ["X", "Y", "Z"] as const) {
     ] as const)
       expect(ready[key]).toBeCloseTo(initial[key], 5);
     joint.options.enabled = false;
-    world.step();
+    world.update(world.fixedDelta);
     expect(Number.isFinite(joint.getState().distance)).toBe(true);
   });
 }
@@ -192,7 +192,7 @@ it("preserves world scale through static teleport and reset under a nonuniform p
   expect(body.getWorldScale(new Vector3()).distanceTo(scale)).toBeLessThan(
     1e-6,
   );
-  world.step();
+  world.update(world.fixedDelta);
   expect(body.getWorldScale(new Vector3()).distanceTo(scale)).toBeLessThan(
     1e-6,
   );
@@ -206,6 +206,6 @@ it("preserves world scale through static teleport and reset under a nonuniform p
     "shear",
   );
   expect(body.matrixWorld.elements).toEqual(pose.elements);
-  world.step();
+  world.update(world.fixedDelta);
   expect(body.matrixWorld.elements).toEqual(pose.elements);
 });

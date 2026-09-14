@@ -18,7 +18,7 @@ world.update(deltaSeconds);
 
 `setupWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
 
-Each body requires at least one collider before backend initialization. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)` or `world.step()`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
+Each body requires at least one collider before backend initialization. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
 
 New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry changes, collider properties and materials. Body damping, gravity scale, and body type update live; `canSleep` is fixed at creation.
 
@@ -51,3 +51,5 @@ This is a breaking API change: release the packages together under a new minor v
 `body.dispose()` unregisters its physics resources and connected joints. Removing a visual from its parent does not dispose physics. `world.dispose()` disposes all registered physics objects and frees Rapier. Geometry and materials remain owned by the application.
 
 Rapier requires equal static/dynamic friction and supports distance joints only with zero minimum distance. Unsupported authored data fails visibly.
+
+`update(delta)` accumulates elapsed seconds and runs fixed simulation steps, up to the configured `maxSubsteps` catch-up limit. `update(0)` prepares without advancing time. For explicit simulation, call `update(world.fixedDelta)` repeatedly; one large delta is subject to the catch-up limit.

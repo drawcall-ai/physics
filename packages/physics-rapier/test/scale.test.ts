@@ -24,7 +24,7 @@ it("captures scale at initialization, including bodies added and removed during 
       return { body, root };
     };
     const first = spawn(-4, 2);
-    for (let i = 0; i < 180; i++) world.step();
+    for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
     expect(first.body.getWorldPosition(new Vector3()).y).toBeCloseTo(1, 1);
     expect(first.body.scale.distanceTo(new Vector3(2, 2, 2))).toBeLessThan(
       1e-6,
@@ -32,14 +32,14 @@ it("captures scale at initialization, including bodies added and removed during 
     first.body.dispose();
     expect(() => first.body.getVelocity()).toThrow("disposed");
     const second = spawn(4, 3);
-    for (let i = 0; i < 180; i++) world.step();
+    for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
     expect(second.body.getWorldPosition(new Vector3()).y).toBeCloseTo(1.5, 1);
     const pending = spawn(0, 4);
     pending.body.dispose();
-    world.step();
+    world.update(world.fixedDelta);
     expect(() => pending.body.getVelocity()).toThrow("disposed");
     second.root.scale.setScalar(4);
-    expect(() => world.step()).toThrow("scale cannot change");
+    expect(() => world.update(world.fixedDelta)).toThrow("scale cannot change");
   } finally {
     world.dispose();
   }
@@ -52,7 +52,7 @@ it("keeps explicit mass and derives density mass and inertia from scaled geometr
       const body = new RigidBody({ mass, material: { density: 1 } });
       body.add(new Mesh(new BoxGeometry()));
       body.scale.setScalar(2);
-      world.step();
+      world.update(world.fixedDelta);
       body.applyImpulse(new Vector3(8, 0, 0));
       expect(body.getVelocity().linear.x).toBeCloseTo(mass ? 4 : 1);
       body.applyImpulse(new Vector3(0, 1, 0), new Vector3(1, 0, 0));
@@ -69,7 +69,7 @@ it("keeps explicit mass and derives density mass and inertia from scaled geometr
 it("captures scaled joints added during simulation and preserves scale through teleport and reset", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   try {
-    world.step();
+    world.update(world.fixedDelta);
     const root = new Group();
     root.scale.setScalar(2);
     root.rotation.y = 0.3;
@@ -85,7 +85,7 @@ it("captures scaled joints added during simulation and preserves scale through t
       frame1: new Matrix4().makeTranslation(0, 1, 0),
     });
     expect(joint.getState().distance).toBeGreaterThanOrEqual(0);
-    for (let i = 0; i < 60; i++) world.step();
+    for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
     expect(joint.getState().distance).toBeLessThan(0.001);
     expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(6);
     joint.dispose();
@@ -108,12 +108,12 @@ it("captures new collider scale while rejecting edits to an existing collider's 
     mesh.scale.setScalar(2);
     world.update(world.fixedDelta / 2);
     mesh.scale.setScalar(3);
-    expect(() => world.step()).toThrow("Collider scale cannot change");
+    expect(() => world.update(world.fixedDelta)).toThrow("Collider scale cannot change");
     body.remove(mesh);
     const replacement = new Mesh(new BoxGeometry());
     replacement.scale.setScalar(3);
     body.add(replacement);
-    world.step();
+    world.update(world.fixedDelta);
     body.applyImpulse(new Vector3(2, 0, 0));
     expect(body.getVelocity().linear.x).toBeCloseTo(1);
   } finally {
@@ -132,7 +132,7 @@ it("preserves scale authored directly in a manual body matrix", async () => {
     body.matrixAutoUpdate = false;
     body.matrix.makeScale(2, 2, 2).setPosition(0, 5, 0);
     body.matrixWorldNeedsUpdate = true;
-    for (let i = 0; i < 180; i++) world.step();
+    for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
     expect(
       body.getWorldScale(new Vector3()).distanceTo(new Vector3(2, 2, 2)),
     ).toBeLessThan(1e-6);

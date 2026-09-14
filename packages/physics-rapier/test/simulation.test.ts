@@ -17,7 +17,7 @@ function box(type: "dynamic" | "static" | "kinematic" = "dynamic") {
   return body;
 }
 function steps(simulation: RapierWorld, count = 120) {
-  for (let i = 0; i < count; i++) simulation.step();
+  for (let i = 0; i < count; i++) simulation.update(simulation.fixedDelta);
 }
 
 describe("RapierWorld", () => {
@@ -30,7 +30,7 @@ describe("RapierWorld", () => {
     body.matrixAutoUpdate = false;
     scene.add(body);
 
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(body.position.y).toBeLessThan(2);
     expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(
       body.position.y,
@@ -46,9 +46,9 @@ describe("RapierWorld", () => {
     scene.add(body, hinge);
 
     hinge.options.drive = { targetPosition: NaN };
-    expect(() => simulation.step()).toThrow("targets must be finite");
+    expect(() => simulation.update(simulation.fixedDelta)).toThrow("targets must be finite");
     hinge.options.drive = { damping: -1 };
-    expect(() => simulation.step()).toThrow("coefficients");
+    expect(() => simulation.update(simulation.fixedDelta)).toThrow("coefficients");
     simulation.dispose();
   });
   it("distributes explicit mass over compound colliders", async () => {
@@ -64,12 +64,12 @@ describe("RapierWorld", () => {
     body.add(a, b);
     scene.add(body);
 
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     body.applyImpulse(new Vector3(10, 0, 0));
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(body.getVelocity().linear.x).toBeCloseTo(0.5, 5);
     body.applyImpulse(new Vector3(0, 1, 0), new Vector3(3, 0, 0));
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(body.getVelocity().angular.z).toBeGreaterThan(0);
     simulation.dispose();
   });
@@ -121,7 +121,7 @@ describe("RapierWorld", () => {
     const simulation = await setupWorld();
     const body = box();
     body.dispose();
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow("disposed");
     simulation.dispose();
   });
@@ -189,9 +189,9 @@ describe("RapierWorld", () => {
       staticFriction: 1,
       dynamicFriction: 0.2,
     };
-    expect(() => simulation.step()).toThrow("friction");
+    expect(() => simulation.update(simulation.fixedDelta)).toThrow("friction");
     body.options.material = {};
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(new Vector3().setFromMatrixPosition(body.matrixWorld).x).toBeCloseTo(
       1,
       1,
@@ -234,14 +234,14 @@ describe("RapierWorld", () => {
     kinematic.position.x = 5;
     scene.add(body, kinematic);
 
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     body.applyForce(new Vector3(60, 0, 0));
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     const velocity = body.getVelocity().linear.x;
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(body.getVelocity().linear.x).toBeCloseTo(velocity);
     kinematic.setKinematicTarget(new Matrix4().makeTranslation(6, 0, 0));
-    simulation.step();
+    simulation.update(simulation.fixedDelta);
     expect(kinematic.position.x).toBeCloseTo(6);
     simulation.dispose();
   });

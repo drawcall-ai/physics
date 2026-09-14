@@ -48,7 +48,7 @@ export class RapierWorld implements PhysicsWorld {
   private readonly before = new Set<(delta: number) => void>();
   private readonly after = new Set<(delta: number) => void>();
   readonly fixedDelta: number;
-  readonly maxSubsteps: number;
+  private readonly maxSubsteps: number;
 
   constructor(
     private readonly api: typeof Rapier,
@@ -116,7 +116,7 @@ export class RapierWorld implements PhysicsWorld {
       this.elapsed -= this.fixedDelta;
     }
   }
-  step(): void {
+  private step(): void {
     this.assertActive();
     this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);

@@ -18,7 +18,7 @@ test("powered car crosses the bump course and brakes with independent suspension
   let maxSpeed = 0;
   let minHeight = Infinity;
   for (let i = 0; i < 2400; i++) {
-    world.step();
+    world.update(world.fixedDelta);
     const compression = suspensions.map((joint) => joint.getState().position);
     peakCompression = Math.max(peakCompression, ...compression);
     const roll =
@@ -60,16 +60,16 @@ test("powered car crosses the bump course and brakes with independent suspension
   expect(car.chassis.position.z).toBeCloseTo(0);
   driver.input.automatic = false;
   driver.input.throttle = -0.6;
-  for (let i = 0; i < 120; i++) world.step();
+  for (let i = 0; i < 120; i++) world.update(world.fixedDelta);
   expect(driver.telemetry.speed).toBeLessThan(-1);
   driver.input.throttle = 0;
   driver.input.brake = 1;
-  for (let i = 0; i < 360; i++) world.step();
+  for (let i = 0; i < 360; i++) world.update(world.fixedDelta);
   expect(Math.abs(driver.telemetry.speed)).toBeLessThan(0.2);
   driver.reset();
   driver.input.throttle = 0.4;
   driver.input.steer = 0.6;
-  for (let i = 0; i < 360; i++) world.step();
+  for (let i = 0; i < 360; i++) world.update(world.fixedDelta);
   expect(car.chassis.position.x).toBeGreaterThan(0.4);
   driver.dispose();
   world.dispose();

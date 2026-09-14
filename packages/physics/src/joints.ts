@@ -20,7 +20,7 @@ export interface JointOptions {
   collideConnected?: boolean;
   enabled?: boolean;
 }
-export class Joint<
+export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
   readonly world: PhysicsWorld;
@@ -190,7 +190,7 @@ export interface AxisJointOptions extends JointOptions {
   limits?: [number, number];
   drive?: JointDrive;
 }
-export class AxisJoint extends Joint<AxisJointOptions> {}
+export abstract class AxisJoint extends Joint<AxisJointOptions> {}
 export class RevoluteJoint extends AxisJoint {}
 export class PrismaticJoint extends AxisJoint {}
 export class SphericalJoint extends Joint {}
@@ -199,7 +199,7 @@ export interface DistanceJointOptions extends JointOptions {
 }
 export class DistanceJoint extends Joint<DistanceJointOptions> {}
 
-export function validateDrive(drive: JointDrive): void {
+function validateDrive(drive: JointDrive): void {
   if (
     ![drive.targetPosition ?? 0, drive.targetVelocity ?? 0].every(
       Number.isFinite,

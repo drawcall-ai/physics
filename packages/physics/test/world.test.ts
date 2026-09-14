@@ -215,7 +215,7 @@ it("supports a static preview callback without a backend or step observers", () 
   expect(body.getVelocity().linear.x).toBe(2);
   expect(before).not.toHaveBeenCalled();
   expect(after).not.toHaveBeenCalled();
-  expect(() => world.step()).toThrow("cannot simulate");
+  expect(() => world.update(world.fixedDelta)).toThrow("cannot simulate");
   expect(() => body.applyForce(new Vector3(NaN, 0, 0))).toThrow("finite");
   expect(() => body.teleport(new Matrix4().makeScale(2, 2, 2))).toThrow(
     "unit scale",

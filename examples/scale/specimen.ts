@@ -205,11 +205,11 @@ export function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(world, spec);
   try {
     try {
-      world.step();
+      world.update(world.fixedDelta);
       if (!spec.error && item.boundsError() > 1e-5)
         throw new Error("Collider bounds differ from visual geometry");
       if (spec.edit) item.target.scale.setScalar(2);
-      for (let i = 0; i < 239; i++) world.step();
+      for (let i = 0; i < 239; i++) world.update(world.fixedDelta);
     } catch (error) {
       if (
         spec.error &&

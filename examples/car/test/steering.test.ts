@@ -16,10 +16,10 @@ test.each([0, 1])(
     driver.input.automatic = false;
     driver.input.brake = brake;
     try {
-      for (let i = 0; i < 240; i++) world.step();
+      for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
       for (const direction of [1, -1, 0]) {
         driver.input.steer = direction;
-        for (let i = 0; i < 360; i++) world.step();
+        for (let i = 0; i < 360; i++) world.update(world.fixedDelta);
         expect(Math.abs(driver.telemetry.speed)).toBeLessThan(
           brake ? 0.1 : 0.3,
         );

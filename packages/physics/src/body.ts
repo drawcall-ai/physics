@@ -30,12 +30,11 @@ export interface RigidBodyOptions {
 }
 export class RigidBody extends Group {
   #disposed = false;
+  readonly world: PhysicsWorld;
 
-  constructor(
-    readonly options: RigidBodyOptions = {},
-    readonly world: PhysicsWorld = options.world ?? getDefaultWorld(),
-  ) {
+  constructor(readonly options: RigidBodyOptions = {}) {
     super();
+    this.world = options.world ?? getDefaultWorld();
     this.world.register(this);
   }
 

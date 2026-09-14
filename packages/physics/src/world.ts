@@ -31,9 +31,7 @@ export interface PhysicsWorld {
   register(object: RigidBody | Joint): void;
   unregister(object: RigidBody | Joint): void;
   readonly fixedDelta: number;
-  readonly maxSubsteps: number;
   update(delta: number): void;
-  step(): void;
   reset(): void;
   dispose(): void;
   /** Backend integration; scene code calls methods on bodies and joints. */
@@ -69,7 +67,6 @@ export function clearDefaultWorld(world: PhysicsWorld): void {
 /** Owns authoring objects without loading a simulation backend. */
 export class AuthoringWorld implements PhysicsWorld {
   readonly fixedDelta = 1 / 60;
-  readonly maxSubsteps = 5;
   readonly #objects = new Set<RigidBody | Joint>();
   #disposed = false;
 
@@ -107,9 +104,6 @@ export class AuthoringWorld implements PhysicsWorld {
   }
 
   update(_delta: number): never {
-    return this.unavailable();
-  }
-  step(): never {
     return this.unavailable();
   }
   reset(): never {
