@@ -31,23 +31,21 @@ export function readShape(
   };
   if (type === "Cube") {
     const size = numeric(layer, path, "size", 2);
-    collider = new BoxCollider().setSize([
-      size * scale.x,
-      size * scale.y,
-      size * scale.z,
-    ]);
+    collider = new BoxCollider({
+      size: [size * scale.x, size * scale.y, size * scale.z],
+    });
   } else if (type === "Sphere") {
-    collider = new SphereCollider().setRadius(
-      numeric(layer, path, "radius", 1) * uniform(),
-    );
+    collider = new SphereCollider({
+      radius: numeric(layer, path, "radius", 1) * uniform(),
+    });
   } else if (type === "Capsule" || type === "Cylinder") {
     const factor = uniform();
     const radius = numeric(layer, path, "radius", 1) * factor;
     const height = numeric(layer, path, "height", 2) * factor;
     collider =
       type === "Capsule"
-        ? new CapsuleCollider().setRadius(radius).setLength(height)
-        : new CylinderCollider().setRadius(radius).setHeight(height);
+        ? new CapsuleCollider({ radius, length: height })
+        : new CylinderCollider({ radius, height });
   } else if (type === "Mesh") {
     if (!(object instanceof Mesh))
       throw new Error(`Missing collider mesh geometry: ${path}`);

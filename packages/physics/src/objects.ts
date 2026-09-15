@@ -73,6 +73,17 @@ export abstract class Collider extends Object3D {
     return this;
   }
   abstract shape(): Shape;
+  override clone(recursive = true): this {
+    const target: unknown = Reflect.construct(this.constructor, [this.shape()]);
+    if (!this.isClone(target)) throw new Error("Invalid collider clone");
+    return target.copy(this, recursive);
+  }
+  private isClone(value: unknown): value is this {
+    return (
+      value instanceof Collider &&
+      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
+    );
+  }
   override copy(source: this, recursive = true): this {
     super.copy(source, recursive);
     return this.setMaterial(source.material)
@@ -91,93 +102,99 @@ export type Shape =
       approximation: "convexHull" | "trimesh";
     };
 export class BoxCollider extends Collider {
-  #size: Vec3 = Object.freeze([1, 1, 1]);
+  readonly #size: Vec3;
+  constructor(options: { readonly size?: Vec3 } = {}) {
+    super();
+    const size = options.size ?? [1, 1, 1];
+    this.#size = Object.freeze([
+      positive(size[0]),
+      positive(size[1]),
+      positive(size[2]),
+    ]);
+  }
   get size(): Vec3 {
     return this.#size;
-  }
-  setSize(value: Vec3): this {
-    value.forEach(positive);
-    this.#size = Object.freeze([...value]);
-    return this;
   }
   shape(): Shape {
     return { kind: "box", size: this.size };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    return this.setSize(source.size);
+    if (!this.size.every((value, index) => value === source.size[index]))
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class SphereCollider extends Collider {
-  #radius = 0.5;
+  readonly #radius: number;
+  constructor(options: { readonly radius?: number } = {}) {
+    super();
+    this.#radius = positive(options.radius ?? 0.5);
+  }
   get radius(): number {
     return this.#radius;
-  }
-  setRadius(value: number): this {
-    this.#radius = positive(value);
-    return this;
   }
   shape(): Shape {
     return { kind: "sphere", radius: this.radius };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    return this.setRadius(source.radius);
+    if (this.radius !== source.radius)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class CapsuleCollider extends Collider {
-  #radius = 0.5;
+  readonly #radius: number;
+  readonly #length: number;
+  constructor(
+    options: { readonly radius?: number; readonly length?: number } = {},
+  ) {
+    super();
+    this.#radius = positive(options.radius ?? 0.5);
+    this.#length = positive(options.length ?? 1);
+  }
   get radius(): number {
     return this.#radius;
   }
-  setRadius(value: number): this {
-    this.#radius = positive(value);
-    return this;
-  }
-  #length = 1;
   get length(): number {
     return this.#length;
   }
-  setLength(value: number): this {
-    this.#length = positive(value);
-    return this;
-  }
-  override shape(): Shape {
+  shape(): Shape {
     return { kind: "capsule", radius: this.radius, length: this.length };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    return this.setRadius(source.radius).setLength(source.length);
+    if (this.radius !== source.radius || this.length !== source.length)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class CylinderCollider extends Collider {
-  #radius = 0.5;
+  readonly #radius: number;
+  readonly #height: number;
+  constructor(
+    options: { readonly radius?: number; readonly height?: number } = {},
+  ) {
+    super();
+    this.#radius = positive(options.radius ?? 0.5);
+    this.#height = positive(options.height ?? 1);
+  }
   get radius(): number {
     return this.#radius;
   }
-  setRadius(value: number): this {
-    this.#radius = positive(value);
-    return this;
-  }
-  #height = 1;
   get height(): number {
     return this.#height;
   }
-  setHeight(value: number): this {
-    this.#height = positive(value);
-    return this;
-  }
-  override shape(): Shape {
+  shape(): Shape {
     return { kind: "cylinder", radius: this.radius, height: this.height };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    return this.setRadius(source.radius).setHeight(source.height);
+    if (this.radius !== source.radius || this.height !== source.height)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class MeshCollider extends Collider {
   #geometry = new BufferGeometry();
-  #approximation: "convexHull" | "trimesh";
+  readonly #approximation: "convexHull" | "trimesh";
   get approximation(): "convexHull" | "trimesh" {
     return this.#approximation;
   }
@@ -205,19 +222,6 @@ export class MeshCollider extends Collider {
       geometry: this.geometry,
       approximation: this.approximation,
     };
-  }
-  override clone(recursive = true): this {
-    const target: unknown = Reflect.construct(this.constructor, [
-      { approximation: this.approximation },
-    ]);
-    if (!this.isClone(target)) throw new Error("Invalid collider clone");
-    return target.copy(this, recursive);
-  }
-  private isClone(value: unknown): value is this {
-    return (
-      value instanceof MeshCollider &&
-      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
-    );
   }
   override copy(source: this, recursive = true): this {
     if (source.approximation !== this.approximation)

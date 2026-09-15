@@ -79,14 +79,13 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
         : spec.kind === "sphere"
           ? new SphereCollider()
           : spec.kind === "capsule"
-            ? new CapsuleCollider()
+            ? new CapsuleCollider({ radius: 0.4 })
             : spec.kind === "cylinder"
               ? new CylinderCollider()
               : new MeshCollider({
                   approximation:
                     spec.kind === "triangle mesh" ? "trimesh" : "convexHull",
                 });
-    if (collider instanceof CapsuleCollider) collider.setRadius(0.4);
     if (collider instanceof MeshCollider) collider.setGeometry(geometry);
     target.add(collider);
   }

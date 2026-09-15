@@ -24,8 +24,7 @@ export function createRoad(world: PhysicsWorld) {
   const floor = new RigidBody({ world, type: "static" });
   floor.name = "Road";
   floor.position.set(0, -0.15, 30);
-  const floorCollider = new BoxCollider();
-  floorCollider.setSize([8, 0.3, 90]);
+  const floorCollider = new BoxCollider({ size: [8, 0.3, 90] });
   floorCollider.setCollisionGroups({ membership: 1, filter: 2 });
   floor.add(box([8, 0.3, 90], asphalt), floorCollider);
   root.add(floor);

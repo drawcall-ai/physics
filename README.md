@@ -138,8 +138,11 @@ application-owned resources. Clones register in their source world.
 
 Explicit colliders use `setSensor(true)`, `setMaterial(...)`, and
 `setCollisionGroups({ membership, filter })` with unsigned 16-bit masks. Shape
-dimensions use `setSize`, `setRadius`, `setLength`, or `setHeight`; meshes use
-`setGeometry` with an immutable constructor `approximation`. Three.js transforms
+dimensions are immutable constructor options, for example
+`new BoxCollider({ size: [1, 2, 3] })` or
+`new CapsuleCollider({ radius: 0.2, length: 1 })`. Recreate a collider to change
+its dimensions. Meshes use `setGeometry` with an immutable constructor
+`approximation`. Three.js transforms
 and supported geometry/child edits remain available. Adapters
 validate support and report unsupported properties instead of ignoring them.
 
@@ -255,16 +258,16 @@ throws an unsupported-query error.
 Release core, Rapier, and USD together under the next minor version using the
 existing shared release tag workflow. Migrate consumers before upgrading:
 
-| Previous API                              | Replacement                                                               |
-| ----------------------------------------- | ------------------------------------------------------------------------- |
-| Velocity options                          | `body.setVelocity({ linear, angular })` with Vector3 values               |
-| Damping, gravity, material options        | `setLinearDamping`, `setAngularDamping`, `setGravityScale`, `setMaterial` |
-| Writable collider properties/options      | Collider setting and dimension methods                                    |
-| Joint enabled/contact/limit options       | `setEnabled`, `setCollideConnected`, `setLimits`                          |
-| Joint drive options / JointDrive          | Application controller calling `setEffort` each substep                   |
-| Axis angle/angularVelocity fields         | `getState().position` / `.velocity`                                       |
-| Changing body type, mass, or joint frames | Dispose and recreate with new constructor options                         |
-| USD PhysicsDriveAPI                       | Unsupported; driven imports fail with the prim and schema/property        |
+| Previous API                              | Replacement                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------- |
+| Velocity options                          | `body.setVelocity({ linear, angular })` with Vector3 values                  |
+| Damping, gravity, material options        | `setLinearDamping`, `setAngularDamping`, `setGravityScale`, `setMaterial`    |
+| Writable collider properties/options      | Constructor options for dimensions; methods for material, sensor, and groups |
+| Joint enabled/contact/limit options       | `setEnabled`, `setCollideConnected`, `setLimits`                             |
+| Joint drive options / JointDrive          | Application controller calling `setEffort` each substep                      |
+| Axis angle/angularVelocity fields         | `getState().position` / `.velocity`                                          |
+| Changing body type, mass, or joint frames | Dispose and recreate with new constructor options                            |
+| USD PhysicsDriveAPI                       | Unsupported; driven imports fail with the prim and schema/property           |
 
 There are no aliases for removed APIs. USD interchange carries physical constraints
 and mass properties; robotics owns actuator models and ROS integration.

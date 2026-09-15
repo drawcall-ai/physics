@@ -97,8 +97,7 @@ describe("physics objects", () => {
   it("resolves explicit collider offsets and material overrides", () => {
     const material = { density: 42 };
     const body = new RigidBody({ colliders: false });
-    const collider = new BoxCollider()
-      .setSize([1, 2, 3])
+    const collider = new BoxCollider({ size: [1, 2, 3] })
       .setMaterial(material)
       .setSensor(true);
     collider.position.y = 3;

@@ -1,5 +1,16 @@
 # Physics API decisions
 
+## Shape dimensions are configuration
+
+Primitive dimensions (`size`, `radius`, `length`, `height`) are immutable
+constructor options. They describe the collider being created. Changing them
+requires replacing that collider. A previous writable field does not establish
+that runtime mutation is needed.
+
+Material, sensor, and collision-group settings use methods. Three.js transforms
+and supported mesh geometry/child edits remain separate scene-authoring operations;
+they do not require dimension setters on primitive colliders.
+
 ## Mass belongs to the backend
 
 Core accepts immutable `mass`, `centerOfMass`, `diagonalInertia`, and

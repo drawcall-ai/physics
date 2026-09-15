@@ -303,7 +303,7 @@ it("normalizes engine-derived masses when explicit mass is paired with zero dens
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const moving = new RigidBody({ mass: 3 }).setMaterial({ density: 0 });
   moving.add(new BoxCollider());
-  const larger = new BoxCollider().setSize([2, 1, 1]);
+  const larger = new BoxCollider({ size: [2, 1, 1] });
   larger.position.x = 3;
   moving.add(larger);
   world.update(0);
@@ -327,5 +327,25 @@ it("cancels only one joint command when several joints act on a body", async () 
   expect(moving.getVelocity().linear.x).toBeCloseTo(0.07);
   world.update(world.fixedDelta);
   expect(moving.getVelocity().linear.x).toBeCloseTo(0.07);
+  world.dispose();
+});
+
+it("changes primitive dimensions by replacing the collider on its existing body", async () => {
+  const world = await setupWorld({ gravity: [0, 0, 0] });
+  const body = new RigidBody({ type: "static" });
+  const original = new BoxCollider();
+  body.add(original);
+  world.update(0);
+  const origin = new Vector3(-5, 0, 0);
+  const direction = new Vector3(1, 0, 0);
+  expect(world.raycast(origin, direction, 10)?.distance).toBeCloseTo(4.5);
+  const replacement = new BoxCollider({ size: [4, 1, 1] });
+  body.remove(original);
+  body.add(replacement);
+  world.update(world.fixedDelta);
+  const hit = world.raycast(origin, direction, 10);
+  expect(hit?.body).toBe(body);
+  expect(hit?.collider).toBe(replacement);
+  expect(hit?.distance).toBeCloseTo(3);
   world.dispose();
 });

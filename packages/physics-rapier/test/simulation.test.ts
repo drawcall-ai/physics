@@ -76,9 +76,10 @@ describe("RapierWorld", () => {
     const scene = new Group();
     const floor = new RigidBody({ type: "static", colliders: false });
     floor.add(
-      new BoxCollider()
-        .setSize([10, 1, 10])
-        .setCollisionGroups({ membership: 1, filter: 1 }),
+      new BoxCollider({ size: [10, 1, 10] }).setCollisionGroups({
+        membership: 1,
+        filter: 1,
+      }),
     );
     const falling = new RigidBody({ colliders: false, mass: 1 });
     falling.add(

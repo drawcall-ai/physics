@@ -219,10 +219,10 @@ def Cube "Crate" (
       restitution: 0.2,
     };
     body.add(
-      new BoxCollider().setSize([1, 2, 3]).setMaterial(material),
-      new SphereCollider().setRadius(0.4),
-      new CapsuleCollider().setRadius(0.2).setLength(1),
-      new CylinderCollider().setRadius(0.3).setHeight(0.8),
+      new BoxCollider({ size: [1, 2, 3] }).setMaterial(material),
+      new SphereCollider({ radius: 0.4 }),
+      new CapsuleCollider({ radius: 0.2, length: 1 }),
+      new CylinderCollider({ radius: 0.3, height: 0.8 }),
       new MeshCollider({
         approximation: "convexHull",
       }).setGeometry(new BoxGeometry()),
@@ -252,19 +252,24 @@ def Cube "Crate" (
       "DistanceJoint",
       "PrismaticJoint",
     ]);
-    expect(
-      result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody)[0]
-        ?.getColliders()
-        .map((collider) => collider.shape().kind),
-    ).toEqual(["box", "sphere", "capsule", "cylinder", "mesh"]);
-    expect(
-      result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody)[0]
-        ?.getColliders()[0]?.material,
-    ).toMatchObject(material);
+    const colliders = result
+      .getObjectsByProperty("isObject3D", true)
+      .find((object) => object instanceof RigidBody)
+      ?.getColliders();
+    expect(colliders?.map((collider) => collider.shape().kind)).toEqual([
+      "box",
+      "sphere",
+      "capsule",
+      "cylinder",
+      "mesh",
+    ]);
+    expect(colliders?.slice(0, 4).map((collider) => collider.shape())).toEqual([
+      { kind: "box", size: [1, 2, 3] },
+      { kind: "sphere", radius: 0.4 },
+      { kind: "capsule", radius: 0.2, length: 1 },
+      { kind: "cylinder", radius: 0.3, height: 0.8 },
+    ]);
+    expect(colliders?.[0]?.material).toMatchObject(material);
   });
 
   it("imports independently authored standard USDA, including a mesh carrying a body schema", () => {

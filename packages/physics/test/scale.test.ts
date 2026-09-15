@@ -25,7 +25,7 @@ it("combines ancestor, body and collider scale including offsets without mutatin
   root.rotation.y = 0.4;
   const body = new RigidBody();
   body.scale.set(1, 2, 3);
-  const collider = new BoxCollider().setSize([2, 2, 2]);
+  const collider = new BoxCollider({ size: [2, 2, 2] });
   collider.scale.set(3, 2, 1);
   collider.position.set(1, 2, 3);
   root.add(body.add(collider));

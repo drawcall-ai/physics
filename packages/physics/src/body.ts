@@ -228,20 +228,16 @@ export class RigidBody extends Group {
         const shape = autoShape(object, this);
         switch (shape.kind) {
           case "box":
-            collider = new BoxCollider().setSize(shape.size);
+            collider = new BoxCollider(shape);
             break;
           case "sphere":
-            collider = new SphereCollider().setRadius(shape.radius);
+            collider = new SphereCollider(shape);
             break;
           case "capsule":
-            collider = new CapsuleCollider()
-              .setRadius(shape.radius)
-              .setLength(shape.length);
+            collider = new CapsuleCollider(shape);
             break;
           case "cylinder":
-            collider = new CylinderCollider()
-              .setRadius(shape.radius)
-              .setHeight(shape.height);
+            collider = new CylinderCollider(shape);
             break;
           case "mesh":
             collider = new MeshCollider({

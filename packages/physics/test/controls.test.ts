@@ -59,8 +59,7 @@ it("validates controls before storing and clones independent readable settings",
   const material = { density: 12, restitution: 0.4 };
   const groups = { membership: 2, filter: 3 };
   const size: [number, number, number] = [1, 2, 3];
-  const collider = new BoxCollider()
-    .setSize(size)
+  const collider = new BoxCollider({ size })
     .setMaterial(material)
     .setCollisionGroups(groups)
     .setSensor(true);
@@ -72,11 +71,11 @@ it("validates controls before storing and clones independent readable settings",
   expect(collider.material?.density).toBe(12);
   expect(collider.collisionGroups?.filter).toBe(3);
   expect(Object.isFrozen(collider.material)).toBe(true);
-  copy.setSize([4, 5, 6]).setSensor(false).setMaterial({ density: 5 });
+  copy.setSensor(false).setMaterial({ density: 5 });
   expect(collider.sensor).toBe(true);
   expect(collider.material?.density).toBe(12);
   expect(() => collider.setMaterial({ restitution: 2 })).toThrow("material");
-  expect(() => collider.setSize([1, 0, 1])).toThrow("positive");
+  expect(() => new BoxCollider({ size: [1, 0, 1] })).toThrow("positive");
   expect(collider.size).toEqual([1, 2, 3]);
   const body = new RigidBody()
     .setLinearDamping(2)

@@ -74,8 +74,7 @@ export function createCar(world: PhysicsWorld) {
     const result = new RigidBody({ world, mass, canSleep: false });
     result.name = name;
     result.position.set(...position);
-    const collider = new BoxCollider();
-    collider.setSize(size);
+    const collider = new BoxCollider({ size });
     collider.setCollisionGroups({ membership: 2, filter: collides ? 1 : 0 });
     result.add(collider);
     root.add(result);
@@ -145,9 +144,10 @@ export function createCar(world: PhysicsWorld) {
       });
       tire.name = `${name}Wheel`;
       tire.position.copy(carrier.position);
-      const collider = new CylinderCollider();
-      collider.setRadius(specification.wheelRadius);
-      collider.setHeight(0.26);
+      const collider = new CylinderCollider({
+        radius: specification.wheelRadius,
+        height: 0.26,
+      });
       collider.setCollisionGroups({ membership: 2, filter: 1 });
       collider.rotation.z = Math.PI / 2;
       tire.add(collider);
