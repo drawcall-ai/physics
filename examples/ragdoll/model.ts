@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { RigidBody, RevoluteJoint, SphericalJoint } from "@drawcall/physics";
 
+export const simulationOptions = { fixedDelta: 1 / 120, maxSubsteps: 10 };
+
 export function createRagdoll() {
   const scene = new THREE.Group();
   const material = new THREE.MeshStandardMaterial({

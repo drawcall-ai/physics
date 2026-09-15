@@ -1,8 +1,8 @@
 import { setupWorld } from "@drawcall/physics-rapier";
-import { createRagdoll } from "./model";
+import { createRagdoll, simulationOptions } from "./model";
 import { view } from "../view";
 
-const world = await setupWorld();
+const world = await setupWorld(simulationOptions);
 const demo = view(world, createRagdoll());
 window.addEventListener(
   "keydown",
