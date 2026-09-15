@@ -3,7 +3,7 @@ import { BoxGeometry, Matrix4, Mesh, Vector3 } from "three";
 import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { createWorld } from "./fixtures.js";
 
-it("queries prepared surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
+it("queries authored and simulated surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
   const world = await createWorld();
   const bodies = [0, 3, 6].map((x) => {
     const body = new RigidBody({ mass: 1 }).setVelocity({
@@ -17,8 +17,8 @@ it("queries prepared surfaces, exits, source identity and multiple exclusions af
   if (!first || !second || !third) throw new Error("Missing test bodies");
   const origin = new Vector3(-3, 0, 0),
     direction = new Vector3(5, 0, 0);
-  expect(world.raycast(origin, direction, 20)).toBeNull();
-  world.update(0);
+  expect(world.raycast(origin, direction, 20)?.body).toBe(first);
+  expect(world.time).toBe(0);
   expect(world.raycast(new Vector3(), direction, 20)?.distance).toBeCloseTo(1);
   expect(
     world.raycast(origin, new Vector3(Number.MIN_VALUE, 0, 0), 20)?.distance,

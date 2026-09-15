@@ -37,7 +37,7 @@ it.each([
   },
 );
 
-it("waits for prepared COM and honors final transforms without capturing state early", async () => {
+it("reads inferred COM immediately and honors later assembly transforms", async () => {
   const world = await createWorld();
   const parent = new Group();
   parent.position.set(10, 20, 30);
@@ -61,12 +61,15 @@ it("waits for prepared COM and honors final transforms without capturing state e
     frame1: new Matrix4(),
   };
   const joint = new PrismaticJoint(options).setEnabled(false);
-  expect(() => joint.getState()).toThrow("world.update(0)");
+  expect(joint.getState().velocity).toBeCloseTo(-12, 4);
   body.scale.setScalar(1.5);
-  world.update(0);
   expect(joint.getState().velocity).toBeCloseTo(-18, 4);
-  expect(new PrismaticJoint(options).getState().velocity).toBeCloseTo(-18, 4);
-  expect(world.time).toBe(0);
+  world.onBeforeStep(() => {
+    expect(joint.getState().velocity).toBeCloseTo(-18, 4);
+    expect(new PrismaticJoint(options).getState().velocity).toBeCloseTo(-18, 4);
+  });
+  world.update(world.fixedDelta);
+  expect(world.time).toBe(world.fixedDelta);
 });
 
 it("keeps explicit COM and inertia authoritative across geometry changes", async () => {

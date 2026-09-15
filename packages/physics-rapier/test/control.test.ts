@@ -8,8 +8,7 @@ it("prepares before observers and consumes only the final effort for one substep
   const body = inertialBody();
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const other = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
-  expect(() => joint.setEffort(5)).toThrow("not initialized");
-  joint.setEffort(0);
+  joint.setEffort(5);
   const stop = world.onBeforeStep(() => {
     body.applyForce(new Vector3(4, 0, 0));
     joint.setEffort(2).setEffort(3);

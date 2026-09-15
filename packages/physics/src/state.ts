@@ -100,7 +100,6 @@ export function authoredJointState(
   );
 }
 
-/** Construction-time point velocity can use an explicit COM, but never infer one. */
 export function authoredVelocityAtPoint(
   body: RigidBody,
   point: Vector3,
@@ -110,7 +109,7 @@ export function authoredVelocityAtPoint(
   const center = body.options.centerOfMass;
   if (!center)
     throw new Error(
-      "Prismatic velocity needs prepared mass properties: finish assembly and call world.update(0), or supply complete explicit mass properties for authoring",
+      "Authoring rotating-slider velocity requires explicit mass properties",
     );
   const worldCenter = new Vector3(...center).applyMatrix4(
     splitTransform(body.matrixWorld).pose,

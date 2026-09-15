@@ -142,3 +142,57 @@ it("rejects motor/effort conflicts before applying any forces and permits explic
   expect(first.getState().velocity).toBeCloseTo(0.1, 5);
   expect(second.getState().velocity).toBeCloseTo(0, 5);
 });
+
+it.each([-1, 1])(
+  "tracks nearby continuous targets across wraps and holds after several turns (%s)",
+  async (direction) => {
+    const world = await createWorld();
+    const body = inertialBody().setVelocity({
+      angular: new Vector3(0, 0, direction * 4),
+    });
+    const hinge = new RevoluteJoint({ body0: null, body1: body, axis: "Z" });
+    const motor = new JointMotor({
+      joint: hinge,
+      stiffness: 100,
+      damping: 20,
+      maxForce: 20,
+    });
+    for (let i = 0; i < 400; i++) world.update(0.01);
+    const held = hinge.getState().position;
+    expect(direction * held).toBeGreaterThan(4 * Math.PI);
+    body.setVelocity({ angular: new Vector3() });
+    motor.setTarget({ position: held });
+    for (let i = 0; i < 100; i++) world.update(0.01);
+    expect(hinge.getState().position).toBeCloseTo(held, 3);
+    for (let increment = 1; increment <= 8; increment++) {
+      const goal = held + direction * increment;
+      motor.setTarget({ position: goal });
+      for (let i = 0; i < 150; i++) world.update(0.01);
+      expect(hinge.getState().position).toBeCloseTo(goal, 2);
+    }
+    expect(hinge.getState().velocity).toBeCloseTo(0, 2);
+  },
+);
+
+it("rejects ambiguous revolute position goals before stepping, including huge finite targets", async () => {
+  const world = await createWorld();
+  const hinge = new RevoluteJoint({
+    body0: null,
+    body1: inertialBody(),
+    axis: "Z",
+  });
+  const motor = new JointMotor({ joint: hinge, stiffness: 100, damping: 10 });
+  for (const position of [
+    -Number.MAX_VALUE,
+    -4 * Math.PI - 1,
+    -Math.PI,
+    Math.PI,
+    4 * Math.PI + 1,
+    Number.MAX_VALUE,
+  ]) {
+    motor.setTarget({ position });
+    expect(() => world.update(0.01)).toThrow("within pi");
+    expect(world.time).toBe(0);
+    expect(hinge.getState().velocity).toBe(0);
+  }
+});

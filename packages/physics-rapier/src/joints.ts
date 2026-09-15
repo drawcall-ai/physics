@@ -91,8 +91,12 @@ function configure(api: API, object: Joint, target: Rapier.ImpulseJoint): void {
   target.setMotorMaxForce(
     targetState ? (motor?.options.maxForce ?? Number.MAX_VALUE) : 0,
   );
+  const position = targetState?.position ?? 0;
+  // Rapier chooses the shortest arc and only wraps its error once.
   target.configureMotor(
-    targetState ? targetState.position : 0,
+    object instanceof RevoluteJoint
+      ? Math.atan2(Math.sin(position), Math.cos(position))
+      : position,
     targetState ? targetState.velocity : 0,
     targetState ? (motor?.options.stiffness ?? 0) : 0,
     targetState ? (motor?.options.damping ?? 0) : 0,
@@ -135,7 +139,6 @@ export interface JointBinding {
   frames: readonly [Matrix4, Matrix4];
   bodies: readonly [Rapier.RigidBody, Rapier.RigidBody];
   settings: number;
-  effort: number;
   motor?: JointMotor;
   motorSettings: number;
   angle?: number;
@@ -151,8 +154,6 @@ export function prepareJoint(
   previous?: JointBinding,
 ): JointBinding {
   object.validate();
-  if (previous?.effort && object instanceof AxisJoint && object.motor?.active)
-    throw new Error("Disable the joint motor before applying effort");
   const binding =
     previous ??
     ({
@@ -163,12 +164,23 @@ export function prepareJoint(
       bodies: [first, second],
       target: undefined,
       settings: -1,
-      effort: 0,
       motorSettings: -1,
     } satisfies JointBinding);
   if (!previous) sampleJoint(object, binding, true);
   const motor = object instanceof AxisJoint ? object.motor : undefined;
   const motorSettings = motor?.settingsVersion ?? -1;
+  if (
+    object.enabled &&
+    object instanceof RevoluteJoint &&
+    motor?.active &&
+    motor.target &&
+    (motor.options.stiffness ?? 0) > 0 &&
+    Math.abs(motor.target.position - readJointState(object, binding).angle) >=
+      Math.PI
+  )
+    throw new Error(
+      "Revolute motor position must remain within pi radians of the current continuous angle; use intermediate targets for longer moves",
+    );
   if (
     binding.settings === object.settingsVersion &&
     binding.motor === motor &&

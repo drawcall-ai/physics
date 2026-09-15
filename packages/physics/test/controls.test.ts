@@ -167,7 +167,7 @@ it("reads unfinished joints without inferring collider mass", () => {
     0,
   );
   const slider = new PrismaticJoint({ body0: null, body1: body });
-  expect(() => slider.getState()).toThrow("complete explicit mass properties");
+  expect(() => slider.getState()).toThrow("requires explicit mass properties");
   body.setVelocity({ angular: new Vector3(), linear: new Vector3(0, 3, 0) });
   expect(slider.getState().velocity).toBeCloseTo(3);
 });

@@ -10,7 +10,6 @@ import {
   type RaycastOptions,
   authoredVelocity,
   authoredJointState,
-  authoredVelocityAtPoint,
   setAuthoredVelocity,
   setWorldPose,
 } from "@drawcall/physics";
@@ -39,6 +38,15 @@ export class RapierWorld implements PhysicsWorld {
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
   private readonly joints = new Map<Joint, JointBinding | undefined>();
+  private readonly pending = new Map<
+    RigidBody,
+    {
+      velocity: PhysicsVelocity;
+      changesVelocity: boolean;
+      commands: ((body: Rapier.RigidBody) => void)[];
+    }
+  >();
+  private readonly efforts = new Map<AxisJoint, number>();
   private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
   private completedTime = 0;
@@ -90,6 +98,7 @@ export class RapierWorld implements PhysicsWorld {
           joint.dispose();
       }
       this.objects.delete(object);
+      this.pending.delete(object);
       const binding = this.bodies.get(object);
       if (binding) this.backend.removeRigidBody(binding.body);
       this.bodies.delete(object);
@@ -98,6 +107,7 @@ export class RapierWorld implements PhysicsWorld {
     const target = this.joints.get(object)?.target;
     if (target) this.backend.removeImpulseJoint(target, true);
     this.joints.delete(object);
+    if (object instanceof AxisJoint) this.efforts.delete(object);
   }
   update(delta: number): void {
     this.assertActive();
@@ -117,14 +127,16 @@ export class RapierWorld implements PhysicsWorld {
     this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);
     this.flush();
-    for (const [object, binding] of this.joints) {
-      if (!binding || binding.effort === 0 || !(object instanceof AxisJoint))
-        continue;
-      if (object.enabled && binding.target)
-        applyEffort(object, binding.target, binding.effort);
+    for (const object of this.efforts.keys()) {
+      if (object.motor?.active)
+        throw new Error("Disable the joint motor before applying effort");
+    }
+    for (const [object, effort] of this.efforts) {
+      const target = this.joints.get(object)?.target;
+      if (object.enabled && target) applyEffort(object, target, effort);
     }
     this.backend.step();
-    for (const binding of this.joints.values()) if (binding) binding.effort = 0;
+    this.efforts.clear();
     this.elapsed -= this.fixedDelta;
     this.completedTime += this.fixedDelta;
     for (const [object, { body }] of this.bodies) {
@@ -139,12 +151,18 @@ export class RapierWorld implements PhysicsWorld {
   }
   reset(): void {
     this.assertActive();
+    this.pending.clear();
+    this.efforts.clear();
     for (const [object, { body, initial, velocity }] of this.bodies) {
       object.validate();
       body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
       body.setRotation(new Quaternion().setFromRotationMatrix(initial), true);
       body.setLinvel(velocity.linear, true);
       body.setAngvel(velocity.angular, true);
+      if (object.bodyType === "kinematic") {
+        body.setNextKinematicTranslation(body.translation());
+        body.setNextKinematicRotation(body.rotation());
+      }
       body.resetForces(false);
       body.resetTorques(false);
       synchronize(object, body);
@@ -153,7 +171,6 @@ export class RapierWorld implements PhysicsWorld {
     this.completedTime = 0;
     for (const [object, binding] of this.joints) {
       if (!binding) continue;
-      binding.effort = 0;
       sampleJoint(object, binding, true);
     }
   }
@@ -170,19 +187,27 @@ export class RapierWorld implements PhysicsWorld {
   getVelocity(object: RigidBody): PhysicsVelocity {
     this.assertObject(object);
     const body = this.bodies.get(object)?.body;
-    return body
-      ? {
-          linear: new Vector3().copy(body.linvel()),
-          angular: new Vector3().copy(body.angvel()),
-        }
-      : authoredVelocity(object);
+    if (body) return velocity(body);
+    if (!this.pending.get(object)?.changesVelocity)
+      return authoredVelocity(object);
+    return this.preview([object], (bodies) => {
+      const binding = bodies.get(object);
+      if (!binding) throw new Error("Missing preview body");
+      return velocity(binding.body);
+    });
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
     this.assertObject(object);
-    const body = this.bodies.get(object)?.body;
-    if (!body) return setAuthoredVelocity(object, value);
-    if (value.linear) body.setLinvel(value.linear, true);
-    if (value.angular) body.setAngvel(value.angular, true);
+    const linear = value.linear?.clone(),
+      angular = value.angular?.clone();
+    if (!this.bodies.has(object)) {
+      setAuthoredVelocity(object, value);
+      if (!this.pending.has(object)) return;
+    }
+    this.command(object, (body) => {
+      if (linear) body.setLinvel(linear, true);
+      if (angular) body.setAngvel(angular, true);
+    });
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
     this.assertObject(object);
@@ -201,40 +226,43 @@ export class RapierWorld implements PhysicsWorld {
     }
   }
   setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
-    const body = this.getBody(object);
-    body.setNextKinematicTranslation(
-      new Vector3().setFromMatrixPosition(matrix),
-    );
-    body.setNextKinematicRotation(
-      new Quaternion().setFromRotationMatrix(matrix),
-    );
+    const position = new Vector3().setFromMatrixPosition(matrix);
+    const rotation = new Quaternion().setFromRotationMatrix(matrix);
+    this.command(object, (body) => {
+      body.setNextKinematicTranslation(position);
+      body.setNextKinematicRotation(rotation);
+    });
   }
   applyImpulse(object: RigidBody, impulse: Vector3, point?: Vector3): void {
-    const body = this.getBody(object);
-    if (point) body.applyImpulseAtPoint(impulse, point, true);
-    else body.applyImpulse(impulse, true);
+    const value = impulse.clone(),
+      at = point?.clone();
+    this.command(
+      object,
+      (body) => {
+        if (at) body.applyImpulseAtPoint(value, at, true);
+        else body.applyImpulse(value, true);
+      },
+      true,
+    );
   }
   applyForce(object: RigidBody, force: Vector3, point?: Vector3): void {
-    const body = this.getBody(object);
-    if (point) body.addForceAtPoint(force, point, true);
-    else body.addForce(force, true);
+    const value = force.clone(),
+      at = point?.clone();
+    this.command(object, (body) => {
+      if (at) body.addForceAtPoint(value, at, true);
+      else body.addForce(value, true);
+    });
   }
   wake(object: RigidBody): void {
-    this.getBody(object).wakeUp();
+    this.command(object, (body) => body.wakeUp());
   }
   sleep(object: RigidBody): void {
-    this.getBody(object).sleep();
+    this.command(object, (body) => body.sleep(), true);
   }
   setJointEffort(object: AxisJoint, value: number): void {
     this.assertObject(object);
-    const binding = this.joints.get(object);
-    if (!binding) {
-      if (value === 0) return;
-      throw new Error(
-        "Joint backend is not initialized; call world.update(0) before applying effort",
-      );
-    }
-    binding.effort = object.enabled ? value : 0;
+    if (object.enabled && value !== 0) this.efforts.set(object, value);
+    else this.efforts.delete(object);
   }
   getJointState(object: Joint) {
     this.assertObject(object);
@@ -242,9 +270,14 @@ export class RapierWorld implements PhysicsWorld {
     if (binding) return readJointState(object, binding);
     return authoredJointState(object, undefined, (body, point) => {
       const target = this.bodies.get(body)?.body;
-      return target
-        ? new Vector3().copy(target.velocityAtPoint(point))
-        : authoredVelocityAtPoint(body, point);
+      if (target) return new Vector3().copy(target.velocityAtPoint(point));
+      if (body.getVelocity().angular.lengthSq() === 0)
+        return body.getVelocity().linear;
+      return this.preview([body], (bodies) => {
+        const binding = bodies.get(body);
+        if (!binding) throw new Error("Missing preview body");
+        return new Vector3().copy(binding.body.velocityAtPoint(point));
+      });
     });
   }
   raycast(
@@ -255,14 +288,21 @@ export class RapierWorld implements PhysicsWorld {
   ) {
     this.assertActive();
     for (const body of options?.excludeBodies ?? []) this.assertObject(body);
-    return raycast(
-      this.api,
-      this.backend,
-      this.bodies,
-      origin,
-      direction,
-      maxDistance,
-      options,
+    for (const [object, binding] of this.bodies) {
+      object.validate();
+      refreshBody(this.api, this.backend, object, binding);
+    }
+    this.backend.propagateModifiedBodyPositionsToColliders();
+    return this.preview(this.objects, (bodies, backend) =>
+      raycast(
+        this.api,
+        backend,
+        bodies,
+        origin,
+        direction,
+        maxDistance,
+        options,
+      ),
     );
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
@@ -288,13 +328,57 @@ export class RapierWorld implements PhysicsWorld {
     if (object.world !== this)
       throw new Error("Object belongs to another world.");
   }
+  private command(
+    object: RigidBody,
+    command: (body: Rapier.RigidBody) => void,
+    changesVelocity = false,
+  ): void {
+    this.assertObject(object);
+    const body = this.bodies.get(object)?.body;
+    if (body) return command(body);
+    let pending = this.pending.get(object);
+    if (!pending) {
+      pending = {
+        velocity: authoredVelocity(object),
+        changesVelocity: false,
+        commands: [],
+      };
+      this.pending.set(object, pending);
+    }
+    pending.changesVelocity ||= changesVelocity;
+    pending.commands.push(command);
+  }
+  private replay(object: RigidBody, body: Rapier.RigidBody): void {
+    const pending = this.pending.get(object);
+    if (!pending) return;
+    body.setLinvel(pending.velocity.linear, true);
+    body.setAngvel(pending.velocity.angular, true);
+    for (const command of pending.commands) command(body);
+  }
+  private preview<T>(
+    objects: Iterable<RigidBody>,
+    read: (bodies: Map<RigidBody, BodyBinding>, backend: Rapier.World) => T,
+  ): T {
+    const pending = [...objects].filter((object) => !this.bodies.has(object));
+    if (!pending.length) return read(this.bodies, this.backend);
+    const backend = new this.api.World(new Vector3());
+    const bodies = new Map(this.bodies);
+    try {
+      for (const object of pending) {
+        object.validate();
+        const binding = createBody(this.api, backend, object);
+        this.replay(object, binding.body);
+        bodies.set(object, binding);
+      }
+      return read(bodies, backend);
+    } finally {
+      backend.free();
+    }
+  }
   private getBody(object: RigidBody): Rapier.RigidBody {
     this.assertObject(object);
     const binding = this.bodies.get(object);
-    if (!binding)
-      throw new Error(
-        "Body backend is not initialized; finish assembly and call world.update(0) before simulation operations.",
-      );
+    if (!binding) throw new Error("Missing prepared body");
     return binding.body;
   }
   private flush(pendingOnly = false): void {
@@ -304,7 +388,12 @@ export class RapierWorld implements PhysicsWorld {
       if (pendingOnly && binding) continue;
       object.validate();
       if (binding) refreshBody(this.api, this.backend, object, binding);
-      else this.bodies.set(object, createBody(this.api, this.backend, object));
+      else {
+        const created = createBody(this.api, this.backend, object);
+        this.bodies.set(object, created);
+        this.replay(object, created.body);
+        this.pending.delete(object);
+      }
     }
     for (const [object, binding] of this.joints) {
       if (pendingOnly && binding) continue;
@@ -329,4 +418,11 @@ export class RapierWorld implements PhysicsWorld {
       );
     }
   }
+}
+
+function velocity(body: Rapier.RigidBody): PhysicsVelocity {
+  return {
+    linear: new Vector3().copy(body.linvel()),
+    angular: new Vector3().copy(body.angvel()),
+  };
 }

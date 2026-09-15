@@ -171,7 +171,7 @@ an independent importer and solver.
 
 `AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update` or `reset` on an authoring world still throws because it cannot simulate.
 
-The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. State operations never force early backend creation; final parent scale, collider geometry, mass, and inertia are captured together. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
+The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. Reads and writes need no preparation call. Temporary backend bodies evaluate pending impulses and queries without capturing final parent scale, collider geometry, mass, or joint anchors. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
 
 ## Motors, measurements, and effort
 
@@ -198,11 +198,13 @@ releases motors. Unsupported backend settings fail explicitly.
 Axis `getState()` returns `{ position, velocity }` in radians/rad·s⁻¹ or meters/m·s⁻¹.
 Revolute position tracks turns each substep; motion must remain below π per substep.
 Teleport rebases without counting turns; reset restores the initialized coordinate.
+Rapier position-motor targets use continuous radians and must remain less than π
+from the current position; longer trajectories need intermediate targets.
 Body linear velocity is measured at COM, with both velocity vectors world-aligned.
-A rotating slider needing inferred COM requires completed assembly preparation
-with `update(0)` or a normal update; other authored reads remain immediate.
+Rapier reads rotating-slider velocity using native COM inference without stepping.
+AuthoringWorld requires explicit mass properties for this read and otherwise throws.
 
-`joint.setEffort(value)` requires preparation and applies one substep of torque/force
+`joint.setEffort(value)` accepts construction-time calls and applies one substep of torque/force
 with reaction on the connected body. Last call wins; zero cancels. Submit ongoing
 effort in `onBeforeStep`; disable an active motor first. Disable/reset/dispose clear
 pending effort. No-step updates preserve it. Motor plus feed-forward effort is unsupported.
@@ -222,5 +224,5 @@ positive mass/inertia; static and kinematic bodies can be colliderless.
 null: distance, world point/normal, body, and source collider/mesh. Directions are
 normalized; distances are meters. Options include `collisionGroups`, `excludeBodies`,
 and `includeSensors` (default false). Inside-origin rays return the exit surface.
-Queries use prepared state; `update(0)` prepares construction without advancing time.
+Queries include the current authored scene before the first update, without advancing time.
 AuthoringWorld has no raycasts. Release all three packages together for this breaking API.
