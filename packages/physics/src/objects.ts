@@ -1,4 +1,5 @@
-import { BufferGeometry, Object3D, Matrix4, Quaternion, Vector3 } from "three";
+import { BufferGeometry, Object3D, type Matrix4 } from "three";
+import { splitTransform } from "./transforms.js";
 
 export type Vec3 = readonly [number, number, number];
 export type AutoColliders = "auto" | "box" | "convexHull" | "trimesh" | false;
@@ -201,22 +202,7 @@ export class MeshCollider extends Collider {
 }
 
 export function assertRigidTransform(matrix: Matrix4): void {
-  const position = new Vector3(),
-    quaternion = new Quaternion(),
-    scale = new Vector3();
-  matrix.decompose(position, quaternion, scale);
-  const rigid = new Matrix4().compose(
-    position,
-    quaternion,
-    new Vector3(1, 1, 1),
-  );
-  if (
-    !matrix.elements.every(
-      (value, index) =>
-        Number.isFinite(value) &&
-        Math.abs(value - (rigid.elements[index] ?? Infinity)) < 1e-6,
-    )
-  ) {
+  const { scale } = splitTransform(matrix);
+  if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6))
     throw new Error("Physics transforms must have unit scale and no shear");
-  }
 }

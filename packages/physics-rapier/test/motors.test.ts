@@ -61,20 +61,14 @@ it("drives hinge and slider position natively while reporting physical limits", 
 it("limits native motor force and torque independently of timestep and model", async () => {
   const models: ("force" | "acceleration")[] = ["force", "acceleration"];
   for (const model of models)
-    for (const rotary of [false, true])
+    for (const Joint of [RevoluteJoint, PrismaticJoint])
       for (const dt of [0.01, 0.02]) {
         const world = await createWorld({ fixedDelta: dt });
-        const joint = rotary
-          ? new RevoluteJoint({
-              body0: null,
-              body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
-              axis: "Z",
-            })
-          : new PrismaticJoint({
-              body0: null,
-              body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
-              axis: "X",
-            });
+        const joint = new Joint({
+          body0: null,
+          body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
+          axis: "Z",
+        });
         new JointMotor({ joint, model, damping: 1000, maxForce: 2 }).setTarget({
           velocity: 100,
         });

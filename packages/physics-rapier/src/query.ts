@@ -11,7 +11,6 @@ import type { BodyBinding } from "./body.js";
 
 export function raycast(
   api: typeof Rapier,
-  world: Rapier.World,
   bodies: ReadonlyMap<RigidBody, BodyBinding>,
   origin: Vector3,
   direction: Vector3,
@@ -39,7 +38,6 @@ export function raycast(
       direction.z / scale,
     ).normalize(),
   );
-  world.propagateModifiedBodyPositionsToColliders();
   let closest: RaycastHit | null = null;
   // Per-collider casts include newly prepared and teleported bodies without a solver step.
   for (const [body, binding] of bodies) {

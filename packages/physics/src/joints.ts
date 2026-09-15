@@ -20,7 +20,7 @@ export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
   readonly world: PhysicsWorld;
-  private readonly config: Options;
+  protected readonly config: Options;
   get options(): Options {
     return {
       ...this.config,
@@ -106,11 +106,11 @@ export abstract class Joint<
     if (this.disposed) throw new Error("Cannot clone a disposed joint");
     const target: unknown = Reflect.construct(this.constructor, [
       {
-        ...this.options,
-        body0: this.options.body0
-          ? mappedBody(this.options.body0, objects)
+        ...this.config,
+        body0: this.config.body0
+          ? mappedBody(this.config.body0, objects)
           : null,
-        body1: mappedBody(this.options.body1, objects),
+        body1: mappedBody(this.config.body1, objects),
       },
     ]);
     if (!this.isClone(target))
@@ -231,7 +231,7 @@ export abstract class AxisJoint extends Joint<AxisJointOptions> {
     });
   }
   get limits(): readonly [number, number] | undefined {
-    return this.options.limits;
+    return this.config.limits;
   }
   get motor(): JointMotor | undefined {
     return getJointMotor(this);
@@ -277,7 +277,7 @@ export class DistanceJoint extends Joint<
     return connectionState(this);
   }
   get limits(): readonly [number, number] {
-    return this.options.limits;
+    return this.config.limits;
   }
 }
 function validateLimits(value: readonly [number, number]): void {

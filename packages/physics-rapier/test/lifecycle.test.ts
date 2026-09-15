@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
@@ -9,18 +9,11 @@ import {
   PrismaticJoint,
   JointMotor,
 } from "@drawcall/physics";
-import { setupWorld, type RapierWorld } from "../src/index.js";
+import { createWorld } from "./fixtures.js";
 
-const worlds: RapierWorld[] = [];
-async function setup() {
-  const world = await setupWorld({ gravity: [0, 0, 0] });
-  worlds.push(world);
-  return world;
+function setup() {
+  return createWorld({ fixedDelta: 1 / 60 });
 }
-afterEach(() => {
-  for (const world of worlds) world.dispose();
-  worlds.length = 0;
-});
 
 it("reads and queries construction state without capturing unfinished scale or replaying impulses", async () => {
   const world = await setup();

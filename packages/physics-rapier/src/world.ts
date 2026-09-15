@@ -271,8 +271,8 @@ export class RapierWorld implements PhysicsWorld {
     return authoredJointState(object, undefined, (body, point) => {
       const target = this.bodies.get(body)?.body;
       if (target) return new Vector3().copy(target.velocityAtPoint(point));
-      if (body.getVelocity().angular.lengthSq() === 0)
-        return body.getVelocity().linear;
+      const { linear, angular } = body.getVelocity();
+      if (angular.lengthSq() === 0) return linear;
       return this.preview([body], (bodies) => {
         const binding = bodies.get(body);
         if (!binding) throw new Error("Missing preview body");
@@ -293,16 +293,8 @@ export class RapierWorld implements PhysicsWorld {
       refreshBody(this.api, this.backend, object, binding);
     }
     this.backend.propagateModifiedBodyPositionsToColliders();
-    return this.preview(this.objects, (bodies, backend) =>
-      raycast(
-        this.api,
-        backend,
-        bodies,
-        origin,
-        direction,
-        maxDistance,
-        options,
-      ),
+    return this.preview(this.objects, (bodies) =>
+      raycast(this.api, bodies, origin, direction, maxDistance, options),
     );
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
@@ -357,10 +349,10 @@ export class RapierWorld implements PhysicsWorld {
   }
   private preview<T>(
     objects: Iterable<RigidBody>,
-    read: (bodies: Map<RigidBody, BodyBinding>, backend: Rapier.World) => T,
+    read: (bodies: Map<RigidBody, BodyBinding>) => T,
   ): T {
     const pending = [...objects].filter((object) => !this.bodies.has(object));
-    if (!pending.length) return read(this.bodies, this.backend);
+    if (!pending.length) return read(this.bodies);
     const backend = new this.api.World(new Vector3());
     const bodies = new Map(this.bodies);
     try {
@@ -370,7 +362,8 @@ export class RapierWorld implements PhysicsWorld {
         this.replay(object, binding.body);
         bodies.set(object, binding);
       }
-      return read(bodies, backend);
+      backend.propagateModifiedBodyPositionsToColliders();
+      return read(bodies);
     } finally {
       backend.free();
     }

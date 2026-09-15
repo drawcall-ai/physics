@@ -106,10 +106,7 @@ export function refreshBody(
           `Collider scale cannot change after backend initialization: ${object.name}/${collider.name || collider.type} (${captured.toArray()} → ${scale.toArray()}); recreate the body`,
         );
     }
-    const completeMass =
-      options.mass !== undefined &&
-      options.centerOfMass !== undefined &&
-      options.diagonalInertia !== undefined;
+    const completeMass = options.centerOfMass !== undefined;
     const descriptors = resolved.map((shape) => {
       const desc = collider(api, shape, object);
       return completeMass ? desc.setDensity(0) : desc;
