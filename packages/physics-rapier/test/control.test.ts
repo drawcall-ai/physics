@@ -298,3 +298,34 @@ describe("mass and queries", () => {
     world.dispose();
   });
 });
+
+it("normalizes engine-derived masses when explicit mass is paired with zero density", async () => {
+  const world = await setupWorld({ gravity: [0, 0, 0] });
+  const moving = new RigidBody({ mass: 3 }).setMaterial({ density: 0 });
+  moving.add(new BoxCollider());
+  const larger = new BoxCollider().setSize([2, 1, 1]);
+  larger.position.x = 3;
+  moving.add(larger);
+  world.update(0);
+  moving.applyImpulse(new Vector3(0, 3, 0), new Vector3(2, 0, 0));
+  expect(moving.getVelocity().linear.y).toBeCloseTo(1);
+  expect(moving.getVelocity().angular.length()).toBeLessThan(1e-6);
+  world.dispose();
+});
+
+it("cancels only one joint command when several joints act on a body", async () => {
+  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const moving = body();
+  const first = new PrismaticJoint({ body0: null, body1: moving, axis: "X" });
+  const second = new PrismaticJoint({ body0: null, body1: moving, axis: "X" });
+  world.update(0);
+  moving.applyForce(new Vector3(4, 0, 0));
+  first.setEffort(20);
+  second.setEffort(3);
+  first.setEffort(0);
+  world.update(world.fixedDelta);
+  expect(moving.getVelocity().linear.x).toBeCloseTo(0.07);
+  world.update(world.fixedDelta);
+  expect(moving.getVelocity().linear.x).toBeCloseTo(0.07);
+  world.dispose();
+});

@@ -120,21 +120,17 @@ export function refreshBody(
       for (const desc of descriptors)
         next.push(world.createCollider(desc, body));
       if (options.mass !== undefined && next.length && !completeMass) {
-        const inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
-        const weights = next.map((shape) =>
-          inferredMass > 0 ? shape.mass() : shape.volume(),
-        );
-        const total = weights.reduce((sum, value) => sum + value, 0);
-        if (total <= 0)
+        let inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
+        if (inferredMass === 0) {
+          for (const shape of next) shape.setDensity(1);
+          inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
+        }
+        if (inferredMass <= 0)
           throw new Error(
             "Inferring mass properties requires colliders with positive volume",
           );
-        for (const [index, shape] of next.entries()) {
-          const weight = weights[index];
-          if (weight === undefined)
-            throw new Error("Missing collider mass weight");
-          shape.setMass((options.mass * weight) / total);
-        }
+        for (const shape of next)
+          shape.setMass((options.mass * shape.mass()) / inferredMass);
       }
       if (
         (options.type ?? "dynamic") === "dynamic" &&

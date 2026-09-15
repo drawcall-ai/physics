@@ -169,7 +169,14 @@ an independent importer and solver.
 
 ### State access and static previews
 
-`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and `joint.getState()` work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Linear velocity is measured at the center of mass; both velocity vectors use world-space axes. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint-state reads work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Linear velocity is measured at the center of mass; both velocity vectors use world-space axes. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+
+A rotating prismatic joint needs velocity at its anchors. When that depends on
+collider-derived mass properties, call `world.update(0)` after completing assembly,
+or let the next normal update prepare it. Earlier `getState()` calls throw a clear
+preparation error; they never infer mass or initialize the backend. Nonrotating
+slider reads and reads with explicit `centerOfMass` remain available during
+authoring. Prepared measurements use the backend's point-velocity query.
 
 `AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update` or `reset` on an authoring world still throws because it cannot simulate.
 
@@ -261,3 +268,6 @@ existing shared release tag workflow. Migrate consumers before upgrading:
 
 There are no aliases for removed APIs. USD interchange carries physical constraints
 and mass properties; robotics owns actuator models and ROS integration.
+
+See [physics API decisions](https://github.com/drawcall-ai/physics/blob/main/docs/physics-api.md) for the engine conventions behind
+mass inference, preparation, and one-step effort commands.

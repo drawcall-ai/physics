@@ -9,6 +9,8 @@ import {
   type PhysicsVelocity,
   type RaycastOptions,
   authoredVelocity,
+  authoredJointState,
+  authoredVelocityAtPoint,
   setAuthoredVelocity,
   setWorldPose,
 } from "@drawcall/physics";
@@ -19,7 +21,13 @@ import {
   refreshBody,
   type BodyBinding,
 } from "./body.js";
-import { Constraints } from "./constraints.js";
+import {
+  applyEffort,
+  prepareJoint,
+  readJointState,
+  sampleJoint,
+  type JointBinding,
+} from "./joints.js";
 import { raycast } from "./query.js";
 
 export interface RapierOptions extends PhysicsOptions {
@@ -30,7 +38,11 @@ export class RapierWorld implements PhysicsWorld {
   private readonly backend: Rapier.World;
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
-  private readonly joints: Constraints;
+  private readonly joints = new Map<
+    Joint,
+    { effort: number; binding?: JointBinding }
+  >();
+  private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
   private completedTime = 0;
   get time(): number {
@@ -65,9 +77,6 @@ export class RapierWorld implements PhysicsWorld {
     )
       throw new Error("solverIterations must be a positive integer.");
     this.backend = new api.World(gravity);
-    this.joints = new Constraints(api, this.backend, (object) =>
-      this.getBody(object),
-    );
     if (options.solverIterations !== undefined)
       this.backend.numSolverIterations = options.solverIterations;
     this.backend.timestep = this.fixedDelta;
@@ -78,16 +87,13 @@ export class RapierWorld implements PhysicsWorld {
     if (object.world !== this)
       throw new Error("Object belongs to another world.");
     if (object instanceof RigidBody) this.objects.add(object);
-    else this.joints.objects.add(object);
+    else if (!this.joints.has(object)) this.joints.set(object, { effort: 0 });
   }
   unregister(object: RigidBody | Joint): void {
     if (object instanceof RigidBody) {
-      for (const constraint of this.joints.objects) {
-        if (
-          constraint.options.body0 === object ||
-          constraint.options.body1 === object
-        )
-          constraint.dispose();
+      for (const joint of this.joints.keys()) {
+        if (joint.options.body0 === object || joint.options.body1 === object)
+          joint.dispose();
       }
       this.objects.delete(object);
       const binding = this.bodies.get(object);
@@ -95,7 +101,9 @@ export class RapierWorld implements PhysicsWorld {
       this.bodies.delete(object);
       return;
     }
-    this.joints.remove(object);
+    const target = this.joints.get(object)?.binding?.target;
+    if (target) this.backend.removeImpulseJoint(target, true);
+    this.joints.delete(object);
   }
   update(delta: number): void {
     this.assertActive();
@@ -115,9 +123,17 @@ export class RapierWorld implements PhysicsWorld {
     this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);
     this.flush();
-    this.joints.applyEfforts();
+    for (const [object, { effort, binding }] of this.joints) {
+      if (
+        effort !== 0 &&
+        object instanceof AxisJoint &&
+        object.enabled &&
+        binding?.target
+      )
+        applyEffort(object, binding.target, effort);
+    }
     this.backend.step();
-    this.joints.clearEfforts();
+    for (const entry of this.joints.values()) entry.effort = 0;
     this.elapsed -= this.fixedDelta;
     this.completedTime += this.fixedDelta;
     for (const [object, { body }] of this.bodies) {
@@ -125,7 +141,9 @@ export class RapierWorld implements PhysicsWorld {
       body.resetForces(false);
       body.resetTorques(false);
     }
-    this.joints.sampleAngles();
+    for (const [object, { binding }] of this.joints) {
+      if (binding) sampleJoint(object, binding);
+    }
     for (const callback of this.after) callback(this.fixedDelta);
   }
   reset(): void {
@@ -142,12 +160,14 @@ export class RapierWorld implements PhysicsWorld {
     }
     this.elapsed = 0;
     this.completedTime = 0;
-    this.joints.clearEfforts();
-    this.joints.sampleAngles(true);
+    for (const [object, entry] of this.joints) {
+      entry.effort = 0;
+      if (entry.binding) sampleJoint(object, entry.binding, true);
+    }
   }
   dispose(): void {
     if (this.disposed) return;
-    for (const object of [...this.joints.objects, ...this.objects])
+    for (const object of [...this.joints.keys(), ...this.objects])
       object.dispose();
     this.backend.free();
     this.before.clear();
@@ -180,7 +200,13 @@ export class RapierWorld implements PhysicsWorld {
     if (!body) return;
     body.setTranslation(new Vector3().setFromMatrixPosition(matrix), true);
     body.setRotation(new Quaternion().setFromRotationMatrix(matrix), true);
-    this.joints.sampleAngles(true, object);
+    for (const [joint, { binding }] of this.joints) {
+      if (
+        binding &&
+        (joint.options.body0 === object || joint.options.body1 === object)
+      )
+        sampleJoint(joint, binding, true);
+    }
   }
   setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
     const body = this.getBody(object);
@@ -209,11 +235,21 @@ export class RapierWorld implements PhysicsWorld {
   }
   setJointEffort(object: AxisJoint, value: number): void {
     this.assertObject(object);
-    this.joints.setEffort(object, value);
+    if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
+    const entry = this.joints.get(object);
+    if (!entry) throw new Error("Joint is not registered in this world");
+    entry.effort = object.enabled ? value : 0;
   }
   getJointState(object: Joint) {
     this.assertObject(object);
-    return this.joints.getState(object);
+    const binding = this.joints.get(object)?.binding;
+    if (binding) return readJointState(object, binding);
+    return authoredJointState(object, undefined, (body, point) => {
+      const target = this.bodies.get(body)?.body;
+      return target
+        ? new Vector3().copy(target.velocityAtPoint(point))
+        : authoredVelocityAtPoint(body, point);
+    });
   }
   raycast(
     origin: Vector3,
@@ -274,6 +310,24 @@ export class RapierWorld implements PhysicsWorld {
       if (binding) refreshBody(this.api, this.backend, object, binding);
       else this.bodies.set(object, createBody(this.api, this.backend, object));
     }
-    this.joints.refresh(pendingOnly);
+    for (const [object, entry] of this.joints) {
+      if (pendingOnly && entry.binding) continue;
+      if (!object.options.body0 && !this.anchor)
+        this.anchor = this.backend.createRigidBody(
+          this.api.RigidBodyDesc.fixed(),
+        );
+      const first = object.options.body0
+        ? this.getBody(object.options.body0)
+        : this.anchor;
+      if (!first) throw new Error("Missing world anchor");
+      entry.binding = prepareJoint(
+        this.api,
+        this.backend,
+        object,
+        first,
+        this.getBody(object.options.body1),
+        entry.binding,
+      );
+    }
   }
 }

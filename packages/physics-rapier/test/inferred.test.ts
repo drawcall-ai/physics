@@ -12,7 +12,7 @@ import {
 import { BoxCollider, PrismaticJoint, RigidBody } from "@drawcall/physics";
 import { setupWorld } from "../src/index.js";
 
-it("preserves anchor velocity across preparation for a density-weighted compound body", async () => {
+it("waits for backend mass inference without preparing during a state read", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const body = new RigidBody({ mass: 10 }).setVelocity({
     angular: new Vector3(0, 0, 2),
@@ -29,19 +29,18 @@ it("preserves anchor velocity across preparation for a density-weighted compound
     frame1: new Matrix4(),
   }).setEnabled(false);
 
-  const authored = slider.getState();
-  expect(authored.velocity).toBeCloseTo(-7.2, 5);
+  expect(() => slider.getState()).toThrow("world.update(0)");
+  expect(body.getVelocity().angular.z).toBe(2);
   expect(world.time).toBe(0);
   expect(
     world.raycast(new Vector3(-10, 0, 0), new Vector3(1, 0, 0), 20),
   ).toBeNull();
   world.update(0);
-  expect(slider.getState().velocity).toBeCloseTo(authored.velocity, 5);
-  expect(slider.getState().position).toBeCloseTo(authored.position, 5);
+  expect(slider.getState().velocity).toBeCloseTo(-7.2, 5);
   world.dispose();
 });
 
-it("infers a translated convex hull's volume centroid before preparation", async () => {
+it("uses backend point velocity for a translated convex hull", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const body = new RigidBody({ colliders: "convexHull" }).setVelocity({
     angular: new Vector3(0, 0, 2),
@@ -57,10 +56,9 @@ it("infers a translated convex hull's volume centroid before preparation", async
     frame1: new Matrix4(),
   }).setEnabled(false);
 
-  const authored = slider.getState();
-  expect(authored.velocity).toBeCloseTo(-6, 5);
+  expect(() => slider.getState()).toThrow("world.update(0)");
   world.update(0);
-  expect(slider.getState().velocity).toBeCloseTo(authored.velocity, 5);
+  expect(slider.getState().velocity).toBeCloseTo(-6, 5);
   world.dispose();
 });
 
@@ -87,14 +85,12 @@ it("uses the solid hull centroid independently of interior vertex sampling", asy
     frame0: new Matrix4(),
     frame1: new Matrix4(),
   }).setEnabled(false);
-  const authored = slider.getState();
-  expect(authored.velocity).toBeCloseTo(-2002, 4);
   world.update(0);
-  expect(slider.getState().velocity).toBeCloseTo(authored.velocity, 3);
+  expect(slider.getState().velocity).toBeCloseTo(-2002, 3);
   world.dispose();
 });
 
-it("infers centers through rotated and uniformly scaled parents without freezing assembly", async () => {
+it("prepares mass properties after final parent and body scale edits", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const parent = new Group();
   parent.position.set(10, 20, 30);
@@ -122,11 +118,29 @@ it("infers centers through rotated and uniformly scaled parents without freezing
     frame1: new Matrix4(),
   }).setEnabled(false);
 
-  expect(slider.getState().velocity).toBeCloseTo(-21.6, 5);
+  expect(() => slider.getState()).toThrow("world.update(0)");
   body.scale.setScalar(1.5);
-  const authored = slider.getState();
-  expect(authored.velocity).toBeCloseTo(-32.4, 5);
   world.update(0);
-  expect(slider.getState().velocity).toBeCloseTo(authored.velocity, 4);
+  expect(slider.getState().velocity).toBeCloseTo(-32.4, 4);
+  world.dispose();
+});
+
+it("reads a newly created joint using bodies already prepared by the backend", async () => {
+  const world = await setupWorld({ gravity: [0, 0, 0] });
+  const body = new RigidBody({ mass: 1 });
+  const collider = new BoxCollider();
+  collider.position.x = 2;
+  body.add(collider);
+  body.setVelocity({ angular: new Vector3(0, 0, 3) });
+  world.update(0);
+  const slider = new PrismaticJoint({
+    body0: null,
+    body1: body,
+    axis: "Y",
+    frame0: new Matrix4(),
+    frame1: new Matrix4(),
+  }).setEnabled(false);
+  expect(slider.getState().velocity).toBeCloseTo(-6, 5);
+  expect(world.time).toBe(0);
   world.dispose();
 });

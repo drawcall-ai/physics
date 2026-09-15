@@ -8,7 +8,6 @@ import {
   type Joint,
 } from "./joints.js";
 import { splitTransform } from "./transforms.js";
-import { centerOfMass } from "./center.js";
 import type { PhysicsVelocity, PhysicsJointState } from "./world.js";
 
 /** Authored velocity is independent of immutable creation options and backend reset snapshots. */
@@ -53,7 +52,10 @@ export function setWorldPose(object: RigidBody, pose: Matrix4): void {
 export function authoredJointState(
   object: Joint,
   frames?: readonly [Matrix4, Matrix4],
-  centers?: readonly [Vector3, Vector3],
+  velocityAtPoint: (
+    body: RigidBody,
+    point: Vector3,
+  ) => Vector3 = authoredVelocityAtPoint,
 ): PhysicsJointState {
   object.validate();
   const options = object.options;
@@ -92,24 +94,14 @@ export function authoredJointState(
   const velocity1 = body1.getVelocity();
   const anchor0 = new Vector3().setFromMatrixPosition(a);
   const anchor1 = new Vector3().setFromMatrixPosition(b);
-  const origin0 =
-    centers?.[0] ??
-    (object instanceof PrismaticJoint &&
-    body0 &&
-    velocity0.angular.lengthSq() > 0
-      ? centerOfMass(body0)
-      : new Vector3());
-  const origin1 =
-    centers?.[1] ??
-    (object instanceof PrismaticJoint && velocity1.angular.lengthSq() > 0
-      ? centerOfMass(body1)
-      : new Vector3());
-  const linear0 = velocity0.linear
-    .clone()
-    .add(velocity0.angular.clone().cross(anchor0.clone().sub(origin0)));
-  const linear1 = velocity1.linear
-    .clone()
-    .add(velocity1.angular.clone().cross(anchor1.clone().sub(origin1)));
+  const linear0 =
+    object instanceof PrismaticJoint && body0
+      ? velocityAtPoint(body0, anchor0)
+      : new Vector3();
+  const linear1 =
+    object instanceof PrismaticJoint
+      ? velocityAtPoint(body1, anchor1)
+      : new Vector3();
   const measured = jointState(
     a,
     b,
@@ -125,6 +117,24 @@ export function authoredJointState(
   if (object instanceof FixedJoint)
     return { translation: measured.translation, rotation: measured.rotation };
   return { distance: measured.distance };
+}
+
+/** Construction-time point velocity can use an explicit COM, but never infer one. */
+export function authoredVelocityAtPoint(
+  body: RigidBody,
+  point: Vector3,
+): Vector3 {
+  const { linear, angular } = body.getVelocity();
+  if (angular.lengthSq() === 0) return linear;
+  const center = body.options.centerOfMass;
+  if (!center)
+    throw new Error(
+      "Prismatic velocity needs prepared mass properties: finish assembly and call world.update(0), or specify centerOfMass for authoring",
+    );
+  const worldCenter = new Vector3(...center).applyMatrix4(
+    splitTransform(body.matrixWorld).pose,
+  );
+  return linear.add(angular.cross(point.clone().sub(worldCenter)));
 }
 
 /** Raw frame measurements used by simulation adapters. Angles are wrapped to [-pi, pi]. */

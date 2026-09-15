@@ -161,8 +161,10 @@ it("keeps construction controls readable and validates authoring effort without 
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
-  const body0 = new RigidBody().setVelocity({ angular: new Vector3(0, 0, 2) });
-  const body1 = new RigidBody().setVelocity({
+  const body0 = new RigidBody({ centerOfMass: [0, 0, 0] }).setVelocity({
+    angular: new Vector3(0, 0, 2),
+  });
+  const body1 = new RigidBody({ centerOfMass: [0, 0, 0] }).setVelocity({
     linear: new Vector3(3, 0, 0),
     angular: new Vector3(0, 0, 4),
   });
@@ -220,4 +222,14 @@ it("honors subclass copy overrides for standalone joint cloning", () => {
   const hinge = new Hinge({ body0: null, body1: new RigidBody() });
   hinge.label = "door";
   expect(hinge.clone().label).toBe("door");
+});
+
+it("keeps authoring reads explicit when rotating slider velocity needs inferred mass", () => {
+  const body = new RigidBody().setVelocity({ angular: new Vector3(0, 0, 2) });
+  const slider = new PrismaticJoint({ body0: null, body1: body });
+  expect(() => slider.getState()).toThrow("specify centerOfMass");
+  expect(body.getVelocity().angular.z).toBe(2);
+  body.setVelocity({ angular: new Vector3(), linear: new Vector3(0, 3, 0) });
+  expect(slider.getState().position).toBe(0);
+  expect(slider.getState().velocity).toBeCloseTo(3);
 });
