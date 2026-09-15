@@ -1,41 +1,94 @@
-import { BufferGeometry, Object3D, Matrix4, Quaternion, Vector3 } from "three";
+import { BufferGeometry, Object3D, type Matrix4 } from "three";
+import { splitTransform } from "./transforms.js";
 
-export type Vec3 = [number, number, number];
+export type Vec3 = readonly [number, number, number];
 export type AutoColliders = "auto" | "box" | "convexHull" | "trimesh" | false;
-
 export interface PhysicsMaterial {
-  staticFriction?: number;
-  dynamicFriction?: number;
-  restitution?: number;
-  density?: number;
+  readonly staticFriction?: number;
+  readonly dynamicFriction?: number;
+  readonly restitution?: number;
+  readonly density?: number;
 }
 export interface CollisionGroups {
-  membership: number;
-  filter: number;
+  readonly membership: number;
+  readonly filter: number;
 }
-export interface ColliderOptions {
-  material?: PhysicsMaterial;
-  sensor?: boolean;
-  collisionGroups?: CollisionGroups;
+export function validateMaterial(value: PhysicsMaterial): void {
+  for (const [key, number] of Object.entries(value)) {
+    if (number === undefined) continue;
+    if (
+      !Number.isFinite(number) ||
+      number < 0 ||
+      (key === "restitution" && number > 1)
+    )
+      throw new Error("Invalid physics material");
+  }
+}
+export function validateGroups(value: CollisionGroups): void {
+  if (
+    ![value.membership, value.filter].every(
+      (n) => Number.isInteger(n) && n >= 0 && n <= 65535,
+    )
+  )
+    throw new Error("Collision groups must be unsigned 16-bit masks");
+}
+function positive(value: number): number {
+  if (!Number.isFinite(value) || value <= 0)
+    throw new Error("Collider dimensions must be positive and finite");
+  return value;
 }
 export abstract class Collider extends Object3D {
   source: Object3D = this;
-  collisionGroups?: CollisionGroups;
-  material?: PhysicsMaterial;
-  sensor = false;
+  private currentMaterial?: PhysicsMaterial;
+  private currentGroups?: CollisionGroups;
+  private currentSensor = false;
+  private version = 0;
+  get settingsVersion(): number {
+    return this.version;
+  }
+  get material(): PhysicsMaterial | undefined {
+    return this.currentMaterial;
+  }
+  get collisionGroups(): CollisionGroups | undefined {
+    return this.currentGroups;
+  }
+  get sensor(): boolean {
+    return this.currentSensor;
+  }
+  setMaterial(value: PhysicsMaterial | undefined): this {
+    if (value) validateMaterial(value);
+    this.currentMaterial = value && { ...value };
+    this.version++;
+    return this;
+  }
+  setCollisionGroups(value: CollisionGroups | undefined): this {
+    if (value) validateGroups(value);
+    this.currentGroups = value && { ...value };
+    this.version++;
+    return this;
+  }
+  setSensor(value: boolean): this {
+    this.currentSensor = value;
+    this.version++;
+    return this;
+  }
   abstract shape(): Shape;
-  constructor(options: ColliderOptions = {}) {
-    super();
-    Object.assign(this, options);
+  override clone(recursive = true): this {
+    const target: unknown = Reflect.construct(this.constructor, [this.shape()]);
+    if (!this.isClone(target)) throw new Error("Invalid collider clone");
+    return target.copy(this, recursive);
+  }
+  private isClone(value: unknown): value is this {
+    return (
+      value instanceof Collider &&
+      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
+    );
   }
   override copy(source: this, recursive = true): this {
     super.copy(source, recursive);
-    this.material = source.material;
-    this.sensor = source.sensor;
-    this.collisionGroups = source.collisionGroups
-      ? { ...source.collisionGroups }
-      : undefined;
-    return this;
+    return this.setMaterial(source.material)
+      .setSensor(source.sensor)
+      .setCollisionGroups(source.collisionGroups);
   }
 }
 export type Shape =
@@ -49,93 +102,89 @@ export type Shape =
       approximation: "convexHull" | "trimesh";
     };
 export class BoxCollider extends Collider {
-  size: Vec3;
-  constructor(options: ColliderOptions & { size: Vec3 } = { size: [1, 1, 1] }) {
-    super(options);
-    this.size = [...options.size];
+  readonly size: Vec3;
+  constructor(options: { readonly size?: Vec3 } = {}) {
+    super();
+    const size = options.size ?? [1, 1, 1];
+    this.size = [positive(size[0]), positive(size[1]), positive(size[2])];
   }
   shape(): Shape {
-    return { kind: "box", size: [...this.size] };
+    return { kind: "box", size: this.size };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    this.size = [...source.size];
-    return this;
+    if (!this.size.every((value, index) => value === source.size[index]))
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class SphereCollider extends Collider {
-  radius: number;
-  constructor(options: ColliderOptions & { radius: number } = { radius: 0.5 }) {
-    super(options);
-    this.radius = options.radius;
+  readonly radius: number;
+  constructor(options: { readonly radius?: number } = {}) {
+    super();
+    this.radius = positive(options.radius ?? 0.5);
   }
   shape(): Shape {
     return { kind: "sphere", radius: this.radius };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    this.radius = source.radius;
-    return this;
+    if (this.radius !== source.radius)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class CapsuleCollider extends Collider {
-  radius: number;
-  length: number;
+  readonly radius: number;
+  readonly length: number;
   constructor(
-    options: ColliderOptions & { radius: number; length: number } = {
-      radius: 0.5,
-      length: 1,
-    },
+    options: { readonly radius?: number; readonly length?: number } = {},
   ) {
-    super(options);
-    this.radius = options.radius;
-    this.length = options.length;
+    super();
+    this.radius = positive(options.radius ?? 0.5);
+    this.length = positive(options.length ?? 1);
   }
   shape(): Shape {
     return { kind: "capsule", radius: this.radius, length: this.length };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    this.radius = source.radius;
-    this.length = source.length;
-    return this;
+    if (this.radius !== source.radius || this.length !== source.length)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class CylinderCollider extends Collider {
-  radius: number;
-  height: number;
+  readonly radius: number;
+  readonly height: number;
   constructor(
-    options: ColliderOptions & { radius: number; height: number } = {
-      radius: 0.5,
-      height: 1,
-    },
+    options: { readonly radius?: number; readonly height?: number } = {},
   ) {
-    super(options);
-    this.radius = options.radius;
-    this.height = options.height;
+    super();
+    this.radius = positive(options.radius ?? 0.5);
+    this.height = positive(options.height ?? 1);
   }
   shape(): Shape {
     return { kind: "cylinder", radius: this.radius, height: this.height };
   }
   override copy(source: this, recursive = true): this {
-    super.copy(source, recursive);
-    this.radius = source.radius;
-    this.height = source.height;
-    return this;
+    if (this.radius !== source.radius || this.height !== source.height)
+      throw new Error("Cannot copy different immutable collider dimensions");
+    return super.copy(source, recursive);
   }
 }
 export class MeshCollider extends Collider {
-  geometry: BufferGeometry;
-  approximation: "convexHull" | "trimesh";
+  private currentGeometry = new BufferGeometry();
+  readonly approximation: "convexHull" | "trimesh";
   constructor(
-    options: ColliderOptions & {
-      geometry?: BufferGeometry;
-      approximation?: "convexHull" | "trimesh";
-    } = {},
+    options: { readonly approximation?: "convexHull" | "trimesh" } = {},
   ) {
-    super(options);
-    this.geometry = options.geometry ?? new BufferGeometry();
+    super();
     this.approximation = options.approximation ?? "convexHull";
+  }
+  get geometry(): BufferGeometry {
+    return this.currentGeometry;
+  }
+  setGeometry(value: BufferGeometry): this {
+    this.currentGeometry = value;
+    return this;
   }
   shape(): Shape {
     return {
@@ -145,30 +194,15 @@ export class MeshCollider extends Collider {
     };
   }
   override copy(source: this, recursive = true): this {
+    if (source.approximation !== this.approximation)
+      throw new Error("Cannot copy a different collider approximation");
     super.copy(source, recursive);
-    this.geometry = source.geometry;
-    this.approximation = source.approximation;
-    return this;
+    return this.setGeometry(source.geometry);
   }
 }
 
 export function assertRigidTransform(matrix: Matrix4): void {
-  const position = new Vector3(),
-    quaternion = new Quaternion(),
-    scale = new Vector3();
-  matrix.decompose(position, quaternion, scale);
-  const rigid = new Matrix4().compose(
-    position,
-    quaternion,
-    new Vector3(1, 1, 1),
-  );
-  if (
-    !matrix.elements.every(
-      (value, index) =>
-        Number.isFinite(value) &&
-        Math.abs(value - (rigid.elements[index] ?? Infinity)) < 1e-6,
-    )
-  ) {
+  const { scale } = splitTransform(matrix);
+  if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6))
     throw new Error("Physics transforms must have unit scale and no shear");
-  }
 }

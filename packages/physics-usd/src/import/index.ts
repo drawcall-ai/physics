@@ -1,11 +1,17 @@
-import { Object3D } from "three";
+import { Object3D, Vector3 } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import { Joint, type PhysicsMaterial, RigidBody } from "@drawcall/physics";
 import type { PhysicsWorld } from "@drawcall/physics";
 import { PhysicsUSDScene } from "../scene.js";
 import { attribute, boolean, numeric, schemas } from "./layer.js";
-import { vector, wrapBody, ancestorBody, materialFor } from "./bodies.js";
+import {
+  vector,
+  wrapBody,
+  ancestorBody,
+  materialFor,
+  massProperties,
+} from "./bodies.js";
 import { validate } from "./validate.js";
 import { read } from "./read.js";
 import { readJoint } from "./joints.js";
@@ -90,28 +96,21 @@ export class PhysicsUSDLoader {
               ? "kinematic"
               : "dynamic"
             : "static",
+          massProperties(layer, primPath, object),
         );
         scene.own(body);
-        const mass = attribute(layer, primPath, "physics:mass");
-        if (mass !== undefined && mass !== 0)
-          body.options.mass = numeric(layer, primPath, "physics:mass", 0);
-        body.options.linearVelocity = vector(
-          layer,
-          primPath,
-          "physics:velocity",
-          [0, 0, 0],
-        );
         const velocity = vector(
           layer,
           primPath,
           "physics:angularVelocity",
           [0, 0, 0],
         );
-        body.options.angularVelocity = [
-          (velocity[0] * Math.PI) / 180,
-          (velocity[1] * Math.PI) / 180,
-          (velocity[2] * Math.PI) / 180,
-        ];
+        body.setVelocity({
+          linear: new Vector3(
+            ...vector(layer, primPath, "physics:velocity", [0, 0, 0]),
+          ),
+          angular: new Vector3(...velocity).multiplyScalar(Math.PI / 180),
+        });
         bodies.set(primPath, body);
       }
       for (const [primPath, spec] of Object.entries(layer.specsByPath)) {

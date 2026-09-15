@@ -32,12 +32,10 @@ export function readShape(
   if (type === "Cube") {
     const size = numeric(layer, path, "size", 2);
     collider = new BoxCollider({
-      material,
       size: [size * scale.x, size * scale.y, size * scale.z],
     });
   } else if (type === "Sphere") {
     collider = new SphereCollider({
-      material,
       radius: numeric(layer, path, "radius", 1) * uniform(),
     });
   } else if (type === "Capsule" || type === "Cylinder") {
@@ -46,8 +44,8 @@ export function readShape(
     const height = numeric(layer, path, "height", 2) * factor;
     collider =
       type === "Capsule"
-        ? new CapsuleCollider({ material, radius, length: height })
-        : new CylinderCollider({ material, radius, height });
+        ? new CapsuleCollider({ radius, length: height })
+        : new CylinderCollider({ radius, height });
   } else if (type === "Mesh") {
     if (!(object instanceof Mesh))
       throw new Error(`Missing collider mesh geometry: ${path}`);
@@ -59,11 +57,10 @@ export function readShape(
     const geometry = object.geometry.clone();
     geometry.scale(scale.x, scale.y, scale.z);
     collider = new MeshCollider({
-      material,
-      geometry,
       approximation: approximation === "none" ? "trimesh" : "convexHull",
-    });
+    }).setGeometry(geometry);
   } else throw new Error(`Unsupported collision shape ${type}: ${path}`);
+  collider.setMaterial(material);
   collider.position.copy(object.position);
   collider.quaternion.copy(object.quaternion);
   if (type === "Capsule" || type === "Cylinder") {

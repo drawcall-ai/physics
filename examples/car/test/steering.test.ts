@@ -1,25 +1,31 @@
 import { expect, test } from "vitest";
 import { Vector3 } from "three";
-import { RevoluteJoint } from "@drawcall/physics";
 import { setupWorld } from "@drawcall/physics-rapier";
 import { createCar, simulationOptions } from "../model";
 import { createRoad } from "../road";
 import { driveCar } from "../drive";
 
-test.each([0, 1])(
-  "both front wheels steer and recenter at rest with brake=%s",
-  async (brake) => {
-    const world = await setupWorld(simulationOptions);
+test.each([
+  { brake: 0, fixedDelta: 1 / 120 },
+  { brake: 1, fixedDelta: 1 / 120 },
+  { brake: 0, fixedDelta: 1 / 240 },
+  { brake: 1, fixedDelta: 1 / 240 },
+])(
+  "both front wheels steer and recenter at rest with brake=$brake and dt=$fixedDelta",
+  async ({ brake, fixedDelta }) => {
+    const world = await setupWorld({ ...simulationOptions, fixedDelta });
     const car = createCar(world);
     createRoad(world);
     const driver = driveCar(world, car);
     driver.input.automatic = false;
     driver.input.brake = brake;
     try {
-      for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
+      for (let i = 0; i < Math.round(2 / fixedDelta); i++)
+        world.update(world.fixedDelta);
       for (const direction of [1, -1, 0]) {
         driver.input.steer = direction;
-        for (let i = 0; i < 360; i++) world.update(world.fixedDelta);
+        for (let i = 0; i < Math.round(3 / fixedDelta); i++)
+          world.update(world.fixedDelta);
         expect(Math.abs(driver.telemetry.speed)).toBeLessThan(
           brake ? 0.1 : 0.3,
         );
@@ -28,9 +34,7 @@ test.each([0, 1])(
             .applyQuaternion(wheel.tire.quaternion)
             .applyQuaternion(car.chassis.quaternion.clone().invert());
           const yaw = Math.atan2(-axle.z, axle.x);
-          if (!(wheel.steering instanceof RevoluteJoint))
-            throw new Error("Front wheel needs a steering joint");
-          const target = wheel.steering.options.drive?.targetPosition;
+          const target = wheel.servo?.target?.position;
           if (target === undefined) throw new Error("Missing steering target");
           if (direction === 0) expect(target).toBe(0);
           else {

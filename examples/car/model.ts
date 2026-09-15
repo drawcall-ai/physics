@@ -6,6 +6,7 @@ import {
   PrismaticJoint,
   RevoluteJoint,
   FixedJoint,
+  JointMotor,
   type PhysicsWorld,
   type Vec3,
 } from "@drawcall/physics";
@@ -16,7 +17,7 @@ export const simulationOptions = {
   solverIterations: 32,
 };
 
-// A stiff, torque-limited steering servo must overcome stationary tire scrub.
+// A stiff, torque-limited native servo overcomes stationary tire scrub.
 export const steeringMotor = {
   stiffness: 300000,
   damping: 1500,
@@ -30,7 +31,6 @@ export const specification = {
   track: 1.8,
   stiffness: 35000,
   damping: 3200,
-  torque: 480,
   droop: 0.16,
   bump: 0.22,
 };
@@ -55,8 +55,7 @@ const glass = new THREE.MeshStandardMaterial({
 });
 
 export function box(size: Vec3, material: THREE.Material) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
-  return mesh;
+  return new THREE.Mesh(new THREE.BoxGeometry(...size), material);
 }
 
 export function createCar(world: PhysicsWorld) {
@@ -72,12 +71,9 @@ export function createCar(world: PhysicsWorld) {
     const result = new RigidBody({ world, mass, canSleep: false });
     result.name = name;
     result.position.set(...position);
-    result.add(
-      new BoxCollider({
-        size,
-        collisionGroups: { membership: 2, filter: collides ? 1 : 0 },
-      }),
-    );
+    const collider = new BoxCollider({ size });
+    collider.setCollisionGroups({ membership: 2, filter: collides ? 1 : 0 });
+    result.add(collider);
     root.add(result);
     return result;
   }
@@ -114,15 +110,15 @@ export function createCar(world: PhysicsWorld) {
         body0: chassis,
         body1: carrier,
         axis: "Y",
+        limits: [-specification.droop, specification.bump],
         frame0: new THREE.Matrix4().makeTranslation(x, -0.52, z),
         frame1: new THREE.Matrix4(),
-        limits: [-specification.droop, specification.bump],
-        drive: {
-          stiffness: specification.stiffness,
-          damping: specification.damping,
-          targetPosition: 0,
-        },
       });
+      new JointMotor({
+        joint: spring,
+        stiffness: specification.stiffness,
+        damping: specification.damping,
+      }).setTarget({ position: 0 });
       spring.name = `${name}Suspension`;
       const steeringFrames = {
         body0: carrier,
@@ -135,23 +131,32 @@ export function createCar(world: PhysicsWorld) {
             ...steeringFrames,
             axis: "Y",
             limits: [-0.6, 0.6],
-            drive: { ...steeringMotor },
           })
         : new FixedJoint(steeringFrames);
+      const servo =
+        steering instanceof RevoluteJoint
+          ? new JointMotor({ joint: steering, ...steeringMotor }).setTarget({
+              position: 0,
+            })
+          : undefined;
       steering.name = `${name}${front ? "Steering" : "KnuckleMount"}`;
       const tire = new RigidBody({
         world,
         mass: 22,
         canSleep: false,
-        material: { dynamicFriction: 1.2, staticFriction: 1.2, restitution: 0 },
+      });
+      tire.setMaterial({
+        dynamicFriction: 1.2,
+        staticFriction: 1.2,
+        restitution: 0,
       });
       tire.name = `${name}Wheel`;
       tire.position.copy(carrier.position);
       const collider = new CylinderCollider({
         radius: specification.wheelRadius,
         height: 0.26,
-        collisionGroups: { membership: 2, filter: 1 },
       });
+      collider.setCollisionGroups({ membership: 2, filter: 1 });
       collider.rotation.z = Math.PI / 2;
       tire.add(collider);
       const wheel = new THREE.Mesh(
@@ -173,9 +178,14 @@ export function createCar(world: PhysicsWorld) {
         axis: "X",
         frame0: new THREE.Matrix4(),
         frame1: new THREE.Matrix4(),
-        drive: { targetVelocity: 0, damping: 80, maxForce: 0 },
       });
       axle.name = `${name}Motor`;
+      const motor = new JointMotor({
+        joint: axle,
+        damping: 450,
+        maxForce: 1100,
+      });
+      motor.setTarget({ velocity: 0 });
       // Spring geometry is visual only; force comes from the prismatic joint.
       const points = Array.from(
         { length: 97 },
@@ -212,6 +222,8 @@ export function createCar(world: PhysicsWorld) {
         spring,
         steering,
         axle,
+        servo,
+        motor,
         coil,
         damper,
       });

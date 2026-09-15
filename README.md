@@ -63,9 +63,12 @@ Construction calls `world.register(object)`. A backend creates pending resources
 before stepping, after geometry and initial transforms have been configured. New
 bodies and joints can be constructed while the simulation is running.
 
-Constructor settings live in `body.options` and `joint.options`. Their options
-reference is readonly, and body references/world selection cannot be reassigned.
-Mutable settings such as `hinge.options.drive` can change after construction.
+Constructor options are copied and typed readonly: body type/mass, collider dimensions,
+joint bodies/frames/limits, and motor gains. Recreate objects to change them.
+Mutable settings use methods: `setVelocity`, `setLinearDamping`, `setAngularDamping`,
+`setGravityScale`, `setMaterial`, `setEnabled`, and `setCollideConnected`.
+Private state and readonly configuration use TypeScript; numeric physics and
+external-input constraints are checked at runtime.
 
 `body.dispose()` releases its resources and connected joints. Removing a body from
 its Three.js parent does not dispose it. `world.dispose()` releases all its objects
@@ -75,19 +78,20 @@ and clears the default only if that world is still the default. A later
 ## Objects
 
 - `RigidBody extends Group`: `type` is `dynamic` (default), `static`, or
-  `kinematic`. Optional total `mass` overrides shape density. Body materials,
-  damping, velocities, gravity scale, and sleep policy are authored properties.
+  `kinematic`. Optional total `mass` overrides shape density. Use methods for materials,
+  damping, velocities, and gravity scale; sleep capability is fixed.
 - `PhysicsMaterial`: plain options for static/dynamic friction, restitution, and density,
-  e.g. `material: { density: 42 }`. Omitted values use the standard defaults.
+  e.g. `body.setMaterial({ density: 42 })`. Omitted values use the standard defaults.
 - `BoxCollider`, `SphereCollider`, `CapsuleCollider`, `CylinderCollider`,
   `MeshCollider`: explicit `Object3D` shapes. Their presence disables automatic generation on their body.
   Their transforms locate shapes relative to the body. Capsules and cylinders
   extend along Y; capsule `length` excludes the hemispheres.
 - `FixedJoint`, `RevoluteJoint`, `PrismaticJoint`, `SphericalJoint`,
   `DistanceJoint`: `Object3D` constraints. `body0: null` anchors to the world.
-  Revolute/prismatic joints have an `axis` (default Y), optional `limits`, and
-  optional `drive` with position/velocity targets, stiffness, damping, and force
-  limit. Distance joints require minimum/maximum `limits`.
+  Revolute/prismatic joints have an `axis` (default Y) and optional `limits`.
+  Distance joints use minimum/maximum `limits`.
+- `JointMotor`: one actuator per revolute/prismatic joint, with immutable gains,
+  force ceiling, and model; mutable targets and enabled state.
 
 All quantities use meters, kilograms, seconds, and radians. Joint placement defines
 both initial local frames. Supply both `frame0` and `frame1` instead for explicit
@@ -127,11 +131,14 @@ Bodies and joints support Three.js `.clone()` and `.copy()`, which preserve
 joint body references. For a complete mechanism, use `clone(root)` from
 `@drawcall/physics`, like Three.js SkeletonUtils: it clones an ordinary object
 hierarchy and reconnects internal joint references to cloned bodies. External
-body references remain external. Geometry and materials remain shared,
+body references remain external. Copy requires matching immutable configuration;
+cloning preserves motors and rebinds their joints. Geometry and materials remain shared,
 application-owned resources. Clones register in their source world.
 
-Explicit colliders can declare `sensor: true` and
-`collisionGroups: { membership, filter }` using unsigned 16-bit masks. Adapters
+Explicit colliders use `setSensor(true)`, `setMaterial(...)`, and
+`setCollisionGroups({ membership, filter })` with unsigned 16-bit masks.
+Dimensions use constructor options, e.g. `new BoxCollider({ size: [1, 2, 3] })`.
+Mesh geometry uses `setGeometry`; its approximation remains immutable. Adapters
 validate support and report unsupported properties instead of ignoring them.
 
 ## Adapters
@@ -160,8 +167,62 @@ an independent importer and solver.
 
 ### State access and static previews
 
-`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and `joint.getState()` work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint reads work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
 
-`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update`, `step`, or `reset` on an authoring world still throws because it cannot simulate.
+`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update` or `reset` on an authoring world still throws because it cannot simulate.
 
-The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. State operations never force early backend creation; final parent scale, collider geometry, mass, and inertia are captured together. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
+The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. Reads and writes need no preparation call. Temporary backend bodies evaluate pending impulses and queries without capturing final parent scale, collider geometry, mass, or joint anchors. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
+
+## Motors, measurements, and effort
+
+```ts
+const motor = new JointMotor({
+  joint: hinge,
+  stiffness: 100,
+  damping: 10,
+  maxForce: 20,
+});
+motor.setTarget({ position: 0.5 });
+motor.setEnabled(false);
+motor.dispose(); // preserves the joint
+```
+
+Import `JointMotor` from core; it replaces `JointDrive`/joint drive options.
+Motors start enabled without a target and exert no force until targeted.
+Targets persist; each call replaces both coordinates, defaulting omissions to zero.
+Zero stiffness gives velocity control; zero velocity with damping brakes.
+`model` defaults to `"force"`; `"acceleration"` is backend-dependent. `maxForce`
+is N for sliders or N·m for hinges; omission means unbounded. Joint/world disposal
+releases motors. Unsupported backend settings fail explicitly.
+
+Axis `getState()` returns `{ position, velocity }` in radians/rad·s⁻¹ or meters/m·s⁻¹.
+Revolute position tracks turns each substep; motion must remain below π per substep.
+Teleport rebases without counting turns; reset restores the initialized coordinate.
+Rapier position-motor targets use continuous radians and must remain less than π
+from the current position; longer trajectories need intermediate targets.
+Body linear velocity is measured at COM, with both velocity vectors world-aligned.
+Rapier reads rotating-slider velocity using native COM inference without stepping.
+AuthoringWorld requires explicit mass properties for this read and otherwise throws.
+
+`joint.setEffort(value)` accepts construction-time calls and applies one substep of torque/force
+with reaction on the connected body. Last call wins; zero cancels. Submit ongoing
+effort in `onBeforeStep`; disable an active motor first. Disable/reset/dispose clear
+pending effort. No-step updates preserve it. Motor plus feed-forward effort is unsupported.
+`world.time` counts completed substeps, advances before `onAfterStep`, and resets to
+zero. Catch-up time discarded by `maxSubsteps` is not simulated time.
+
+## Mass and raycasts
+
+Mass options support collider-derived defaults, a total `mass` override, or complete
+`mass`, `centerOfMass`, and `diagonalInertia` values. Optional `principalAxes` defaults
+to identity. Tuples are body-local: COM in meters, inertia in kg·m², axes as quaternion
+`[x,y,z,w]`. Other partial combinations fail. Explicit properties are authoritative
+and are not scaled by visual transforms. Dynamic colliderless bodies need complete
+positive mass/inertia; static and kinematic bodies can be colliderless.
+
+`world.raycast(origin, direction, maxDistance, options)` returns the closest hit or
+null: distance, world point/normal, body, and source collider/mesh. Directions are
+normalized; distances are meters. Options include `collisionGroups`, `excludeBodies`,
+and `includeSensors` (default false). Inside-origin rays return the exit surface.
+Queries include the current authored scene before the first update, without advancing time.
+AuthoringWorld has no raycasts. Release all three packages together for this breaking API.

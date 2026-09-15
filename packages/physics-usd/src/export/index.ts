@@ -127,26 +127,43 @@ export class PhysicsUSDExporter {
       const prim = prims.get(object);
       if (!prim) throw new Error("Body missing from USD hierarchy");
       if (
-        (object.options.linearDamping ?? 0) !== 0 ||
-        (object.options.angularDamping ?? 0) !== 0 ||
-        (object.options.gravityScale ?? 1) !== 1 ||
+        object.linearDamping !== 0 ||
+        object.angularDamping !== 0 ||
+        object.gravityScale !== 1 ||
         !(object.options.canSleep ?? true)
       )
         throw new Error(
           "Core USD Physics cannot represent damping, gravity scale, or sleep policy overrides",
         );
       prim.schemas.push("PhysicsMassAPI");
-      if (object.options.type !== "static") {
+      if (object.bodyType !== "static") {
         prim.schemas.push("PhysicsRigidBodyAPI");
         prim.properties.push(
           "bool physics:rigidBodyEnabled = true",
-          `bool physics:kinematicEnabled = ${object.options.type === "kinematic"}`,
-          `vector3f physics:velocity = ${tuple(object.options.linearVelocity ?? [0, 0, 0])}`,
-          `vector3f physics:angularVelocity = ${tuple((object.options.angularVelocity ?? [0, 0, 0]).map((value) => value * degrees))}`,
+          `bool physics:kinematicEnabled = ${object.bodyType === "kinematic"}`,
+          `vector3f physics:velocity = ${tuple(object.getVelocity().linear.toArray())}`,
+          `vector3f physics:angularVelocity = ${tuple(
+            object
+              .getVelocity()
+              .angular.toArray()
+              .map((value) => value * degrees),
+          )}`,
         );
       }
       if (object.options.mass !== undefined)
         prim.properties.push(`float physics:mass = ${object.options.mass}`);
+      for (const name of ["centerOfMass", "diagonalInertia"] as const) {
+        const value = object.options[name];
+        if (value)
+          prim.properties.push(
+            `${name === "centerOfMass" ? "point3f" : "float3"} physics:${name} = ${tuple(value)}`,
+          );
+      }
+      const axes = object.options.principalAxes;
+      if (axes)
+        prim.properties.push(
+          `quatf physics:principalAxes = ${tuple([axes[3], axes[0], axes[1], axes[2]])}`,
+        );
       for (const [index, collider] of colliders.entries()) {
         if (collider.collisionGroups)
           throw new Error(
@@ -155,7 +172,7 @@ export class PhysicsUSDExporter {
         if (collider.sensor)
           throw new Error("Core USD Physics cannot represent sensors");
         const physicsMaterial = body.getMaterial(collider);
-        const materialKey = collider.material ?? body.options.material;
+        const materialKey = collider.material ?? body.material;
         let materialPath = materialPaths.get(materialKey);
         if (!materialPath) {
           const material = new Prim(

@@ -19,10 +19,11 @@ assert len(bodies) == 1 and len(colliders) == 2 and len(joints) == 1
 joint = joints[0]
 assert joint.GetUpperLimitAttr().Get() == 90
 assert joint.GetAxisAttr().Get() == 'Y'
-drive = UsdPhysics.DriveAPI(joint.GetPrim(), 'angular')
+drive = UsdPhysics.DriveAPI(joint.GetPrim(), "angular")
 assert drive.GetTargetPositionAttr().Get() == 45
 assert math.isclose(drive.GetStiffnessAttr().Get(), 100 * math.pi / 180, rel_tol=1e-6)
 assert math.isclose(drive.GetDampingAttr().Get(), 10 * math.pi / 180, rel_tol=1e-6)
+assert drive.GetMaxForceAttr().Get() == 40
 anchors = []
 for body_rel, pos_attr in [(joint.GetBody0Rel(), joint.GetLocalPos0Attr()), (joint.GetBody1Rel(), joint.GetLocalPos1Attr())]:
     body = stage.GetPrimAtPath(body_rel.GetTargets()[0])

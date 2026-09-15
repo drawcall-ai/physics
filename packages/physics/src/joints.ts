@@ -1,34 +1,75 @@
 import { Object3D, Matrix4, Vector3 } from "three";
+import { JointMotor, getJointMotor } from "./motor.js";
 import { RigidBody } from "./body.js";
 import { splitTransform } from "./transforms.js";
 import { assertRigidTransform } from "./objects.js";
-import type { PhysicsWorld, PhysicsJointState } from "./world.js";
+import type {
+  PhysicsWorld,
+  PhysicsJointState,
+  AxisJointState,
+} from "./world.js";
 
-export interface JointDrive {
-  type?: "force" | "acceleration";
-  targetPosition?: number;
-  targetVelocity?: number;
-  stiffness?: number;
-  damping?: number;
-  maxForce?: number;
-}
-export interface JointOptions {
+export type JointOptions = {
   readonly body0: RigidBody | null;
   readonly body1: RigidBody;
-  frame0?: Matrix4;
-  frame1?: Matrix4;
-  collideConnected?: boolean;
-  enabled?: boolean;
-}
+} & (
+  | { readonly frame0?: never; readonly frame1?: never }
+  | { readonly frame0: Matrix4; readonly frame1: Matrix4 }
+);
 export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
   readonly world: PhysicsWorld;
-  #disposed = false;
+  protected readonly config: Options;
+  get options(): Options {
+    return {
+      ...this.config,
+      frame0: this.config.frame0?.clone(),
+      frame1: this.config.frame1?.clone(),
+    };
+  }
+  private isDisposed = false;
+  private currentEnabled = true;
+  private currentCollideConnected = false;
+  private version = 0;
+  get enabled(): boolean {
+    return this.currentEnabled;
+  }
+  get collideConnected(): boolean {
+    return this.currentCollideConnected;
+  }
+  get settingsVersion(): number {
+    return this.version;
+  }
+  protected assertLive(): void {
+    if (this.disposed) throw new Error("Joint has been disposed");
+  }
+  setEnabled(value: boolean): this {
+    this.assertLive();
+    this.currentEnabled = value;
+    this.version++;
+    if (!value && this instanceof AxisJoint) this.world.setJointEffort(this, 0);
+    return this;
+  }
+  setCollideConnected(value: boolean): this {
+    this.assertLive();
+    this.currentCollideConnected = value;
+    this.version++;
+    return this;
+  }
 
-  constructor(readonly options: Options) {
+  constructor(options: Options) {
     super();
     this.world = options.body1.world;
+    this.config = {
+      ...options,
+      frame0: options.frame0?.clone(),
+      frame1: options.frame1?.clone(),
+    };
+    if (options.frame0) {
+      assertRigidTransform(options.frame0);
+      assertRigidTransform(options.frame1);
+    }
     if (options.body0 && options.body0.world !== this.world)
       throw new Error("Joint bodies must belong to the same world");
     if (options.body0 === options.body1)
@@ -39,38 +80,54 @@ export abstract class Joint<
   }
 
   get disposed(): boolean {
-    return this.#disposed;
+    return this.isDisposed;
   }
 
   dispose(): void {
-    if (this.#disposed) return;
+    if (this.isDisposed) return;
+    if (this instanceof AxisJoint) this.motor?.dispose();
     this.world.unregister(this);
     this.removeFromParent();
-    this.#disposed = true;
+    this.isDisposed = true;
   }
 
-  getState(): PhysicsJointState {
-    return this.world.getJointState(this);
+  getState(): PhysicsJointState | AxisJointState {
+    return connectionState(this);
   }
 
   override clone(recursive = true): this {
+    return this.cloneWithBodies(new Map(), recursive);
+  }
+
+  cloneWithBodies(
+    objects: ReadonlyMap<Object3D, Object3D>,
+    recursive = true,
+  ): this {
     if (this.disposed) throw new Error("Cannot clone a disposed joint");
     const target: unknown = Reflect.construct(this.constructor, [
-      { ...this.options },
+      {
+        ...this.config,
+        body0: this.config.body0
+          ? mappedBody(this.config.body0, objects)
+          : null,
+        body1: mappedBody(this.config.body1, objects),
+      },
     ]);
     if (!this.isClone(target))
       throw new Error(
         "Joint clone constructor returned an incompatible object",
       );
     try {
-      return target.copy(this, recursive);
+      return objects.size
+        ? target.copyState(this, recursive)
+        : target.copy(this, recursive);
     } catch (error) {
-      const objects: (RigidBody | Joint)[] = [];
+      const created: (RigidBody | Joint)[] = [];
       target.traverse((object) => {
         if (object instanceof RigidBody || object instanceof Joint)
-          objects.push(object);
+          created.push(object);
       });
-      for (const object of objects.reverse()) object.dispose();
+      for (const object of created.reverse()) object.dispose();
       throw error;
     }
   }
@@ -82,92 +139,64 @@ export abstract class Joint<
     );
   }
 
-  override copy(
-    source: this,
-    recursive = true,
-    objects: ReadonlyMap<Object3D, Object3D> = new Map(),
-  ): this {
+  override copy(source: this, recursive = true): this {
+    if (source === this) return this;
     if (this.disposed || source.disposed)
       throw new Error("Cannot copy a disposed joint");
-    const body = (original: RigidBody) => {
-      const target = objects.get(original) ?? original;
-      if (
-        !(target instanceof RigidBody) ||
-        target.world !== this.world ||
-        target.disposed
-      )
-        throw new Error("Joint copy requires live bodies in the same world");
-      return target;
-    };
-    const options = {
-      ...source.options,
-      body0: source.options.body0 ? body(source.options.body0) : null,
-      body1: body(source.options.body1),
-      frame0: source.options.frame0?.clone(),
-      frame1: source.options.frame1?.clone(),
-    };
+    const a = this.config,
+      b = source.config;
+    if (
+      a.body0 !== b.body0 ||
+      a.body1 !== b.body1 ||
+      !sameFrame(a.frame0, b.frame0) ||
+      !sameFrame(a.frame1, b.frame1) ||
+      (this instanceof AxisJoint &&
+        source instanceof AxisJoint &&
+        ((this.config.axis ?? "Y") !== (source.config.axis ?? "Y") ||
+          !sameLimits(this.limits, source.limits))) ||
+      (this instanceof DistanceJoint &&
+        source instanceof DistanceJoint &&
+        !sameLimits(this.limits, source.limits))
+    )
+      throw new Error("Joint copy requires matching immutable options");
+    return this.copyState(source, recursive);
+  }
+
+  private copyState(source: this, recursive: boolean): this {
     super.copy(source, recursive);
-    for (const key of Object.keys(this.options))
-      Reflect.deleteProperty(this.options, key);
-    Object.assign(this.options, options);
+    this.setEnabled(source.enabled).setCollideConnected(
+      source.collideConnected,
+    );
     if (this instanceof AxisJoint && source instanceof AxisJoint) {
-      this.options.limits = source.options.limits
-        ? [...source.options.limits]
-        : undefined;
-      this.options.drive = source.options.drive
-        ? { ...source.options.drive }
-        : undefined;
+      this.motor?.dispose();
+      if (source.motor) {
+        const motor = new JointMotor({ ...source.motor.options, joint: this });
+        if (source.motor.target) motor.setTarget(source.motor.target);
+        motor.setEnabled(source.motor.enabled);
+      }
     }
-    if (this instanceof DistanceJoint && source instanceof DistanceJoint)
-      this.options.limits = [...source.options.limits];
     return this;
   }
 
   validate(): void {
     if (
       this.disposed ||
-      this.options.body0?.disposed ||
-      this.options.body1.disposed
+      this.config.body0?.disposed ||
+      this.config.body1.disposed
     )
       throw new Error("Cannot validate a disposed joint or body");
-    if (
-      this.options.body1.world !== this.world ||
-      (this.options.body0 && this.options.body0.world !== this.world)
-    )
-      throw new Error("Joint bodies must belong to the same world");
-    this.options.body0?.updateWorldMatrix(true, false);
-    this.options.body1.updateWorldMatrix(true, false);
+    this.config.body0?.updateWorldMatrix(true, false);
+    this.config.body1.updateWorldMatrix(true, false);
     this.updateWorldMatrix(true, false);
-    if (this.options.body0 === this.options.body1)
-      throw new Error("Joint must connect distinct bodies");
-    if (
-      (this.options.frame0 === undefined) !==
-      (this.options.frame1 === undefined)
-    )
-      throw new Error("Joint requires both local frames or neither");
-    if (this instanceof AxisJoint || this instanceof DistanceJoint) {
-      if (
-        this.options.limits &&
-        (!this.options.limits.every(Number.isFinite) ||
-          this.options.limits[0] > this.options.limits[1])
-      )
-        throw new Error("Invalid joint limits");
-    }
-    if (this instanceof DistanceJoint && this.options.limits[0] < 0)
-      throw new Error("Distance limits must be nonnegative");
-    if (this instanceof AxisJoint && this.options.drive)
-      validateDrive(this.options.drive);
     splitTransform(this.matrixWorld);
-    if (this.options.body0) splitTransform(this.options.body0.matrixWorld);
-    splitTransform(this.options.body1.matrixWorld);
-    if (this.options.frame0) assertRigidTransform(this.options.frame0);
-    if (this.options.frame1) assertRigidTransform(this.options.frame1);
+    if (this.config.body0) splitTransform(this.config.body0.matrixWorld);
+    splitTransform(this.config.body1.matrixWorld);
   }
 
   getFrame(index: 0 | 1, target: Matrix4): Matrix4 {
     this.validate();
-    const frame = index === 0 ? this.options.frame0 : this.options.frame1;
-    const body = index === 0 ? this.options.body0 : this.options.body1;
+    const frame = index === 0 ? this.config.frame0 : this.config.frame1;
+    const body = index === 0 ? this.config.body0 : this.config.body1;
     if (frame) {
       target.copy(frame);
       if (body)
@@ -184,36 +213,105 @@ export abstract class Joint<
       : target;
   }
 }
-export class FixedJoint extends Joint {}
-export interface AxisJointOptions extends JointOptions {
-  axis?: "X" | "Y" | "Z";
-  limits?: [number, number];
-  drive?: JointDrive;
+export class FixedJoint extends Joint {
+  override getState(): PhysicsJointState {
+    return connectionState(this);
+  }
 }
-export abstract class AxisJoint extends Joint<AxisJointOptions> {}
+export type AxisJointOptions = JointOptions & {
+  readonly axis?: "X" | "Y" | "Z";
+  readonly limits?: readonly [number, number];
+};
+export abstract class AxisJoint extends Joint<AxisJointOptions> {
+  constructor(options: AxisJointOptions) {
+    if (options.limits) validateLimits(options.limits);
+    super({
+      ...options,
+      limits: options.limits && [...options.limits],
+    });
+  }
+  get limits(): readonly [number, number] | undefined {
+    return this.config.limits;
+  }
+  get motor(): JointMotor | undefined {
+    return getJointMotor(this);
+  }
+  override getState(): AxisJointState {
+    const state = this.world.getJointState(this);
+    return this instanceof RevoluteJoint
+      ? { position: state.angle, velocity: state.angularVelocity }
+      : { position: state.position, velocity: state.velocity };
+  }
+  setEffort(value: number): this {
+    this.assertLive();
+    if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
+    if (value !== 0 && this.motor?.active)
+      throw new Error("Disable the joint motor before applying effort");
+    this.world.setJointEffort(this, value);
+    return this;
+  }
+}
 export class RevoluteJoint extends AxisJoint {}
 export class PrismaticJoint extends AxisJoint {}
-export class SphericalJoint extends Joint {}
-export interface DistanceJointOptions extends JointOptions {
-  limits: [number, number];
+export class SphericalJoint extends Joint {
+  override getState(): PhysicsJointState {
+    return connectionState(this);
+  }
 }
-export class DistanceJoint extends Joint<DistanceJointOptions> {}
+export type DistanceJointOptions = JointOptions & {
+  readonly limits?: readonly [number, number];
+};
+export class DistanceJoint extends Joint<
+  DistanceJointOptions & { readonly limits: readonly [number, number] }
+> {
+  constructor(options: DistanceJointOptions) {
+    const limits = options.limits ?? [0, 0];
+    validateLimits(limits);
+    if (limits[0] < 0) throw new Error("Distance limits must be nonnegative");
+    super({
+      ...options,
+      limits: [limits[0], limits[1]],
+    });
+  }
+  override getState(): PhysicsJointState {
+    return connectionState(this);
+  }
+  get limits(): readonly [number, number] {
+    return this.config.limits;
+  }
+}
+function validateLimits(value: readonly [number, number]): void {
+  if (![value[0], value[1]].every(Number.isFinite) || value[0] > value[1])
+    throw new Error("Invalid joint limits");
+}
+function sameFrame(a: Matrix4 | undefined, b: Matrix4 | undefined): boolean {
+  return a === undefined ? b === undefined : b !== undefined && a.equals(b);
+}
 
-function validateDrive(drive: JointDrive): void {
+function mappedBody(
+  body: RigidBody,
+  objects: ReadonlyMap<Object3D, Object3D>,
+): RigidBody {
+  const target = objects.get(body) ?? body;
   if (
-    ![drive.targetPosition ?? 0, drive.targetVelocity ?? 0].every(
-      Number.isFinite,
-    )
-  ) {
-    throw new Error("Joint drive targets must be finite");
-  }
-  if (
-    ![drive.stiffness ?? 0, drive.damping ?? 0, drive.maxForce ?? 0].every(
-      (value) => Number.isFinite(value) && value >= 0,
-    )
-  ) {
-    throw new Error(
-      "Joint drive coefficients and maximum force must be finite and nonnegative",
-    );
-  }
+    !(target instanceof RigidBody) ||
+    target.disposed ||
+    target.world !== body.world
+  )
+    throw new Error("Joint copy requires live bodies in the same world");
+  return target;
+}
+
+function sameLimits(
+  a: readonly [number, number] | undefined,
+  b: readonly [number, number] | undefined,
+): boolean {
+  return a === undefined
+    ? b === undefined
+    : b !== undefined && a[0] === b[0] && a[1] === b[1];
+}
+
+function connectionState(joint: Joint): PhysicsJointState {
+  const { velocity: _velocity, ...state } = joint.world.getJointState(joint);
+  return state;
 }

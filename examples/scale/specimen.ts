@@ -9,6 +9,7 @@ import {
   splitTransform,
   SphereCollider,
   type PhysicsWorld,
+  type AutoColliders,
 } from "@drawcall/physics";
 
 import type { Case } from "./cases";
@@ -24,13 +25,19 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
     materials.push(material);
     return new T.Mesh(geometry, material);
   }
-  function body(type: "dynamic" | "static" | "kinematic", visual: T.Mesh) {
+  function body(
+    type: "dynamic" | "static" | "kinematic",
+    visual: T.Mesh,
+    colliders: AutoColliders = "auto",
+  ) {
     const body = new RigidBody({
       world,
       type,
-      angularVelocity: spin && type === "dynamic" ? [1.4, 0.7, 1.1] : [0, 0, 0],
+      colliders,
       ...(type === "static" ? {} : { mass: 2 }),
     });
+    if (spin && type === "dynamic")
+      body.setVelocity({ angular: new T.Vector3(1.4, 0.7, 1.1) });
     bodies.push(body);
     body.add(visual);
     return body;
@@ -57,10 +64,13 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   const target = body(
     spec.type ?? (spec.kind === "triangle mesh" ? "static" : "dynamic"),
     visual,
+    spec.kind === "convex hull"
+      ? "convexHull"
+      : spec.kind === "triangle mesh"
+        ? "trimesh"
+        : "auto",
   );
   target.name = spec.name;
-  if (spec.kind === "convex hull") target.options.colliders = "convexHull";
-  if (spec.kind === "triangle mesh") target.options.colliders = "trimesh";
   let collider;
   if (spec.explicit) {
     collider =
@@ -69,14 +79,14 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
         : spec.kind === "sphere"
           ? new SphereCollider()
           : spec.kind === "capsule"
-            ? new CapsuleCollider({ radius: 0.4, length: 1 })
+            ? new CapsuleCollider({ radius: 0.4 })
             : spec.kind === "cylinder"
               ? new CylinderCollider()
               : new MeshCollider({
-                  geometry,
                   approximation:
                     spec.kind === "triangle mesh" ? "trimesh" : "convexHull",
                 });
+    if (collider instanceof MeshCollider) collider.setGeometry(geometry);
     target.add(collider);
   }
   const parent = new T.Group().add(target);

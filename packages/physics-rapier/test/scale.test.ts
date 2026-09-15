@@ -49,7 +49,7 @@ it("keeps explicit mass and derives density mass and inertia from scaled geometr
   const world = await setupWorld({ gravity: [0, 0, 0] });
   try {
     for (const mass of [undefined, 2]) {
-      const body = new RigidBody({ mass, material: { density: 1 } });
+      const body = new RigidBody({ mass }).setMaterial({ density: 1 });
       body.add(new Mesh(new BoxGeometry()));
       body.scale.setScalar(2);
       world.update(world.fixedDelta);
@@ -108,7 +108,9 @@ it("captures new collider scale while rejecting edits to an existing collider's 
     mesh.scale.setScalar(2);
     world.update(world.fixedDelta / 2);
     mesh.scale.setScalar(3);
-    expect(() => world.update(world.fixedDelta)).toThrow("Collider scale cannot change");
+    expect(() => world.update(world.fixedDelta)).toThrow(
+      "Collider scale cannot change",
+    );
     body.remove(mesh);
     const replacement = new Mesh(new BoxGeometry());
     replacement.scale.setScalar(3);

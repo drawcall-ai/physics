@@ -1,33 +1,26 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "./body.js";
-import { AxisJoint, FixedJoint, type Joint } from "./joints.js";
+import { AxisJoint, PrismaticJoint, FixedJoint, type Joint } from "./joints.js";
 import { splitTransform } from "./transforms.js";
-import type { PhysicsVelocity, PhysicsJointState } from "./world.js";
+import type { PhysicsVelocity, JointMeasurements } from "./world.js";
 
-/** Shared state operations for backend adapters and static authoring. */
-export function initialVelocity(object: RigidBody): PhysicsVelocity {
-  const linear = new Vector3(...(object.options.linearVelocity ?? [0, 0, 0]));
-  const angular = new Vector3(...(object.options.angularVelocity ?? [0, 0, 0]));
-  validateVector(linear);
-  validateVector(angular);
-  return { linear, angular };
+/** Authored velocity is independent of immutable creation options and backend reset snapshots. */
+const velocities = new WeakMap<RigidBody, PhysicsVelocity>();
+export function authoredVelocity(object: RigidBody): PhysicsVelocity {
+  const value = velocities.get(object);
+  return {
+    linear: value?.linear.clone() ?? new Vector3(),
+    angular: value?.angular.clone() ?? new Vector3(),
+  };
 }
-export function setInitialVelocity(
+export function setAuthoredVelocity(
   object: RigidBody,
   value: Partial<PhysicsVelocity>,
 ): void {
-  if (value.linear)
-    object.options.linearVelocity = [
-      value.linear.x,
-      value.linear.y,
-      value.linear.z,
-    ];
-  if (value.angular)
-    object.options.angularVelocity = [
-      value.angular.x,
-      value.angular.y,
-      value.angular.z,
-    ];
+  const next = authoredVelocity(object);
+  if (value.linear) next.linear.copy(value.linear);
+  if (value.angular) next.angular.copy(value.angular);
+  velocities.set(object, next);
 }
 export function validateVector(value: Vector3): void {
   if (![value.x, value.y, value.z].every(Number.isFinite))
@@ -47,10 +40,15 @@ export function setWorldPose(object: RigidBody, pose: Matrix4): void {
 export function authoredJointState(
   object: Joint,
   frames?: readonly [Matrix4, Matrix4],
-): PhysicsJointState {
+  velocityAtPoint: (
+    body: RigidBody,
+    point: Vector3,
+  ) => Vector3 = authoredVelocityAtPoint,
+): JointMeasurements {
   object.validate();
+  const options = object.options;
   const frame = (index: 0 | 1): Matrix4 => {
-    const body = index === 0 ? object.options.body0 : object.options.body1;
+    const body = index === 0 ? options.body0 : options.body1;
     const matrix = frames
       ? frames[index].clone()
       : object.getFrame(index, new Matrix4());
@@ -75,32 +73,76 @@ export function authoredJointState(
     a.multiply(rotation);
     b.multiply(rotation);
   }
+  const body0 = options.body0;
+  const body1 = options.body1;
+  const velocity0 = body0?.getVelocity() ?? {
+    linear: new Vector3(),
+    angular: new Vector3(),
+  };
+  const velocity1 = body1.getVelocity();
+  const anchor0 = new Vector3().setFromMatrixPosition(a);
+  const anchor1 = new Vector3().setFromMatrixPosition(b);
+  const linear0 =
+    object instanceof PrismaticJoint && body0
+      ? velocityAtPoint(body0, anchor0)
+      : new Vector3();
+  const linear1 =
+    object instanceof PrismaticJoint
+      ? velocityAtPoint(body1, anchor1)
+      : new Vector3();
   return jointState(
     a,
     b,
-    object.options.body0?.getVelocity().angular ?? new Vector3(),
-    object.options.body1.getVelocity().angular,
+    velocity0.angular,
+    velocity1.angular,
+    linear0,
+    linear1,
   );
 }
 
+export function authoredVelocityAtPoint(
+  body: RigidBody,
+  point: Vector3,
+): Vector3 {
+  const { linear, angular } = body.getVelocity();
+  if (angular.lengthSq() === 0) return linear;
+  const center = body.options.centerOfMass;
+  if (!center)
+    throw new Error(
+      "Authoring rotating-slider velocity requires explicit mass properties",
+    );
+  const worldCenter = new Vector3(...center).applyMatrix4(
+    splitTransform(body.matrixWorld).pose,
+  );
+  return linear.add(angular.cross(point.clone().sub(worldCenter)));
+}
+
+/** Raw frame measurements used by simulation adapters. Angles are wrapped to [-pi, pi]. */
 export function jointState(
   a: Matrix4,
   b: Matrix4,
   angular0: Vector3,
   angular1: Vector3,
-): PhysicsJointState {
+  linear0 = new Vector3(),
+  linear1 = new Vector3(),
+) {
   const rotation = new Quaternion().setFromRotationMatrix(a);
   const relative = rotation
     .clone()
     .invert()
     .multiply(new Quaternion().setFromRotationMatrix(b));
   const axis = new Vector3(1, 0, 0).applyQuaternion(rotation);
-  const position0 = new Vector3().setFromMatrixPosition(a);
-  const position1 = new Vector3().setFromMatrixPosition(b);
+  const translation = new Vector3()
+    .setFromMatrixPosition(b)
+    .sub(new Vector3().setFromMatrixPosition(a));
+  const angle = 2 * Math.atan2(relative.x, relative.w);
   return {
-    angle: 2 * Math.atan2(relative.x, relative.w),
+    angle: Math.atan2(Math.sin(angle), Math.cos(angle)),
     angularVelocity: angular1.clone().sub(angular0).dot(axis),
-    position: position1.clone().sub(position0).dot(axis),
-    distance: position0.distanceTo(position1),
+    position: translation.dot(axis),
+    velocity:
+      linear1.clone().sub(linear0).dot(axis) +
+      translation.dot(angular0.clone().cross(axis)),
+    distance: translation.length(),
   };
 }

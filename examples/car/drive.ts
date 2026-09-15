@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { RevoluteJoint, type PhysicsWorld } from "@drawcall/physics";
-import { specification, steeringMotor, type Car } from "./model";
+import { type PhysicsWorld } from "@drawcall/physics";
+import { specification, type Car } from "./model";
 
 export function driveCar(world: PhysicsWorld, car: Car) {
   const input = {
@@ -11,8 +11,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
   };
   const body = car.chassis;
   const wheels = car.wheels;
-  let active = false;
-  let elapsed = 0;
   let steering = 0;
   let completed = false;
   const telemetry = {
@@ -20,8 +18,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     completed: false,
   };
   const unsubscribe = world.onBeforeStep((dt) => {
-    if (!active) return;
-    elapsed += dt;
+    const elapsed = world.time + dt;
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
       car.chassis.quaternion,
     );
@@ -53,19 +50,9 @@ export function driveCar(world: PhysicsWorld, car: Car) {
               specification.wheelbase /
                 (specification.wheelbase / Math.tan(steering) - wheel.x),
             );
-      if (wheel.steering instanceof RevoluteJoint) {
-        wheel.steering.options.drive = {
-          targetPosition: angle,
-          ...steeringMotor,
-        };
-      }
-      wheel.axle.options.drive = {
-        targetVelocity: brake ? 0 : Math.sign(throttle) * 55,
-        damping: brake ? 450 : 80,
-        maxForce: brake
-          ? brake * 1100
-          : Math.abs(throttle) * specification.torque,
-      };
+      wheel.servo?.setTarget({ position: angle });
+      wheel.motor.setEnabled(brake > 0 || throttle !== 0);
+      wheel.motor.setTarget({ velocity: brake ? 0 : throttle * 55 });
     }
     const velocity = body.getVelocity().linear;
     body.applyForce(
@@ -73,7 +60,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     );
   });
   const after = world.onAfterStep(() => {
-    active = true;
     telemetry.speed = body
       .getVelocity()
       .linear.dot(
@@ -85,7 +71,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     input,
     telemetry,
     reset() {
-      elapsed = 0;
       completed = false;
       steering = 0;
       input.throttle = input.steer = input.brake = 0;

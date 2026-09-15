@@ -1,18 +1,20 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
-  jointState,
+  AxisJoint,
   DistanceJoint,
   FixedJoint,
   PrismaticJoint,
   RevoluteJoint,
   SphericalJoint,
+  authoredJointState,
+  type JointMotor,
   type Joint,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
 
 type API = typeof Rapier;
 
-export function joint(
+function createJoint(
   api: API,
   world: Rapier.World,
   object: Joint,
@@ -31,11 +33,11 @@ export function joint(
   else if (object instanceof SphericalJoint)
     data = api.JointData.spherical(a, b);
   else if (object instanceof DistanceJoint) {
-    if (object.options.limits[0] !== 0)
+    if (object.limits[0] !== 0)
       throw new Error(
         "Rapier distance joints only support a zero minimum distance.",
       );
-    data = api.JointData.rope(object.options.limits[1], a, b);
+    data = api.JointData.rope(object.limits[1], a, b);
   } else if (
     object instanceof RevoluteJoint ||
     object instanceof PrismaticJoint
@@ -48,7 +50,6 @@ export function joint(
   } else throw new Error(`Unsupported Rapier joint: ${object.type}`);
   const result = world.createImpulseJoint(data, first, second, true);
   try {
-    result.setContactsEnabled(object.options.collideConnected ?? false);
     if (object instanceof RevoluteJoint || object instanceof PrismaticJoint) {
       const axis =
         object.options.axis === "X"
@@ -63,10 +64,10 @@ export function joint(
       result.setLocalFrame1(a, rotation0.clone().multiply(rotation));
       result.setLocalFrame2(b, rotation1.clone().multiply(rotation));
       if (!(result instanceof api.UnitImpulseJoint))
-        throw new Error("Rapier returned an unexpected joint type.");
+        throw new Error("Expected a Rapier unit joint");
       if (object.options.limits) result.setLimits(...object.options.limits);
-      drive(api, object, result);
     }
+    configure(api, object, result);
     return result;
   } catch (error) {
     world.removeImpulseJoint(result, true);
@@ -74,59 +75,165 @@ export function joint(
   }
 }
 
-export function drive(
-  api: API,
-  object: Joint,
-  target: Rapier.ImpulseJoint,
-): void {
-  target.setContactsEnabled(object.options.collideConnected ?? false);
+function configure(api: API, object: Joint, target: Rapier.ImpulseJoint): void {
+  target.setContactsEnabled(object.collideConnected);
   if (!(object instanceof RevoluteJoint || object instanceof PrismaticJoint))
     return;
   if (!(target instanceof api.UnitImpulseJoint))
     throw new Error("Expected a Rapier unit joint.");
-  target.setLimits(
-    ...(object.options.limits ?? [-Number.MAX_VALUE, Number.MAX_VALUE]),
-  );
-  const value = object.options.drive;
+  const motor = object.motor;
+  const targetState = motor?.active ? motor.target : undefined;
   target.configureMotorModel(
-    value?.type === "acceleration"
+    motor?.options.model === "acceleration"
       ? api.MotorModel.AccelerationBased
       : api.MotorModel.ForceBased,
   );
-  target.setMotorMaxForce(value?.maxForce ?? Number.MAX_VALUE);
+  target.setMotorMaxForce(
+    targetState ? (motor?.options.maxForce ?? Number.MAX_VALUE) : 0,
+  );
+  const position = targetState?.position ?? 0;
+  // Rapier chooses the shortest arc and only wraps its error once.
   target.configureMotor(
-    value?.targetPosition ?? 0,
-    value?.targetVelocity ?? 0,
-    value?.stiffness ?? 0,
-    value?.damping ?? 0,
+    object instanceof RevoluteJoint
+      ? Math.atan2(Math.sin(position), Math.cos(position))
+      : position,
+    targetState ? targetState.velocity : 0,
+    targetState ? (motor?.options.stiffness ?? 0) : 0,
+    targetState ? (motor?.options.damping ?? 0) : 0,
+  );
+  target.body1().wakeUp();
+  target.body2().wakeUp();
+}
+
+export function applyEffort(
+  object: AxisJoint,
+  target: Rapier.ImpulseJoint,
+  value: number,
+): void {
+  const first = target.body1();
+  const second = target.body2();
+  const axis = new Vector3(1, 0, 0)
+    .applyQuaternion(new Quaternion().copy(target.frameX1()))
+    .applyQuaternion(new Quaternion().copy(first.rotation()));
+  const effort = axis.multiplyScalar(value);
+  if (object instanceof RevoluteJoint) {
+    second.addTorque(effort, true);
+    first.addTorque(effort.clone().negate(), true);
+    return;
+  }
+  const anchor = (body: Rapier.RigidBody, point: Rapier.Vector) =>
+    new Vector3()
+      .copy(point)
+      .applyQuaternion(new Quaternion().copy(body.rotation()))
+      .add(body.translation());
+  second.addForceAtPoint(effort, anchor(second, target.anchor2()), true);
+  first.addForceAtPoint(
+    effort.clone().negate(),
+    anchor(first, target.anchor1()),
+    true,
   );
 }
 
-export function readJointState(target: Rapier.ImpulseJoint) {
-  const first = target.body1(),
-    second = target.body2();
-  const frame = (
-    body: Rapier.RigidBody,
-    position: Rapier.Vector,
-    rotation: Rapier.Rotation,
-  ): Matrix4 => {
-    const matrix = new Matrix4().compose(
-      new Vector3().copy(body.translation()),
-      new Quaternion().copy(body.rotation()),
-      new Vector3(1, 1, 1),
+export interface JointBinding {
+  target: Rapier.ImpulseJoint | undefined;
+  frames: readonly [Matrix4, Matrix4];
+  bodies: readonly [Rapier.RigidBody, Rapier.RigidBody];
+  settings: number;
+  motor?: JointMotor;
+  motorSettings: number;
+  angle?: number;
+  position?: number;
+}
+
+export function prepareJoint(
+  api: API,
+  world: Rapier.World,
+  object: Joint,
+  first: Rapier.RigidBody,
+  second: Rapier.RigidBody,
+  previous?: JointBinding,
+): JointBinding {
+  object.validate();
+  const binding =
+    previous ??
+    ({
+      frames: [
+        object.getFrame(0, new Matrix4()),
+        object.getFrame(1, new Matrix4()),
+      ],
+      bodies: [first, second],
+      target: undefined,
+      settings: -1,
+      motorSettings: -1,
+    } satisfies JointBinding);
+  if (!previous) sampleJoint(object, binding, true);
+  const motor = object instanceof AxisJoint ? object.motor : undefined;
+  const motorSettings = motor?.settingsVersion ?? -1;
+  if (
+    object.enabled &&
+    object instanceof RevoluteJoint &&
+    motor?.active &&
+    motor.target &&
+    (motor.options.stiffness ?? 0) > 0 &&
+    Math.abs(motor.target.position - readJointState(object, binding).angle) >=
+      Math.PI
+  )
+    throw new Error(
+      "Revolute motor position must remain within pi radians of the current continuous angle; use intermediate targets for longer moves",
     );
-    return matrix.multiply(
-      new Matrix4().compose(
-        new Vector3().copy(position),
-        new Quaternion().copy(rotation),
-        new Vector3(1, 1, 1),
-      ),
+  if (
+    binding.settings === object.settingsVersion &&
+    binding.motor === motor &&
+    binding.motorSettings === motorSettings
+  )
+    return binding;
+  if (!object.enabled) {
+    if (binding.target) world.removeImpulseJoint(binding.target, true);
+    binding.target = undefined;
+  } else if (!binding.target) {
+    binding.target = createJoint(
+      api,
+      world,
+      object,
+      binding.frames[0],
+      binding.frames[1],
+      first,
+      second,
     );
-  };
-  return jointState(
-    frame(first, target.anchor1(), target.frameX1()),
-    frame(second, target.anchor2(), target.frameX2()),
-    new Vector3().copy(first.angvel()),
-    new Vector3().copy(second.angvel()),
-  );
+  } else configure(api, object, binding.target);
+  binding.settings = object.settingsVersion;
+  binding.motor = motor;
+  binding.motorSettings = motorSettings;
+  return binding;
+}
+
+function measureJoint(object: Joint, binding: JointBinding) {
+  return authoredJointState(object, binding.frames, (body, point) => {
+    const target = binding.bodies[body === object.options.body0 ? 0 : 1];
+    return new Vector3().copy(target.velocityAtPoint(point));
+  });
+}
+
+export function readJointState(object: Joint, binding: JointBinding) {
+  const state = measureJoint(object, binding);
+  if (object instanceof RevoluteJoint && binding.position !== undefined)
+    return { ...state, angle: binding.position };
+  return state;
+}
+
+export function sampleJoint(
+  object: Joint,
+  binding: JointBinding,
+  rebase = false,
+): void {
+  if (!(object instanceof RevoluteJoint)) return;
+  const angle = measureJoint(object, binding).angle;
+  if (rebase || binding.angle === undefined || binding.position === undefined)
+    binding.position = angle;
+  else
+    binding.position += Math.atan2(
+      Math.sin(angle - binding.angle),
+      Math.cos(angle - binding.angle),
+    );
+  binding.angle = angle;
 }

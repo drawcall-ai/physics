@@ -1,7 +1,11 @@
-import { Mesh, Object3D } from "three";
-import { type PhysicsMaterial, RigidBody } from "@drawcall/physics";
-import type { PhysicsWorld, Vec3 } from "@drawcall/physics";
-import { numeric, numbers, schemas, target } from "./layer.js";
+import { Mesh, Object3D, Quaternion, Vector3 } from "three";
+import {
+  type PhysicsMaterial,
+  RigidBody,
+  splitTransform,
+} from "@drawcall/physics";
+import type { PhysicsWorld, MassProperties, Vec3 } from "@drawcall/physics";
+import { attribute, numeric, numbers, schemas, target } from "./layer.js";
 import type { Layer } from "./layer.js";
 
 export function vector(
@@ -12,25 +16,19 @@ export function vector(
 ): Vec3 {
   const values = numbers(layer, path, name);
   if (!values) return fallback;
-  const [x, y, z] = values;
-  if (
-    values.length !== 3 ||
-    x === undefined ||
-    y === undefined ||
-    z === undefined
-  )
-    throw new Error(`Expected vector ${path}.${name}`);
-  return [x, y, z];
+  if (values.length !== 3) throw new Error(`Expected vector ${path}.${name}`);
+  return new Vector3().fromArray(values).toArray();
 }
 
 export function wrapBody(
   object: Object3D,
   world: PhysicsWorld,
   type: "static" | "dynamic" | "kinematic",
+  mass: MassProperties = {},
 ): RigidBody {
   const parent = object.parent;
   if (!parent) throw new Error("Cannot reconstruct an orphan rigid body");
-  const body = new RigidBody({ world, type, colliders: false });
+  const body = new RigidBody({ ...mass, world, type, colliders: false });
   body.name = object.name;
   body.position.copy(object.position);
   body.quaternion.copy(object.quaternion);
@@ -101,4 +99,47 @@ function readMaterial(layer: Layer, path: string): PhysicsMaterial {
   };
   if (material.density === 0) material.density = 1000;
   return material;
+}
+
+export function massProperties(
+  layer: Layer,
+  path: string,
+  object: Object3D,
+): MassProperties {
+  const mass = numeric(layer, path, "physics:mass", 0);
+  const optionalVector = (name: string) =>
+    attribute(layer, path, name) === undefined
+      ? undefined
+      : vector(layer, path, name, [0, 0, 0]);
+  let principalAxes: MassProperties["principalAxes"];
+  const axes = numbers(layer, path, "physics:principalAxes");
+  if (axes) {
+    if (axes.length !== 4)
+      throw new Error(`Expected quaternion ${path}.physics:principalAxes`);
+    if (axes.some((value) => value !== 0))
+      principalAxes = new Quaternion().fromArray(axes).toArray();
+  }
+  object.updateWorldMatrix(true, false);
+  const scale = splitTransform(object.matrixWorld).scale;
+  const center = optionalVector("physics:centerOfMass");
+  const inertia = optionalVector("physics:diagonalInertia");
+  const diagonalInertia = inertia?.some((value) => value !== 0)
+    ? inertia
+    : undefined;
+  if (!center && !diagonalInertia && !principalAxes)
+    return { mass: mass === 0 ? undefined : mass };
+  if (mass === 0 || !center || !diagonalInertia)
+    throw new Error(
+      `Explicit mass properties require mass, centerOfMass and diagonalInertia: ${path}`,
+    );
+  return {
+    mass,
+    centerOfMass: [
+      center[0] * scale.x,
+      center[1] * scale.y,
+      center[2] * scale.z,
+    ],
+    diagonalInertia,
+    principalAxes,
+  };
 }

@@ -28,6 +28,7 @@ import {
   SphereCollider,
   SphericalJoint,
   Joint,
+  JointMotor,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
 import {
@@ -43,7 +44,7 @@ beforeEach(() => {
 });
 afterEach(() => world.dispose());
 
-function doorAssembly() {
+function doorAssembly(model: "force" | "acceleration" = "force") {
   const scene = new Scene();
   const assembly = new Group();
   assembly.position.set(2, 3, 4);
@@ -68,14 +69,14 @@ function doorAssembly() {
     body0: frame,
     body1: door,
     limits: [0, Math.PI / 2],
-    drive: {
-      targetPosition: Math.PI / 4,
-      targetVelocity: 0.4,
-      stiffness: 100,
-      damping: 10,
-      maxForce: 40,
-    },
   });
+  new JointMotor({
+    joint: hinge,
+    model,
+    stiffness: 100,
+    damping: 10,
+    maxForce: 40,
+  }).setTarget({ position: Math.PI / 4, velocity: 0.4 });
   hinge.position.set(-0.49, 1.05, 0);
   assembly.add(frame, door, hinge);
   return { scene, frame, door, hinge };
@@ -162,53 +163,58 @@ def Cube "Crate" (
     imported.dispose();
   });
 
-  it("roundtrips a transformed motorized door, visual meshes, compound shapes, and references", async () => {
-    const { scene, door, hinge } = doorAssembly();
-    const before = new Vector3().setFromMatrixPosition(
-      hinge.getFrame(0, new Matrix4()),
-    );
-    const bytes = await new PhysicsUSDExporter().parseAsync(scene);
-    const result = await new PhysicsUSDLoader().parseAsync(bytes);
-    const bodies = result
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    const joints = result
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof Joint);
-    expect(bodies).toHaveLength(2);
-    expect(joints).toHaveLength(1);
-    const frame = bodies.find((body) => body.name === "Frame");
-    const loadedDoor = bodies.find((body) => body.name === "Door");
-    expect(frame?.getColliders()).toHaveLength(3);
-    expect(loadedDoor?.options.mass).toBe(20);
-    expect(
-      loadedDoor
-        ?.getWorldPosition(new Vector3())
-        .distanceTo(door.getWorldPosition(new Vector3())),
-    ).toBeLessThan(1e-5);
-    const joint = joints[0];
-    if (!(joint instanceof RevoluteJoint))
-      throw new Error("Missing revolute joint");
-    expect(joint.options.body0).toBe(frame);
-    expect(joint.options.body1).toBe(loadedDoor);
-    expect(joint.options.limits).toEqual(hinge.options.limits);
-    expect(joint.options.drive?.stiffness).toBeCloseTo(100);
-    expect(joint.options.drive?.damping).toBeCloseTo(10);
-    expect(joint.options.drive?.targetVelocity).toBeCloseTo(0.4);
-    expect(joint.options.drive?.maxForce).toBe(40);
-    expect(
-      new Vector3()
-        .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
-        .distanceTo(before),
-    ).toBeLessThan(1e-5);
-    let meshes = 0;
-    result.traverse((object) => {
-      if (object instanceof Mesh) meshes++;
-    });
-    expect(meshes).toBe(4);
-    expect(result.gravity).toEqual([0, -9.81, 0]);
-    expect(door.parent?.children).toContain(hinge);
-  });
+  it.each(["force", "acceleration"] as const)(
+    "roundtrips a transformed door with a %s motor, meshes, compound shapes, and references",
+    async (model) => {
+      const { scene, door, hinge } = doorAssembly(model);
+      const before = new Vector3().setFromMatrixPosition(
+        hinge.getFrame(0, new Matrix4()),
+      );
+      const bytes = await new PhysicsUSDExporter().parseAsync(scene);
+      const result = await new PhysicsUSDLoader().parseAsync(bytes);
+      const bodies = result
+        .getObjectsByProperty("isObject3D", true)
+        .filter((object) => object instanceof RigidBody);
+      const joints = result
+        .getObjectsByProperty("isObject3D", true)
+        .filter((object) => object instanceof Joint);
+      expect(bodies).toHaveLength(2);
+      expect(joints).toHaveLength(1);
+      const frame = bodies.find((body) => body.name === "Frame");
+      const loadedDoor = bodies.find((body) => body.name === "Door");
+      expect(frame?.getColliders()).toHaveLength(3);
+      expect(loadedDoor?.options.mass).toBe(20);
+      expect(
+        loadedDoor
+          ?.getWorldPosition(new Vector3())
+          .distanceTo(door.getWorldPosition(new Vector3())),
+      ).toBeLessThan(1e-5);
+      const joint = joints[0];
+      if (!(joint instanceof RevoluteJoint))
+        throw new Error("Missing revolute joint");
+      expect(joint.options.body0).toBe(frame);
+      expect(joint.options.body1).toBe(loadedDoor);
+      expect(joint.limits).toEqual(hinge.limits);
+      expect(joint.motor?.options.model).toBe(model);
+      expect(joint.motor?.options.stiffness).toBeCloseTo(100);
+      expect(joint.motor?.options.damping).toBeCloseTo(10);
+      expect(joint.motor?.options.maxForce).toBe(40);
+      expect(joint.motor?.target?.position).toBeCloseTo(Math.PI / 4);
+      expect(joint.motor?.target?.velocity).toBeCloseTo(0.4);
+      expect(
+        new Vector3()
+          .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
+          .distanceTo(before),
+      ).toBeLessThan(1e-5);
+      let meshes = 0;
+      result.traverse((object) => {
+        if (object instanceof Mesh) meshes++;
+      });
+      expect(meshes).toBe(4);
+      expect(result.gravity).toEqual([0, -9.81, 0]);
+      expect(door.parent?.children).toContain(hinge);
+    },
+  );
 
   it("preserves camera prim types through the overlay", async () => {
     const { scene } = doorAssembly();
@@ -231,14 +237,13 @@ def Cube "Crate" (
       restitution: 0.2,
     };
     body.add(
-      new BoxCollider({ size: [1, 2, 3], material }),
+      new BoxCollider({ size: [1, 2, 3] }).setMaterial(material),
       new SphereCollider({ radius: 0.4 }),
       new CapsuleCollider({ radius: 0.2, length: 1 }),
       new CylinderCollider({ radius: 0.3, height: 0.8 }),
       new MeshCollider({
-        geometry: new BoxGeometry(),
         approximation: "convexHull",
-      }),
+      }).setGeometry(new BoxGeometry()),
     );
     const options = { body0: null, body1: body };
     scene.add(
@@ -248,9 +253,8 @@ def Cube "Crate" (
       new DistanceJoint({ ...options, limits: [0, 2] }),
       new PrismaticJoint({
         ...options,
-        limits: [-1, 1],
         axis: "Z",
-        drive: { targetPosition: 0.4, stiffness: 50, damping: 5 },
+        limits: [-1, 1],
       }),
     );
     const result = new PhysicsUSDLoader().parse(
@@ -267,19 +271,24 @@ def Cube "Crate" (
       "DistanceJoint",
       "PrismaticJoint",
     ]);
-    expect(
-      result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody)[0]
-        ?.getColliders()
-        .map((collider) => collider.shape().kind),
-    ).toEqual(["box", "sphere", "capsule", "cylinder", "mesh"]);
-    expect(
-      result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody)[0]
-        ?.getColliders()[0]?.material,
-    ).toMatchObject(material);
+    const colliders = result
+      .getObjectsByProperty("isObject3D", true)
+      .find((object) => object instanceof RigidBody)
+      ?.getColliders();
+    expect(colliders?.map((collider) => collider.shape().kind)).toEqual([
+      "box",
+      "sphere",
+      "capsule",
+      "cylinder",
+      "mesh",
+    ]);
+    expect(colliders?.slice(0, 4).map((collider) => collider.shape())).toEqual([
+      { kind: "box", size: [1, 2, 3] },
+      { kind: "sphere", radius: 0.4 },
+      { kind: "capsule", radius: 0.2, length: 1 },
+      { kind: "cylinder", radius: 0.3, height: 0.8 },
+    ]);
+    expect(colliders?.[0]?.material).toMatchObject(material);
   });
 
   it("imports independently authored standard USDA, including a mesh carrying a body schema", () => {
@@ -294,6 +303,8 @@ def Cube "Crate" (
 {
  double size = 2
  float physics:mass = 7
+ float3 physics:diagonalInertia = (0, 0, 0)
+ quatf physics:principalAxes = (0, 0, 0, 0)
  double3 xformOp:translate = (1, 2, 3)
  uniform token[] xformOpOrder = ["xformOp:translate"]
 }`);
@@ -301,6 +312,8 @@ def Cube "Crate" (
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody)[0];
     expect(body?.options.mass).toBe(7);
+    expect(body?.options.diagonalInertia).toBeUndefined();
+    expect(body?.options.principalAxes).toBeUndefined();
     expect(body?.getWorldPosition(new Vector3()).toArray()).toEqual([1, 2, 3]);
     expect(body?.getColliders()[0]?.position.toArray()).toEqual([0, 0, 0]);
     expect(body?.getColliders()[0]?.shape()).toEqual({
@@ -319,23 +332,20 @@ def Cube "Crate" (
     expect(text).toContain('"PhysicsRigidBodyAPI"');
     expect(text).toContain("physics:upperLimit = 90");
     expect(text).toContain("drive:angular:physics:targetPosition = 45");
+    expect(text).toContain("PhysicsDriveAPI:angular");
     expect(text).toContain('displayName = "Door"');
     expect(text).not.toContain("glts:");
   });
 
   it("rejects unsupported export settings instead of dropping semantics", async () => {
     const { scene, door } = doorAssembly();
-    door.options.gravityScale = 0;
+    door.setGravityScale(0);
     await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
       "gravity scale",
     );
-    door.options.gravityScale = 1;
-    door.options.colliders = false;
+    door.setGravityScale(1);
     door.add(
-      new BoxCollider({
-        size: [1, 1, 1],
-        collisionGroups: { membership: 1, filter: 2 },
-      }),
+      new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
     );
     await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
       "collision filter",
@@ -378,7 +388,7 @@ def Cube "Crate" (
     ).toBe(10);
   });
 
-  it("rejects reset transform stacks, inline metadata and unsupported mass properties", () => {
+  it("rejects reset transform stacks and inline metadata", () => {
     const header = "#usda 1.0\n(\n metersPerUnit = 1\n)\n";
     expect(() =>
       new PhysicsUSDLoader().parse(
@@ -392,21 +402,15 @@ def Cube "Crate" (
           'def Xform "Body"\n{\n uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate"]\n double3 xformOp:translate = (2, 0, 0)\n}',
       ),
     ).toThrow("transform operation");
-    expect(() =>
-      new PhysicsUSDLoader().parse(
-        header +
-          'def Xform "Body"\n{\n point3f physics:centerOfMass = (1, 0, 0)\n}',
-      ),
-    ).toThrow("Unsupported USD physics property");
   });
 
-  it("retains shared physics material identity across colliders", async () => {
+  it("retains physics material values across colliders", async () => {
     const scene = new Scene();
     const body = new RigidBody({ colliders: false });
     const material = { density: 234, staticFriction: 0.8 };
     body.add(
-      new BoxCollider({ size: [1, 1, 1], material }),
-      new SphereCollider({ radius: 1, material }),
+      new BoxCollider().setMaterial(material),
+      new SphereCollider().setMaterial(material),
     );
     scene.add(body);
     const result = new PhysicsUSDLoader().parse(
@@ -416,7 +420,7 @@ def Cube "Crate" (
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody)[0]
       ?.getColliders();
-    expect(colliders?.[0]?.material).toBe(colliders?.[1]?.material);
+    expect(colliders?.[0]?.material).toEqual(colliders?.[1]?.material);
   });
   it("retains imported gravity by default and permits an explicit export override", async () => {
     const { scene } = doorAssembly();
@@ -539,7 +543,7 @@ it("exports static groups without rigid-body schemas and preserves their compoun
   try {
     const copy = loaded.getObjectByName("Floor");
     if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
-    expect(copy.options.type).toBe("static");
+    expect(copy.bodyType).toBe("static");
     expect(copy.getColliders()).toHaveLength(2);
     expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
   } finally {

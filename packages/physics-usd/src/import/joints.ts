@@ -1,6 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
   DistanceJoint,
+  AxisJoint,
+  JointMotor,
   FixedJoint,
   PrismaticJoint,
   RevoluteJoint,
@@ -9,7 +11,6 @@ import {
 import type {
   AxisJointOptions,
   Joint,
-  JointDrive,
   JointOptions,
   RigidBody,
 } from "@drawcall/physics";
@@ -18,8 +19,8 @@ import {
   boolean,
   numeric,
   numbers,
-  schemas,
   target,
+  schemas,
   token,
 } from "./layer.js";
 import type { Layer } from "./layer.js";
@@ -27,28 +28,16 @@ import type { Layer } from "./layer.js";
 function frame(layer: Layer, path: string, index: number): Matrix4 {
   const p = numbers(layer, path, `physics:localPos${index}`) ?? [0, 0, 0];
   const q = numbers(layer, path, `physics:localRot${index}`) ?? [0, 0, 0, 1];
-  const [x, y, z] = p;
-  const [qx, qy, qz, qw] = q;
-  if (
-    p.length !== 3 ||
-    q.length !== 4 ||
-    x === undefined ||
-    y === undefined ||
-    z === undefined ||
-    qx === undefined ||
-    qy === undefined ||
-    qz === undefined ||
-    qw === undefined
-  )
+  if (p.length !== 3 || q.length !== 4)
     throw new Error(`Invalid joint frame on ${path}`);
   return new Matrix4().compose(
-    new Vector3(x, y, z),
-    new Quaternion(qx, qy, qz, qw),
+    new Vector3().fromArray(p),
+    new Quaternion().fromArray(q),
     new Vector3(1, 1, 1),
   );
 }
 
-export function readJoint(
+function createJoint(
   layer: Layer,
   path: string,
   type: string,
@@ -73,8 +62,6 @@ export function readJoint(
     body1,
     frame0: frame(layer, path, 0),
     frame1: frame(layer, path, 1),
-    collideConnected: boolean(layer, path, "physics:collisionEnabled", false),
-    enabled: boolean(layer, path, "physics:jointEnabled", true),
   };
   if (type === "PhysicsFixedJoint") return new FixedJoint(options);
   if (type === "PhysicsSphericalJoint") {
@@ -98,6 +85,7 @@ export function readJoint(
       ],
     });
   }
+
   if (type !== "PhysicsRevoluteJoint" && type !== "PhysicsPrismaticJoint")
     throw new Error(`Unsupported USD joint ${type}`);
   const axis = token(layer, path, "physics:axis", "X");
@@ -105,37 +93,65 @@ export function readJoint(
     throw new Error(`Invalid joint axis ${axis}`);
   const angular = type === "PhysicsRevoluteJoint";
   const factor = angular ? Math.PI / 180 : 1;
-  const axisOptions: AxisJointOptions = { ...options, axis };
+  let limits: readonly [number, number] | undefined;
   const lower = attribute(layer, path, "physics:lowerLimit");
   const upper = attribute(layer, path, "physics:upperLimit");
   if (lower !== undefined || upper !== undefined) {
     if (lower === undefined || upper === undefined)
       throw new Error(`Both finite joint limits are required: ${path}`);
-    axisOptions.limits = [
+    limits = [
       numeric(layer, path, "physics:lowerLimit", 0) * factor,
       numeric(layer, path, "physics:upperLimit", 0) * factor,
     ];
   }
-  const driveAxis = angular ? "angular" : "linear";
-  if (!schemas(layer, path).includes(`PhysicsDriveAPI:${driveAxis}`))
-    return angular
-      ? new RevoluteJoint(axisOptions)
-      : new PrismaticJoint(axisOptions);
-  const prefix = `drive:${driveAxis}:physics:`;
-  const driveType = token(layer, path, `${prefix}type`, "force");
-  if (driveType !== "force" && driveType !== "acceleration")
-    throw new Error(`Unsupported USD drive type ${driveType}`);
-  const drive: JointDrive = {
-    type: driveType,
-    targetPosition: numeric(layer, path, `${prefix}targetPosition`, 0) * factor,
-    targetVelocity: numeric(layer, path, `${prefix}targetVelocity`, 0) * factor,
-    stiffness: numeric(layer, path, `${prefix}stiffness`, 0) / factor,
-    damping: numeric(layer, path, `${prefix}damping`, 0) / factor,
-  };
-  if (attribute(layer, path, `${prefix}maxForce`) !== undefined)
-    drive.maxForce = numeric(layer, path, `${prefix}maxForce`, 0);
-  axisOptions.drive = drive;
+  const axisOptions: AxisJointOptions = { ...options, axis, limits };
   return angular
     ? new RevoluteJoint(axisOptions)
     : new PrismaticJoint(axisOptions);
+}
+
+function readMotor(layer: Layer, path: string, joint: AxisJoint): void {
+  const angular = joint instanceof RevoluteJoint;
+  const axis = angular ? "angular" : "linear";
+  if (!schemas(layer, path).includes(`PhysicsDriveAPI:${axis}`)) return;
+  const prefix = `drive:${axis}:physics:`;
+  const model = token(layer, path, `${prefix}type`, "force");
+  if (model !== "force" && model !== "acceleration")
+    throw new Error(`Unsupported USD drive type ${model}: ${path}`);
+  const factor = angular ? Math.PI / 180 : 1;
+  const maxForce = attribute(layer, path, `${prefix}maxForce`);
+  const motor = new JointMotor({
+    joint,
+    model,
+    stiffness: numeric(layer, path, `${prefix}stiffness`, 0) / factor,
+    damping: numeric(layer, path, `${prefix}damping`, 0) / factor,
+    maxForce:
+      maxForce === undefined || maxForce === Infinity
+        ? undefined
+        : numeric(layer, path, `${prefix}maxForce`, 0),
+  });
+  motor.setTarget({
+    position: numeric(layer, path, `${prefix}targetPosition`, 0) * factor,
+    velocity: numeric(layer, path, `${prefix}targetVelocity`, 0) * factor,
+  });
+}
+
+export function readJoint(
+  layer: Layer,
+  path: string,
+  type: string,
+  bodies: Map<string, RigidBody>,
+): Joint {
+  const joint = createJoint(layer, path, type, bodies);
+  try {
+    joint.setEnabled(boolean(layer, path, "physics:jointEnabled", true));
+    joint.setCollideConnected(
+      boolean(layer, path, "physics:collisionEnabled", false),
+    );
+    if (joint instanceof AxisJoint) readMotor(layer, path, joint);
+    return joint;
+  } catch (error) {
+    joint.dispose();
+    throw error;
+  }
 }

@@ -26,10 +26,10 @@ export function writeJoint(
         ? "PhysicsRevoluteJoint"
         : joint instanceof PrismaticJoint
           ? "PhysicsPrismaticJoint"
-          : joint instanceof SphericalJoint
-            ? "PhysicsSphericalJoint"
-            : joint instanceof DistanceJoint
-              ? "PhysicsDistanceJoint"
+          : joint instanceof DistanceJoint
+            ? "PhysicsDistanceJoint"
+            : joint instanceof SphericalJoint
+              ? "PhysicsSphericalJoint"
               : undefined;
   if (!type) throw new Error(`Unsupported joint ${joint.constructor.name}`);
   const prim = new Prim(name, type);
@@ -42,8 +42,8 @@ export function writeJoint(
   if (body0) prim.properties.push(`rel physics:body0 = <${body0}>`);
   prim.properties.push(
     `rel physics:body1 = <${body1}>`,
-    `bool physics:jointEnabled = ${joint.options.enabled ?? true}`,
-    `bool physics:collisionEnabled = ${joint.options.collideConnected ?? false}`,
+    `bool physics:jointEnabled = ${joint.enabled}`,
+    `bool physics:collisionEnabled = ${joint.collideConnected}`,
   );
   for (const index of [0, 1] as const) {
     const matrix = joint.getFrame(index, new Matrix4());
@@ -56,32 +56,36 @@ export function writeJoint(
   }
   if (joint instanceof DistanceJoint)
     prim.properties.push(
-      `float physics:minDistance = ${joint.options.limits[0]}`,
-      `float physics:maxDistance = ${joint.options.limits[1]}`,
+      `float physics:minDistance = ${joint.limits[0]}`,
+      `float physics:maxDistance = ${joint.limits[1]}`,
     );
   if (!(joint instanceof AxisJoint)) return prim;
   const factor = joint instanceof RevoluteJoint ? degrees : 1;
   prim.properties.push(
     `uniform token physics:axis = "${joint.options.axis ?? "Y"}"`,
   );
-  if (joint.options.limits)
+  if (joint.limits)
     prim.properties.push(
-      `float physics:lowerLimit = ${joint.options.limits[0] * factor}`,
-      `float physics:upperLimit = ${joint.options.limits[1] * factor}`,
+      `float physics:lowerLimit = ${joint.limits[0] * factor}`,
+      `float physics:upperLimit = ${joint.limits[1] * factor}`,
     );
-  if (!joint.options.drive) return prim;
-  const drive = joint.options.drive;
+  const motor = joint.motor;
+  if (!motor) return prim;
+  if (!motor.enabled || !motor.target)
+    throw new Error(
+      "USD PhysicsDriveAPI cannot represent a disabled or untargeted motor; dispose it before export",
+    );
   const axis = joint instanceof RevoluteJoint ? "angular" : "linear";
   const prefix = `drive:${axis}:physics:`;
   prim.schemas.push(`PhysicsDriveAPI:${axis}`);
   prim.properties.push(
-    `uniform token ${prefix}type = "${drive.type ?? "force"}"`,
-    `float ${prefix}targetPosition = ${(drive.targetPosition ?? 0) * factor}`,
-    `float ${prefix}targetVelocity = ${(drive.targetVelocity ?? 0) * factor}`,
-    `float ${prefix}stiffness = ${(drive.stiffness ?? 0) / factor}`,
-    `float ${prefix}damping = ${(drive.damping ?? 0) / factor}`,
+    `uniform token ${prefix}type = "${motor.options.model ?? "force"}"`,
+    `float ${prefix}stiffness = ${(motor.options.stiffness ?? 0) / factor}`,
+    `float ${prefix}damping = ${(motor.options.damping ?? 0) / factor}`,
+    `float ${prefix}targetPosition = ${motor.target.position * factor}`,
+    `float ${prefix}targetVelocity = ${motor.target.velocity * factor}`,
   );
-  if (drive.maxForce !== undefined)
-    prim.properties.push(`float ${prefix}maxForce = ${drive.maxForce}`);
+  if (motor.options.maxForce !== undefined)
+    prim.properties.push(`float ${prefix}maxForce = ${motor.options.maxForce}`);
   return prim;
 }
