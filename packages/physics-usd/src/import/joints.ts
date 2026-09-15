@@ -28,23 +28,11 @@ import type { Layer } from "./layer.js";
 function frame(layer: Layer, path: string, index: number): Matrix4 {
   const p = numbers(layer, path, `physics:localPos${index}`) ?? [0, 0, 0];
   const q = numbers(layer, path, `physics:localRot${index}`) ?? [0, 0, 0, 1];
-  const [x, y, z] = p;
-  const [qx, qy, qz, qw] = q;
-  if (
-    p.length !== 3 ||
-    q.length !== 4 ||
-    x === undefined ||
-    y === undefined ||
-    z === undefined ||
-    qx === undefined ||
-    qy === undefined ||
-    qz === undefined ||
-    qw === undefined
-  )
+  if (p.length !== 3 || q.length !== 4)
     throw new Error(`Invalid joint frame on ${path}`);
   return new Matrix4().compose(
-    new Vector3(x, y, z),
-    new Quaternion(qx, qy, qz, qw),
+    new Vector3().fromArray(p),
+    new Quaternion().fromArray(q),
     new Vector3(1, 1, 1),
   );
 }
@@ -154,17 +142,12 @@ export function readJoint(
   type: string,
   bodies: Map<string, RigidBody>,
 ): Joint {
-  const enabled = boolean(layer, path, "physics:jointEnabled", true);
-  const collideConnected = boolean(
-    layer,
-    path,
-    "physics:collisionEnabled",
-    false,
-  );
   const joint = createJoint(layer, path, type, bodies);
   try {
-    joint.setEnabled(enabled);
-    joint.setCollideConnected(collideConnected);
+    joint.setEnabled(boolean(layer, path, "physics:jointEnabled", true));
+    joint.setCollideConnected(
+      boolean(layer, path, "physics:collisionEnabled", false),
+    );
     if (joint instanceof AxisJoint) readMotor(layer, path, joint);
     return joint;
   } catch (error) {

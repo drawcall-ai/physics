@@ -1,25 +1,11 @@
 import { expect, it } from "vitest";
 import { Vector3 } from "three";
-import {
-  JointMotor,
-  PrismaticJoint,
-  RevoluteJoint,
-  RigidBody,
-} from "@drawcall/physics";
-import { setupWorld } from "../src/index.js";
-
-function body(mass = 1) {
-  return new RigidBody({
-    colliders: false,
-    mass,
-    centerOfMass: [0, 0, 0],
-    diagonalInertia: [mass, mass, mass],
-  });
-}
+import { JointMotor, PrismaticJoint, RevoluteJoint } from "@drawcall/physics";
+import { createWorld, inertialBody } from "./fixtures.js";
 
 it("keeps an untargeted motor passive, brakes at zero velocity, and removes actuation when disabled or disposed", async () => {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-  const moving = body().setVelocity({ linear: new Vector3(1, 0, 0) });
+  const world = await createWorld();
+  const moving = inertialBody().setVelocity({ linear: new Vector3(1, 0, 0) });
   const slider = new PrismaticJoint({ body0: null, body1: moving, axis: "X" });
   const motor = new JointMotor({ joint: slider, damping: 10 });
   world.update(0.03);
@@ -39,20 +25,19 @@ it("keeps an untargeted motor passive, brakes at zero velocity, and removes actu
   world.update(0.03);
   expect(slider.getState().velocity).toBeCloseTo(released, 5);
   expect(slider.disposed).toBe(false);
-  world.dispose();
 });
 
 it("drives hinge and slider position natively while reporting physical limits", async () => {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const world = await createWorld();
   const hinge = new RevoluteJoint({
     body0: null,
-    body1: body(),
+    body1: inertialBody(),
     axis: "Z",
     limits: [-0.25, 0.25],
   });
   const slider = new PrismaticJoint({
     body0: null,
-    body1: body(),
+    body1: inertialBody(),
     axis: "X",
     limits: [-2, 2],
   });
@@ -71,7 +56,6 @@ it("drives hinge and slider position natively while reporting physical limits", 
   motor.setTarget({ position: -1 });
   for (let i = 0; i < 200; i++) world.update(0.01);
   expect(slider.getState().position).toBeCloseTo(-1, 2);
-  world.dispose();
 });
 
 it("limits native motor force and torque independently of timestep and model", async () => {
@@ -79,31 +63,38 @@ it("limits native motor force and torque independently of timestep and model", a
   for (const model of models)
     for (const rotary of [false, true])
       for (const dt of [0.01, 0.02]) {
-        const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: dt });
+        const world = await createWorld({ fixedDelta: dt });
         const joint = rotary
-          ? new RevoluteJoint({ body0: null, body1: body(2), axis: "Z" })
-          : new PrismaticJoint({ body0: null, body1: body(2), axis: "X" });
+          ? new RevoluteJoint({
+              body0: null,
+              body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
+              axis: "Z",
+            })
+          : new PrismaticJoint({
+              body0: null,
+              body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
+              axis: "X",
+            });
         new JointMotor({ joint, model, damping: 1000, maxForce: 2 }).setTarget({
           velocity: 100,
         });
         world.update(dt);
         expect(joint.getState().velocity).toBeCloseTo(dt, 5);
-        world.dispose();
       }
 });
 
 it("preserves Rapier acceleration-based motor behavior across body masses", async () => {
   const models: ("force" | "acceleration")[] = ["force", "acceleration"];
   for (const model of models) {
-    const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+    const world = await createWorld();
     const light = new PrismaticJoint({
       body0: null,
-      body1: body(1),
+      body1: inertialBody(),
       axis: "X",
     });
     const heavy = new PrismaticJoint({
       body0: null,
-      body1: body(10),
+      body1: inertialBody({ mass: 10, diagonalInertia: [10, 10, 10] }),
       axis: "X",
     });
     new JointMotor({ joint: light, model, damping: 10 }).setTarget({
@@ -122,14 +113,21 @@ it("preserves Rapier acceleration-based motor behavior across body masses", asyn
       expect(heavy.getState().velocity).toBeLessThan(
         light.getState().velocity / 5,
       );
-    world.dispose();
   }
 });
 
 it("rejects motor/effort conflicts before applying any forces and permits explicit cancellation", async () => {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-  const first = new PrismaticJoint({ body0: null, body1: body(), axis: "X" });
-  const second = new PrismaticJoint({ body0: null, body1: body(), axis: "X" });
+  const world = await createWorld();
+  const first = new PrismaticJoint({
+    body0: null,
+    body1: inertialBody(),
+    axis: "X",
+  });
+  const second = new PrismaticJoint({
+    body0: null,
+    body1: inertialBody(),
+    axis: "X",
+  });
   const motor = new JointMotor({ joint: second, damping: 10 });
   world.update(0);
   first.setEffort(10);
@@ -143,5 +141,4 @@ it("rejects motor/effort conflicts before applying any forces and permits explic
   world.update(0);
   expect(first.getState().velocity).toBeCloseTo(0.1, 5);
   expect(second.getState().velocity).toBeCloseTo(0, 5);
-  world.dispose();
 });

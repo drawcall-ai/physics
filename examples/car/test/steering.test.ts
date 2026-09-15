@@ -1,8 +1,7 @@
 import { expect, test } from "vitest";
 import { Vector3 } from "three";
-import { RevoluteJoint } from "@drawcall/physics";
 import { setupWorld } from "@drawcall/physics-rapier";
-import { createCar, simulationOptions, specification } from "../model";
+import { createCar, simulationOptions } from "../model";
 import { createRoad } from "../road";
 import { driveCar } from "../drive";
 
@@ -35,17 +34,8 @@ test.each([
             .applyQuaternion(wheel.tire.quaternion)
             .applyQuaternion(car.chassis.quaternion.clone().invert());
           const yaw = Math.atan2(-axle.z, axle.x);
-          if (!(wheel.steering instanceof RevoluteJoint))
-            throw new Error("Front wheel needs a steering joint");
-          const steer =
-            (direction * 0.45) / (1 + Math.abs(driver.telemetry.speed) * 0.06);
-          const target =
-            direction === 0
-              ? 0
-              : Math.atan(
-                  specification.wheelbase /
-                    (specification.wheelbase / Math.tan(steer) - wheel.x),
-                );
+          const target = wheel.servo?.target?.position;
+          if (target === undefined) throw new Error("Missing steering target");
           if (direction === 0) expect(target).toBe(0);
           else {
             expect(target * direction).toBeGreaterThan((20 * Math.PI) / 180);

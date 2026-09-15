@@ -8,7 +8,11 @@ import {
   type Joint,
 } from "./joints.js";
 import { splitTransform } from "./transforms.js";
-import type { PhysicsVelocity, PhysicsJointState } from "./world.js";
+import type {
+  PhysicsVelocity,
+  PhysicsJointState,
+  AxisJointState,
+} from "./world.js";
 
 /** Authored velocity is independent of immutable creation options and backend reset snapshots. */
 const velocities = new WeakMap<RigidBody, PhysicsVelocity>();
@@ -56,7 +60,7 @@ export function authoredJointState(
     body: RigidBody,
     point: Vector3,
   ) => Vector3 = authoredVelocityAtPoint,
-): PhysicsJointState {
+): PhysicsJointState | AxisJointState {
   object.validate();
   const options = object.options;
   const frame = (index: 0 | 1): Matrix4 => {
@@ -114,9 +118,8 @@ export function authoredJointState(
     return { position: measured.angle, velocity: measured.angularVelocity };
   if (object instanceof AxisJoint)
     return { position: measured.position, velocity: measured.velocity };
-  if (object instanceof FixedJoint)
-    return { translation: measured.translation, rotation: measured.rotation };
-  return { distance: measured.distance };
+  const { velocity: _velocity, ...state } = measured;
+  return state;
 }
 
 /** Construction-time point velocity can use an explicit COM, but never infer one. */
@@ -164,7 +167,5 @@ export function jointState(
       linear1.clone().sub(linear0).dot(axis) +
       translation.dot(angular0.clone().cross(axis)),
     distance: translation.length(),
-    translation: translation.clone().applyQuaternion(rotation.clone().invert()),
-    rotation: relative,
   };
 }

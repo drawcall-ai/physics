@@ -6,12 +6,9 @@ import { Joint } from "./joints.js";
 export function clone<T extends Object3D>(root: T): T {
   const copies = new Map<Object3D, Object3D>();
   const joints: Joint[] = [];
-  const created: (RigidBody | Joint)[] = [];
   function copy<U extends Object3D>(source: U): U {
     const target = source.clone(false);
     copies.set(source, target);
-    if (target instanceof RigidBody || target instanceof Joint)
-      created.push(target);
     return target;
   }
   try {
@@ -24,12 +21,10 @@ export function clone<T extends Object3D>(root: T): T {
     for (const joint of joints) {
       const target = joint.cloneWithBodies(copies, false);
       copies.set(joint, target);
-      created.push(target);
     }
     if (root instanceof Joint) {
       const target = root.cloneWithBodies(copies, false);
       copies.set(root, target);
-      created.push(target);
       result = target;
     }
     for (const [source, target] of copies) {
@@ -45,7 +40,9 @@ export function clone<T extends Object3D>(root: T): T {
     if (!result) throw new Error("Missing cloned root");
     return result;
   } catch (error) {
-    for (const object of created.reverse()) object.dispose();
+    for (const object of [...copies.values()].reverse())
+      if (object instanceof RigidBody || object instanceof Joint)
+        object.dispose();
     throw error;
   }
 }

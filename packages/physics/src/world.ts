@@ -1,4 +1,4 @@
-import type { Matrix4, Vector3, Quaternion, Object3D } from "three";
+import type { Matrix4, Vector3, Object3D } from "three";
 import { Joint, AxisJoint } from "./joints.js";
 import { RigidBody } from "./body.js";
 import {
@@ -24,18 +24,12 @@ export interface AxisJointState {
   position: number;
   velocity: number;
 }
-export interface FixedJointState {
-  translation: Vector3;
-  rotation: Quaternion;
-}
-export interface SphericalJointState {
+export interface PhysicsJointState {
+  angle: number;
+  angularVelocity: number;
+  position: number;
   distance: number;
 }
-export interface DistanceJointState {
-  distance: number;
-}
-export type PhysicsJointState =
-  AxisJointState | FixedJointState | SphericalJointState | DistanceJointState;
 export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
   readonly includeSensors?: boolean;
@@ -73,7 +67,7 @@ export interface PhysicsWorld {
   applyForce(object: RigidBody, force: Vector3, point?: Vector3): void;
   wake(object: RigidBody): void;
   sleep(object: RigidBody): void;
-  getJointState(object: Joint): PhysicsJointState;
+  getJointState(object: Joint): PhysicsJointState | AxisJointState;
   onBeforeStep(callback: (delta: number) => void): () => void;
   onAfterStep(callback: (delta: number) => void): () => void;
 }
@@ -186,7 +180,7 @@ export class AuthoringWorld implements PhysicsWorld {
   sleep(object: RigidBody): void {
     this.assertObject(object);
   }
-  getJointState(object: Joint): PhysicsJointState {
+  getJointState(object: Joint): PhysicsJointState | AxisJointState {
     this.assertObject(object);
     return authoredJointState(object);
   }

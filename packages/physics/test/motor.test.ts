@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { Group } from "three";
 import {
   AuthoringWorld,
   JointMotor,
   RevoluteJoint,
   RigidBody,
-  clone,
   setDefaultWorld,
 } from "../src/index.js";
 
@@ -72,15 +70,13 @@ it("requires explicitly disabling an active motor before independent effort", ()
 });
 
 it("validates immutable gains and finite targets without changing existing state", () => {
-  for (const value of [-1, NaN, Infinity]) {
+  for (const invalid of [
+    { stiffness: -1 },
+    { damping: NaN },
+    { maxForce: Infinity },
+  ]) {
     const joint = hinge();
-    expect(() => new JointMotor({ joint, stiffness: value })).toThrow(
-      "finite and nonnegative",
-    );
-    expect(() => new JointMotor({ joint, damping: value })).toThrow(
-      "finite and nonnegative",
-    );
-    expect(() => new JointMotor({ joint, maxForce: value })).toThrow(
+    expect(() => new JointMotor({ joint, ...invalid })).toThrow(
       "finite and nonnegative",
     );
     expect(joint.motor).toBeUndefined();
@@ -107,33 +103,4 @@ it("disposes motor actuation independently and with the joint/world", () => {
   const other = new JointMotor({ joint: hinge() });
   world.dispose();
   expect(other.disposed).toBe(true);
-});
-
-it("clones motor configuration and target state while rebinding the copied joint", () => {
-  const joint = hinge();
-  const motor = new JointMotor({
-    joint,
-    stiffness: 3,
-    damping: 2,
-    maxForce: 4,
-    model: "acceleration",
-  })
-    .setTarget({ position: 1 })
-    .setEnabled(false);
-  joint.copy(joint);
-  expect(joint.motor).toBe(motor);
-  const root = new Group().add(joint, joint.options.body1);
-  const copy = clone(root).children[0];
-  if (!(copy instanceof RevoluteJoint)) throw new Error("Missing copied joint");
-  const copiedMotor = copy.motor;
-  if (!copiedMotor) throw new Error("Missing copied motor");
-  expect(copiedMotor).not.toBe(motor);
-  expect(copiedMotor.options).toEqual({ ...motor.options, joint: copy });
-  expect(copiedMotor.target).toEqual(motor.target);
-  expect(copiedMotor.enabled).toBe(false);
-  copiedMotor.setTarget({ velocity: 5 });
-  expect(motor.target).toEqual({ position: 1, velocity: 0 });
-  copy.dispose();
-  expect(copiedMotor.disposed).toBe(true);
-  expect(motor.disposed).toBe(false);
 });

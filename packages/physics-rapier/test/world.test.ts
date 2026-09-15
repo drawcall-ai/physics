@@ -172,11 +172,11 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   joint.setEnabled(false);
   for (let i = 0; i < 15; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeLessThan(3);
-  expect(joint.getState().translation.length()).toBeGreaterThanOrEqual(0);
+  expect(joint.getState().distance).toBeGreaterThanOrEqual(0);
   joint.setEnabled(true);
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeCloseTo(3, 2);
-  expect(joint.getState().translation.length()).toBeLessThan(0.01);
+  expect(joint.getState().distance).toBeLessThan(0.01);
   world.dispose();
 });
 

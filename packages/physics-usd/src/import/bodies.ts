@@ -1,4 +1,4 @@
-import { Mesh, Object3D } from "three";
+import { Mesh, Object3D, Quaternion, Vector3 } from "three";
 import {
   type PhysicsMaterial,
   RigidBody,
@@ -16,15 +16,8 @@ export function vector(
 ): Vec3 {
   const values = numbers(layer, path, name);
   if (!values) return fallback;
-  const [x, y, z] = values;
-  if (
-    values.length !== 3 ||
-    x === undefined ||
-    y === undefined ||
-    z === undefined
-  )
-    throw new Error(`Expected vector ${path}.${name}`);
-  return [x, y, z];
+  if (values.length !== 3) throw new Error(`Expected vector ${path}.${name}`);
+  return new Vector3().fromArray(values).toArray();
 }
 
 export function wrapBody(
@@ -121,16 +114,10 @@ export function massProperties(
   let principalAxes: RigidBodyOptions["principalAxes"];
   const axes = numbers(layer, path, "physics:principalAxes");
   if (axes) {
-    const [x, y, z, w] = axes;
-    if (
-      axes.length !== 4 ||
-      x === undefined ||
-      y === undefined ||
-      z === undefined ||
-      w === undefined
-    )
+    if (axes.length !== 4)
       throw new Error(`Expected quaternion ${path}.physics:principalAxes`);
-    if (axes.some((value) => value !== 0)) principalAxes = [x, y, z, w];
+    if (axes.some((value) => value !== 0))
+      principalAxes = new Quaternion().fromArray(axes).toArray();
   }
   object.updateWorldMatrix(true, false);
   const scale = splitTransform(object.matrixWorld).scale;

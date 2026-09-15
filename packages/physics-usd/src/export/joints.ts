@@ -42,8 +42,8 @@ export function writeJoint(
   if (body0) prim.properties.push(`rel physics:body0 = <${body0}>`);
   prim.properties.push(
     `rel physics:body1 = <${body1}>`,
-    `bool physics:jointEnabled = ${joint.enabled ?? true}`,
-    `bool physics:collisionEnabled = ${joint.collideConnected ?? false}`,
+    `bool physics:jointEnabled = ${joint.enabled}`,
+    `bool physics:collisionEnabled = ${joint.collideConnected}`,
   );
   for (const index of [0, 1] as const) {
     const matrix = joint.getFrame(index, new Matrix4());
@@ -82,15 +82,9 @@ export function writeJoint(
     `uniform token ${prefix}type = "${motor.options.model ?? "force"}"`,
     `float ${prefix}stiffness = ${(motor.options.stiffness ?? 0) / factor}`,
     `float ${prefix}damping = ${(motor.options.damping ?? 0) / factor}`,
+    `float ${prefix}targetPosition = ${motor.target.position * factor}`,
+    `float ${prefix}targetVelocity = ${motor.target.velocity * factor}`,
   );
-  if (motor.target.position !== undefined)
-    prim.properties.push(
-      `float ${prefix}targetPosition = ${motor.target.position * factor}`,
-    );
-  if (motor.target.velocity !== undefined)
-    prim.properties.push(
-      `float ${prefix}targetVelocity = ${motor.target.velocity * factor}`,
-    );
   if (motor.options.maxForce !== undefined)
     prim.properties.push(`float ${prefix}maxForce = ${motor.options.maxForce}`);
   return prim;

@@ -217,7 +217,7 @@ export class RigidBody extends Group {
       : this.options.colliders === false
         ? []
         : meshes;
-    const colliders = sources.map((object) => {
+    return sources.map((object) => {
       let node: Object3D | null = object;
       while (node && node !== this) {
         if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
@@ -269,7 +269,6 @@ export class RigidBody extends Group {
         throw new Error("Triangle mesh colliders require static bodies");
       return collider;
     });
-    return colliders;
   }
   getMaterial(collider: Collider): Required<PhysicsMaterial> {
     const material = collider.material ?? this.material;

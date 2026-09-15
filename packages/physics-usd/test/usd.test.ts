@@ -44,7 +44,7 @@ beforeEach(() => {
 });
 afterEach(() => world.dispose());
 
-function doorAssembly() {
+function doorAssembly(model: "force" | "acceleration" = "force") {
   const scene = new Scene();
   const assembly = new Group();
   assembly.position.set(2, 3, 4);
@@ -72,6 +72,7 @@ function doorAssembly() {
   });
   new JointMotor({
     joint: hinge,
+    model,
     stiffness: 100,
     damping: 10,
     maxForce: 40,
@@ -162,54 +163,58 @@ def Cube "Crate" (
     imported.dispose();
   });
 
-  it("roundtrips a transformed door, visual meshes, compound shapes, and references", async () => {
-    const { scene, door, hinge } = doorAssembly();
-    const before = new Vector3().setFromMatrixPosition(
-      hinge.getFrame(0, new Matrix4()),
-    );
-    const bytes = await new PhysicsUSDExporter().parseAsync(scene);
-    const result = await new PhysicsUSDLoader().parseAsync(bytes);
-    const bodies = result
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    const joints = result
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof Joint);
-    expect(bodies).toHaveLength(2);
-    expect(joints).toHaveLength(1);
-    const frame = bodies.find((body) => body.name === "Frame");
-    const loadedDoor = bodies.find((body) => body.name === "Door");
-    expect(frame?.getColliders()).toHaveLength(3);
-    expect(loadedDoor?.options.mass).toBe(20);
-    expect(
-      loadedDoor
-        ?.getWorldPosition(new Vector3())
-        .distanceTo(door.getWorldPosition(new Vector3())),
-    ).toBeLessThan(1e-5);
-    const joint = joints[0];
-    if (!(joint instanceof RevoluteJoint))
-      throw new Error("Missing revolute joint");
-    expect(joint.options.body0).toBe(frame);
-    expect(joint.options.body1).toBe(loadedDoor);
-    expect(joint.limits).toEqual(hinge.limits);
-    expect(joint.motor?.options.stiffness).toBeCloseTo(100);
-    expect(joint.motor?.options.damping).toBeCloseTo(10);
-    expect(joint.motor?.options.maxForce).toBe(40);
-    expect(joint.motor?.target?.position).toBeCloseTo(Math.PI / 4);
-    expect(joint.motor?.target?.velocity).toBeCloseTo(0.4);
-    expect(
-      new Vector3()
-        .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
-        .distanceTo(before),
-    ).toBeLessThan(1e-5);
-    let meshes = 0;
-    result.traverse((object) => {
-      if (object instanceof Mesh) meshes++;
-    });
-    expect(meshes).toBe(4);
-    expect(result.gravity).toEqual([0, -9.81, 0]);
-    expect(door.parent?.children).toContain(hinge);
-  });
+  it.each(["force", "acceleration"] as const)(
+    "roundtrips a transformed door with a %s motor, meshes, compound shapes, and references",
+    async (model) => {
+      const { scene, door, hinge } = doorAssembly(model);
+      const before = new Vector3().setFromMatrixPosition(
+        hinge.getFrame(0, new Matrix4()),
+      );
+      const bytes = await new PhysicsUSDExporter().parseAsync(scene);
+      const result = await new PhysicsUSDLoader().parseAsync(bytes);
+      const bodies = result
+        .getObjectsByProperty("isObject3D", true)
+        .filter((object) => object instanceof RigidBody);
+      const joints = result
+        .getObjectsByProperty("isObject3D", true)
+        .filter((object) => object instanceof Joint);
+      expect(bodies).toHaveLength(2);
+      expect(joints).toHaveLength(1);
+      const frame = bodies.find((body) => body.name === "Frame");
+      const loadedDoor = bodies.find((body) => body.name === "Door");
+      expect(frame?.getColliders()).toHaveLength(3);
+      expect(loadedDoor?.options.mass).toBe(20);
+      expect(
+        loadedDoor
+          ?.getWorldPosition(new Vector3())
+          .distanceTo(door.getWorldPosition(new Vector3())),
+      ).toBeLessThan(1e-5);
+      const joint = joints[0];
+      if (!(joint instanceof RevoluteJoint))
+        throw new Error("Missing revolute joint");
+      expect(joint.options.body0).toBe(frame);
+      expect(joint.options.body1).toBe(loadedDoor);
+      expect(joint.limits).toEqual(hinge.limits);
+      expect(joint.motor?.options.model).toBe(model);
+      expect(joint.motor?.options.stiffness).toBeCloseTo(100);
+      expect(joint.motor?.options.damping).toBeCloseTo(10);
+      expect(joint.motor?.options.maxForce).toBe(40);
+      expect(joint.motor?.target?.position).toBeCloseTo(Math.PI / 4);
+      expect(joint.motor?.target?.velocity).toBeCloseTo(0.4);
+      expect(
+        new Vector3()
+          .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
+          .distanceTo(before),
+      ).toBeLessThan(1e-5);
+      let meshes = 0;
+      result.traverse((object) => {
+        if (object instanceof Mesh) meshes++;
+      });
+      expect(meshes).toBe(4);
+      expect(result.gravity).toEqual([0, -9.81, 0]);
+      expect(door.parent?.children).toContain(hinge);
+    },
+  );
 
   it("preserves camera prim types through the overlay", async () => {
     const { scene } = doorAssembly();
@@ -298,6 +303,8 @@ def Cube "Crate" (
 {
  double size = 2
  float physics:mass = 7
+ float3 physics:diagonalInertia = (0, 0, 0)
+ quatf physics:principalAxes = (0, 0, 0, 0)
  double3 xformOp:translate = (1, 2, 3)
  uniform token[] xformOpOrder = ["xformOp:translate"]
 }`);
@@ -305,6 +312,8 @@ def Cube "Crate" (
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody)[0];
     expect(body?.options.mass).toBe(7);
+    expect(body?.options.diagonalInertia).toBeUndefined();
+    expect(body?.options.principalAxes).toBeUndefined();
     expect(body?.getWorldPosition(new Vector3()).toArray()).toEqual([1, 2, 3]);
     expect(body?.getColliders()[0]?.position.toArray()).toEqual([0, 0, 0]);
     expect(body?.getColliders()[0]?.shape()).toEqual({

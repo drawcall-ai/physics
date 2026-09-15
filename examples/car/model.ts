@@ -55,8 +55,7 @@ const glass = new THREE.MeshStandardMaterial({
 });
 
 export function box(size: Vec3, material: THREE.Material) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
-  return mesh;
+  return new THREE.Mesh(new THREE.BoxGeometry(...size), material);
 }
 
 export function createCar(world: PhysicsWorld) {

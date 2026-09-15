@@ -75,11 +75,7 @@ function createJoint(
   }
 }
 
-export function configure(
-  api: API,
-  object: Joint,
-  target: Rapier.ImpulseJoint,
-): void {
+function configure(api: API, object: Joint, target: Rapier.ImpulseJoint): void {
   target.setContactsEnabled(object.collideConnected);
   if (!(object instanceof RevoluteJoint || object instanceof PrismaticJoint))
     return;
@@ -182,13 +178,8 @@ export function prepareJoint(
   if (!object.enabled) {
     if (binding.target) world.removeImpulseJoint(binding.target, true);
     binding.target = undefined;
-    binding.settings = object.settingsVersion;
-    binding.motor = motor;
-    binding.motorSettings = motorSettings;
-    return binding;
-  }
-  if (!binding.target) {
-    const replacement = createJoint(
+  } else if (!binding.target) {
+    binding.target = createJoint(
       api,
       world,
       object,
@@ -197,7 +188,6 @@ export function prepareJoint(
       first,
       second,
     );
-    binding.target = replacement;
   } else configure(api, object, binding.target);
   binding.settings = object.settingsVersion;
   binding.motor = motor;
@@ -214,11 +204,7 @@ function measureJoint(object: Joint, binding: JointBinding) {
 
 export function readJointState(object: Joint, binding: JointBinding) {
   const state = measureJoint(object, binding);
-  if (
-    object instanceof RevoluteJoint &&
-    binding.position !== undefined &&
-    "position" in state
-  )
+  if (object instanceof RevoluteJoint && binding.position !== undefined)
     return { ...state, position: binding.position };
   return state;
 }
@@ -229,9 +215,7 @@ export function sampleJoint(
   rebase = false,
 ): void {
   if (!(object instanceof RevoluteJoint)) return;
-  const state = measureJoint(object, binding);
-  if (!("position" in state)) throw new Error("Expected revolute state");
-  const angle = state.position;
+  const angle = measureJoint(object, binding).position;
   if (rebase || binding.angle === undefined || binding.position === undefined)
     binding.position = angle;
   else

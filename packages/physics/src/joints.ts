@@ -3,7 +3,11 @@ import { JointMotor, getJointMotor } from "./motor.js";
 import { RigidBody } from "./body.js";
 import { splitTransform } from "./transforms.js";
 import { assertRigidTransform } from "./objects.js";
-import type { PhysicsWorld, PhysicsJointState } from "./world.js";
+import type {
+  PhysicsWorld,
+  PhysicsJointState,
+  AxisJointState,
+} from "./world.js";
 
 export interface JointOptions {
   readonly body0: RigidBody | null;
@@ -14,9 +18,8 @@ export interface JointOptions {
 export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
-  #world: PhysicsWorld;
   get world(): PhysicsWorld {
-    return this.#world;
+    return this.#options.body1.world;
   }
   #disposed = false;
   #enabled = true;
@@ -39,23 +42,20 @@ export abstract class Joint<
   get settingsVersion(): number {
     return this.#version;
   }
-  protected changed(): void {
-    this.#version++;
-  }
   protected assertLive(): void {
     if (this.disposed) throw new Error("Joint has been disposed");
   }
   setEnabled(value: boolean): this {
     this.assertLive();
     this.#enabled = value;
-    this.changed();
+    this.#version++;
     if (!value && this instanceof AxisJoint) this.world.setJointEffort(this, 0);
     return this;
   }
   setCollideConnected(value: boolean): this {
     this.assertLive();
     this.#collideConnected = value;
-    this.changed();
+    this.#version++;
     return this;
   }
 
@@ -70,7 +70,6 @@ export abstract class Joint<
       throw new Error("Joint requires both local frames or neither");
     if (options.frame0) assertRigidTransform(options.frame0);
     if (options.frame1) assertRigidTransform(options.frame1);
-    this.#world = options.body1.world;
     if (options.body0 && options.body0.world !== this.world)
       throw new Error("Joint bodies must belong to the same world");
     if (options.body0 === options.body1)
@@ -92,7 +91,7 @@ export abstract class Joint<
     this.#disposed = true;
   }
 
-  getState(): PhysicsJointState {
+  getState(): PhysicsJointState | AxisJointState {
     return this.world.getJointState(this);
   }
 
@@ -186,26 +185,12 @@ export abstract class Joint<
       this.#options.body1.disposed
     )
       throw new Error("Cannot validate a disposed joint or body");
-    if (
-      this.#options.body1.world !== this.world ||
-      (this.#options.body0 && this.#options.body0.world !== this.world)
-    )
-      throw new Error("Joint bodies must belong to the same world");
     this.#options.body0?.updateWorldMatrix(true, false);
     this.#options.body1.updateWorldMatrix(true, false);
     this.updateWorldMatrix(true, false);
-    if (this.#options.body0 === this.#options.body1)
-      throw new Error("Joint must connect distinct bodies");
-    if (
-      (this.#options.frame0 === undefined) !==
-      (this.#options.frame1 === undefined)
-    )
-      throw new Error("Joint requires both local frames or neither");
     splitTransform(this.matrixWorld);
     if (this.#options.body0) splitTransform(this.#options.body0.matrixWorld);
     splitTransform(this.#options.body1.matrixWorld);
-    if (this.#options.frame0) assertRigidTransform(this.#options.frame0);
-    if (this.#options.frame1) assertRigidTransform(this.#options.frame1);
   }
 
   getFrame(index: 0 | 1, target: Matrix4): Matrix4 {
@@ -229,11 +214,8 @@ export abstract class Joint<
   }
 }
 export class FixedJoint extends Joint {
-  override getState(): import("./world.js").FixedJointState {
-    const state = super.getState();
-    if (!("translation" in state))
-      throw new Error("Backend returned invalid fixed joint state");
-    return state;
+  override getState(): PhysicsJointState {
+    return connectionState(this);
   }
 }
 export interface AxisJointOptions extends JointOptions {
@@ -256,6 +238,11 @@ export abstract class AxisJoint extends Joint<AxisJointOptions> {
   get motor(): JointMotor | undefined {
     return getJointMotor(this);
   }
+  override getState(): AxisJointState {
+    const state = super.getState();
+    if (!("velocity" in state)) throw new Error("Expected axis joint state");
+    return state;
+  }
   setEffort(value: number): this {
     this.assertLive();
     if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
@@ -264,21 +251,12 @@ export abstract class AxisJoint extends Joint<AxisJointOptions> {
     this.world.setJointEffort(this, value);
     return this;
   }
-  override getState(): import("./world.js").AxisJointState {
-    const state = super.getState();
-    if (!("position" in state))
-      throw new Error("Backend returned invalid axis joint state");
-    return state;
-  }
 }
 export class RevoluteJoint extends AxisJoint {}
 export class PrismaticJoint extends AxisJoint {}
 export class SphericalJoint extends Joint {
-  override getState(): import("./world.js").SphericalJointState {
-    const state = super.getState();
-    if (!("distance" in state))
-      throw new Error("Backend returned invalid spherical joint state");
-    return state;
+  override getState(): PhysicsJointState {
+    return connectionState(this);
   }
 }
 export interface DistanceJointOptions extends JointOptions {
@@ -296,11 +274,8 @@ export class DistanceJoint extends Joint<
       limits: Object.freeze<readonly [number, number]>([limits[0], limits[1]]),
     });
   }
-  override getState(): import("./world.js").DistanceJointState {
-    const state = super.getState();
-    if (!("distance" in state))
-      throw new Error("Backend returned invalid distance joint state");
-    return state;
+  override getState(): PhysicsJointState {
+    return connectionState(this);
   }
   get limits(): readonly [number, number] {
     return this.options.limits;
@@ -335,4 +310,10 @@ function sameLimits(
   return a === undefined
     ? b === undefined
     : b !== undefined && a[0] === b[0] && a[1] === b[1];
+}
+
+function connectionState(joint: Joint): PhysicsJointState {
+  const state = joint.world.getJointState(joint);
+  if (!("angle" in state)) throw new Error("Expected non-axis joint state");
+  return state;
 }

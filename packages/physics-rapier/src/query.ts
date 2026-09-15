@@ -1,5 +1,10 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import type { RigidBody, RaycastOptions, RaycastHit } from "@drawcall/physics";
+import {
+  validateVector,
+  type RigidBody,
+  type RaycastOptions,
+  type RaycastHit,
+} from "@drawcall/physics";
 import { Vector3 } from "three";
 import type { BodyBinding } from "./body.js";
 
@@ -12,25 +17,16 @@ export function raycast(
   maxDistance: number,
   options: RaycastOptions = {},
 ): RaycastHit | null {
-  if (
-    ![
-      origin.x,
-      origin.y,
-      origin.z,
-      direction.x,
-      direction.y,
-      direction.z,
-      maxDistance,
-    ].every(Number.isFinite) ||
-    Math.max(
-      Math.abs(direction.x),
-      Math.abs(direction.y),
-      Math.abs(direction.z),
-    ) === 0 ||
-    maxDistance < 0
-  )
+  validateVector(origin);
+  validateVector(direction);
+  const scale = Math.max(
+    Math.abs(direction.x),
+    Math.abs(direction.y),
+    Math.abs(direction.z),
+  );
+  if (scale === 0 || !Number.isFinite(maxDistance) || maxDistance < 0)
     throw new Error(
-      "Ray requires a finite origin, nonzero finite direction and nonnegative finite distance",
+      "Ray requires a nonzero direction and finite nonnegative distance",
     );
   const groups = options.collisionGroups;
   if (
@@ -40,11 +36,6 @@ export function raycast(
     )
   )
     throw new Error("Collision groups must be unsigned 16-bit masks");
-  const scale = Math.max(
-    Math.abs(direction.x),
-    Math.abs(direction.y),
-    Math.abs(direction.z),
-  );
   const ray = new api.Ray(
     origin,
     new Vector3(

@@ -38,9 +38,3 @@ drivetrain at 120 Hz with 32 solver iterations.
 
 `pnpm --filter @drawcall/example-car test` runs bump-course, braking, reverse,
 rear-alignment, and stationary-steering regressions in `car/test/`.
-
-The car uses native `JointMotor` actuators for suspension, steering, and wheel
-velocity. Gains and effort ceilings are constructor configuration; the driver
-updates targets in `onBeforeStep`. Throttle sets wheel speed, braking requests
-zero velocity, and coasting disables the wheel motor. Steering and suspension
-remain active. Tests cover fixed timesteps of 1/120 s and 1/240 s.

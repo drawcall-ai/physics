@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Group, Matrix4, Vector3 } from "three";
 import {
   AuthoringWorld,
+  JointMotor,
   RigidBody,
   RevoluteJoint,
   setDefaultWorld,
@@ -69,6 +70,17 @@ it("clones assemblies in their original world and remaps joint references", () =
     body1,
     limits: [0, 1],
   });
+  const motor = new JointMotor({
+    joint: hinge,
+    stiffness: 3,
+    damping: 2,
+    maxForce: 4,
+    model: "acceleration",
+  })
+    .setTarget({ position: 1 })
+    .setEnabled(false);
+  hinge.copy(hinge);
+  expect(hinge.motor).toBe(motor);
   root.add(hinge, body0, body1);
   const nextWorld = setup();
   const result = clone(root);
@@ -78,6 +90,13 @@ it("clones assemblies in their original world and remaps joint references", () =
   expect(copy.options.body0).toBe(result.children[1]);
   expect(copy.options.body1).toBe(result.children[2]);
   expect(copy.limits).not.toBe(hinge.limits);
+  const copiedMotor = copy.motor;
+  if (!copiedMotor) throw new Error("Missing copied motor");
+  expect(copiedMotor.options).toEqual({ ...motor.options, joint: copy });
+  expect(copiedMotor.target).toEqual(motor.target);
+  expect(copiedMotor.enabled).toBe(false);
+  copiedMotor.setTarget({ velocity: 5 });
+  expect(motor.target).toEqual({ position: 1, velocity: 0 });
   expect(world.objects.size).toBe(6);
   expect(nextWorld.objects.size).toBe(0);
   const standalone = hinge.clone();

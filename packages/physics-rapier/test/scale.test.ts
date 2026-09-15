@@ -84,9 +84,9 @@ it("captures scaled joints added during simulation and preserves scale through t
       frame0: new Matrix4().makeTranslation(0, 10, 0),
       frame1: new Matrix4().makeTranslation(0, 1, 0),
     });
-    expect(joint.getState().translation.length()).toBeGreaterThanOrEqual(0);
+    expect(joint.getState().distance).toBeGreaterThanOrEqual(0);
     for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
-    expect(joint.getState().translation.length()).toBeLessThan(0.001);
+    expect(joint.getState().distance).toBeLessThan(0.001);
     expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(6);
     joint.dispose();
     body.teleport(new Matrix4().makeTranslation(0, 2, 0));
