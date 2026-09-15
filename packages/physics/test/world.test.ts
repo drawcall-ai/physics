@@ -28,7 +28,7 @@ it("requires setup, captures the default, and accepts an explicit world", () => 
   const second = setup();
   const options = { world: first, mass: 20 };
   const explicit = new RigidBody(options);
-  expect(explicit.options).toBe(options);
+  expect(explicit.options).not.toBe(options);
   expect(body.world).toBe(first);
   expect(first.objects.has(explicit)).toBe(true);
   expect(new RigidBody().world).toBe(second);
@@ -46,7 +46,7 @@ it("registers joints in their bodies' world and disposes connected joints", () =
   setup();
   const options = { body0, body1 };
   const hinge = new RevoluteJoint(options);
-  expect(hinge.options).toBe(options);
+  expect(hinge.options).not.toBe(options);
   expect(hinge.world).toBe(first);
   expect(first.objects.size).toBe(3);
   expect(() => new RevoluteJoint({ body0, body1: new RigidBody() })).toThrow(
@@ -67,9 +67,7 @@ it("clones assemblies in their original world and remaps joint references", () =
   const hinge = new RevoluteJoint({
     body0,
     body1,
-    limits: [0, 1],
-    drive: { stiffness: 10 },
-  });
+  }).setLimits([0, 1]);
   root.add(hinge, body0, body1);
   const nextWorld = setup();
   const result = clone(root);
@@ -78,8 +76,7 @@ it("clones assemblies in their original world and remaps joint references", () =
     throw new Error("Expected a joint clone");
   expect(copy.options.body0).toBe(result.children[1]);
   expect(copy.options.body1).toBe(result.children[2]);
-  expect(copy.options.limits).not.toBe(hinge.options.limits);
-  expect(copy.options.drive).not.toBe(hinge.options.drive);
+  expect(copy.limits).not.toBe(hinge.limits);
   expect(world.objects.size).toBe(6);
   expect(nextWorld.objects.size).toBe(0);
   const standalone = hinge.clone();
@@ -89,14 +86,14 @@ it("clones assemblies in their original world and remaps joint references", () =
 
 it("copies velocity tuples and rolls back when Three.js copy fails", () => {
   const world = setup();
-  const source = new RigidBody({
-    linearVelocity: [1, 2, 3],
-    angularVelocity: [4, 5, 6],
+  const source = new RigidBody().setVelocity({
+    linear: new Vector3(1, 2, 3),
+    angular: new Vector3(4, 5, 6),
   });
   const copy = clone(source);
-  expect(copy.options.linearVelocity).toEqual(source.options.linearVelocity);
-  expect(copy.options.linearVelocity).not.toBe(source.options.linearVelocity);
-  expect(copy.options.angularVelocity).not.toBe(source.options.angularVelocity);
+  expect(copy.getVelocity()).toEqual(source.getVelocity());
+  copy.setVelocity({ linear: new Vector3(9, 9, 9) });
+  expect(source.getVelocity().linear.toArray()).toEqual([1, 2, 3]);
   source.userData.self = source.userData;
   expect(() => clone(source)).toThrow();
   expect(world.objects.size).toBe(2);
@@ -181,9 +178,10 @@ it("registers each cloned joint once without unregistering it", () => {
   const register = vi.spyOn(world, "register");
   const unregister = vi.spyOn(world, "unregister");
   const result = clone(root);
-  expect(register.mock.calls.map(([object]) => object)).toEqual(
-    result.children,
-  );
+  expect(register.mock.calls.map(([object]) => object)).toEqual([
+    result.children[1],
+    result.children[0],
+  ]);
   expect(unregister).not.toHaveBeenCalled();
 });
 
@@ -202,7 +200,7 @@ it("supports a static preview callback without a backend or step observers", () 
     body.updateWorldMatrix(true, false);
     expect(body.matrixWorld.elements[12]).toBe(1);
     expect(body.getVelocity().linear.x).toBe(2);
-    expect(joint.getState().distance).toBeCloseTo(0);
+    expect(joint.getState().position).toBeCloseTo(0);
     body.applyImpulse(new Vector3(3, 0, 0));
     body.applyForce(new Vector3(1, 0, 0));
     body.sleep();
@@ -222,4 +220,14 @@ it("supports a static preview callback without a backend or step observers", () 
   );
   world.dispose();
   expect(() => body.getVelocity()).toThrow("disposed");
+});
+
+it("remaps bodies beneath a joint used as the hierarchy root", () => {
+  setup();
+  const body = new RigidBody();
+  const joint = new RevoluteJoint({ body0: null, body1: body });
+  joint.add(body);
+  const copy = clone(joint);
+  expect(copy.options.body1).toBe(copy.children[0]);
+  expect(copy.options.body1).not.toBe(body);
 });

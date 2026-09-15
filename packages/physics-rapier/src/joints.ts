@@ -1,6 +1,6 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
-  jointState,
+  AxisJoint,
   DistanceJoint,
   FixedJoint,
   PrismaticJoint,
@@ -31,11 +31,11 @@ export function joint(
   else if (object instanceof SphericalJoint)
     data = api.JointData.spherical(a, b);
   else if (object instanceof DistanceJoint) {
-    if (object.options.limits[0] !== 0)
+    if (object.limits[0] !== 0)
       throw new Error(
         "Rapier distance joints only support a zero minimum distance.",
       );
-    data = api.JointData.rope(object.options.limits[1], a, b);
+    data = api.JointData.rope(object.limits[1], a, b);
   } else if (
     object instanceof RevoluteJoint ||
     object instanceof PrismaticJoint
@@ -48,7 +48,7 @@ export function joint(
   } else throw new Error(`Unsupported Rapier joint: ${object.type}`);
   const result = world.createImpulseJoint(data, first, second, true);
   try {
-    result.setContactsEnabled(object.options.collideConnected ?? false);
+    result.setContactsEnabled(object.collideConnected);
     if (object instanceof RevoluteJoint || object instanceof PrismaticJoint) {
       const axis =
         object.options.axis === "X"
@@ -64,8 +64,8 @@ export function joint(
       result.setLocalFrame2(b, rotation1.clone().multiply(rotation));
       if (!(result instanceof api.UnitImpulseJoint))
         throw new Error("Rapier returned an unexpected joint type.");
-      if (object.options.limits) result.setLimits(...object.options.limits);
-      drive(api, object, result);
+      if (object.limits) result.setLimits(...object.limits);
+      configure(api, object, result);
     }
     return result;
   } catch (error) {
@@ -74,59 +74,44 @@ export function joint(
   }
 }
 
-export function drive(
+export function configure(
   api: API,
   object: Joint,
   target: Rapier.ImpulseJoint,
 ): void {
-  target.setContactsEnabled(object.options.collideConnected ?? false);
+  target.setContactsEnabled(object.collideConnected);
   if (!(object instanceof RevoluteJoint || object instanceof PrismaticJoint))
     return;
   if (!(target instanceof api.UnitImpulseJoint))
     throw new Error("Expected a Rapier unit joint.");
-  target.setLimits(
-    ...(object.options.limits ?? [-Number.MAX_VALUE, Number.MAX_VALUE]),
-  );
-  const value = object.options.drive;
-  target.configureMotorModel(
-    value?.type === "acceleration"
-      ? api.MotorModel.AccelerationBased
-      : api.MotorModel.ForceBased,
-  );
-  target.setMotorMaxForce(value?.maxForce ?? Number.MAX_VALUE);
-  target.configureMotor(
-    value?.targetPosition ?? 0,
-    value?.targetVelocity ?? 0,
-    value?.stiffness ?? 0,
-    value?.damping ?? 0,
-  );
+  target.setLimits(...(object.limits ?? [-Number.MAX_VALUE, Number.MAX_VALUE]));
 }
 
-export function readJointState(target: Rapier.ImpulseJoint) {
-  const first = target.body1(),
-    second = target.body2();
-  const frame = (
-    body: Rapier.RigidBody,
-    position: Rapier.Vector,
-    rotation: Rapier.Rotation,
-  ): Matrix4 => {
-    const matrix = new Matrix4().compose(
-      new Vector3().copy(body.translation()),
-      new Quaternion().copy(body.rotation()),
-      new Vector3(1, 1, 1),
-    );
-    return matrix.multiply(
-      new Matrix4().compose(
-        new Vector3().copy(position),
-        new Quaternion().copy(rotation),
-        new Vector3(1, 1, 1),
-      ),
-    );
-  };
-  return jointState(
-    frame(first, target.anchor1(), target.frameX1()),
-    frame(second, target.anchor2(), target.frameX2()),
-    new Vector3().copy(first.angvel()),
-    new Vector3().copy(second.angvel()),
+export function applyEffort(
+  object: AxisJoint,
+  target: Rapier.ImpulseJoint,
+  value: number,
+): void {
+  const first = target.body1();
+  const second = target.body2();
+  const axis = new Vector3(1, 0, 0)
+    .applyQuaternion(new Quaternion().copy(target.frameX1()))
+    .applyQuaternion(new Quaternion().copy(first.rotation()));
+  const effort = axis.multiplyScalar(value);
+  if (object instanceof RevoluteJoint) {
+    second.addTorque(effort, true);
+    first.addTorque(effort.clone().negate(), true);
+    return;
+  }
+  const anchor = (body: Rapier.RigidBody, point: Rapier.Vector) =>
+    new Vector3()
+      .copy(point)
+      .applyQuaternion(new Quaternion().copy(body.rotation()))
+      .add(body.translation());
+  second.addForceAtPoint(effort, anchor(second, target.anchor2()), true);
+  first.addForceAtPoint(
+    effort.clone().negate(),
+    anchor(first, target.anchor1()),
+    true,
   );
 }

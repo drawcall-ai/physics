@@ -5,7 +5,7 @@ import { collider } from "./shapes.js";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
   setWorldPose,
-  initialVelocity,
+  authoredVelocity,
   type PhysicsVelocity,
   splitTransform,
   resolveCollider,
@@ -27,8 +27,8 @@ export interface BodyBinding {
   initial: Matrix4;
   velocity: PhysicsVelocity;
   shapes: string;
-  settings: string;
-  canSleep: boolean;
+  settings: number;
+  sources: Map<number, Object3D>;
   scale: Vector3;
   colliderScales: Map<Object3D, Vector3>;
 }
@@ -47,7 +47,7 @@ export function createBody(
         : api.RigidBodyDesc.dynamic();
   const { pose, scale } = splitTransform(object.matrixWorld);
   const position = new Vector3().setFromMatrixPosition(pose);
-  const velocity = initialVelocity(object);
+  const velocity = authoredVelocity(object);
   desc
     .setTranslation(position.x, position.y, position.z)
     .setRotation(new Quaternion().setFromRotationMatrix(pose))
@@ -62,8 +62,8 @@ export function createBody(
     scale,
     colliderScales: new Map(),
     shapes: "",
-    settings: "",
-    canSleep: options.canSleep ?? true,
+    settings: -1,
+    sources: new Map(),
   };
   try {
     refreshBody(api, world, object, binding);
@@ -81,16 +81,13 @@ export function refreshBody(
   binding: BodyBinding,
 ): void {
   const options = object.options;
-  if (binding.canSleep !== (options.canSleep ?? true)) {
-    throw new Error("canSleep cannot change after a body is created.");
-  }
   if (splitTransform(object.matrixWorld).scale.distanceTo(binding.scale) > 1e-6)
     throw new Error(
       "Body scale cannot change after backend initialization; recreate the body",
     );
   const colliders = object.getColliders();
   const shapes = JSON.stringify([
-    options.mass,
+    object.materialVersion,
     colliders.map((shape) => shapeKey(shape, object)),
   ]);
   const body = binding.body;
@@ -109,20 +106,42 @@ export function refreshBody(
           `Collider scale cannot change after backend initialization: ${object.name}/${collider.name || collider.type} (${captured.toArray()} → ${scale.toArray()}); recreate the body`,
         );
     }
-    const descriptors = resolved.map((shape) => collider(api, shape, object));
+    const completeMass =
+      options.mass !== undefined &&
+      options.centerOfMass !== undefined &&
+      options.diagonalInertia !== undefined &&
+      options.principalAxes !== undefined;
+    const descriptors = resolved.map((shape) => {
+      const desc = collider(api, shape, object);
+      return completeMass ? desc.setDensity(0) : desc;
+    });
     const next: Rapier.Collider[] = [];
     try {
       for (const desc of descriptors)
         next.push(world.createCollider(desc, body));
-      if (options.mass !== undefined) {
-        const volume = next.reduce((sum, shape) => sum + shape.volume(), 0);
-        if (volume <= 0)
+      if (options.mass !== undefined && next.length && !completeMass) {
+        const inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
+        const weights = next.map((shape) =>
+          inferredMass > 0 ? shape.mass() : shape.volume(),
+        );
+        const total = weights.reduce((sum, value) => sum + value, 0);
+        if (total <= 0)
           throw new Error(
-            "Explicit mass requires colliders with positive volume.",
+            "Inferring mass properties requires colliders with positive volume",
           );
-        for (const shape of next)
-          shape.setMass((options.mass * shape.volume()) / volume);
+        for (const [index, shape] of next.entries()) {
+          const weight = weights[index];
+          if (weight === undefined)
+            throw new Error("Missing collider mass weight");
+          shape.setMass((options.mass * weight) / total);
+        }
       }
+      if (
+        (options.type ?? "dynamic") === "dynamic" &&
+        options.mass === undefined &&
+        next.reduce((sum, shape) => sum + shape.mass(), 0) <= 0
+      )
+        throw new Error("Dynamic body requires positive mass and inertia");
     } catch (error) {
       for (const shape of next) world.removeCollider(shape, true);
       throw error;
@@ -130,7 +149,57 @@ export function refreshBody(
     const previous = body.numColliders() - next.length;
     for (let i = 0; i < previous; i++)
       world.removeCollider(body.collider(0), true);
+    body.setAdditionalMassProperties(
+      0,
+      new Vector3(),
+      new Vector3(),
+      new Quaternion(),
+      true,
+    );
     body.recomputeMassPropertiesFromColliders();
+    if (
+      options.centerOfMass ||
+      options.diagonalInertia ||
+      options.principalAxes ||
+      !next.length
+    ) {
+      const mass = options.mass ?? body.mass();
+      const center = options.centerOfMass
+        ? new Vector3(...options.centerOfMass)
+        : body.localCom();
+      const inertia = options.diagonalInertia
+        ? new Vector3(...options.diagonalInertia)
+        : body.principalInertia();
+      const axes = options.principalAxes
+        ? new Quaternion(...options.principalAxes)
+        : body.principalInertiaLocalFrame();
+      if (
+        (options.type ?? "dynamic") === "dynamic" &&
+        (mass <= 0 || Math.min(inertia.x, inertia.y, inertia.z) <= 0)
+      )
+        throw new Error("Dynamic body requires positive mass and inertia");
+      for (const shape of next) shape.setDensity(0);
+      body.setAdditionalMassProperties(mass, center, inertia, axes, true);
+      body.recomputeMassPropertiesFromColliders();
+    }
+    if ((options.type ?? "dynamic") === "dynamic") {
+      const inertia = body.principalInertia();
+      if (
+        ![body.mass(), inertia.x, inertia.y, inertia.z].every(
+          (value) => Number.isFinite(value) && value > 0,
+        )
+      )
+        throw new Error(
+          "Dynamic body requires positive finite mass and inertia",
+        );
+    }
+    binding.sources = new Map(
+      next.map((shape, index) => {
+        const source = colliders[index];
+        if (!source) throw new Error("Missing authored collider");
+        return [shape.handle, source.source];
+      }),
+    );
     body.wakeUp();
     binding.shapes = shapes;
     binding.colliderScales = new Map(
@@ -140,31 +209,17 @@ export function refreshBody(
       ]),
     );
   }
-  const settings = JSON.stringify([
-    options.type,
-    options.linearDamping,
-    options.angularDamping,
-    options.gravityScale,
-    options.canSleep,
-  ]);
+  const settings = object.settingsVersion;
   if (settings === binding.settings) return;
-  const type =
-    options.type === "static"
-      ? api.RigidBodyType.Fixed
-      : options.type === "kinematic"
-        ? api.RigidBodyType.KinematicPositionBased
-        : api.RigidBodyType.Dynamic;
-  body.setBodyType(type, true);
-  body.setLinearDamping(options.linearDamping ?? 0);
-  body.setAngularDamping(options.angularDamping ?? 0);
-  body.setGravityScale(options.gravityScale ?? 1, true);
+  body.setLinearDamping(object.linearDamping);
+  body.setAngularDamping(object.angularDamping);
+  body.setGravityScale(object.gravityScale, true);
   binding.settings = settings;
 }
 
 function shapeKey(source: Collider, body: AuthoredBody): unknown {
   const shape = source.shape();
-  const { sensor, collisionGroups } = source;
-  const material = body.getMaterial(source);
+
   const shapeData =
     shape.kind === "mesh"
       ? {
@@ -182,12 +237,5 @@ function shapeKey(source: Collider, body: AuthoredBody): unknown {
     .invert()
     .multiply(source.matrixWorld)
     .elements.map((value) => Math.round(value * 1e10) / 1e10);
-  return [
-    source.source.uuid,
-    shapeData,
-    transform,
-    material,
-    sensor,
-    collisionGroups,
-  ];
+  return [source.source.uuid, shapeData, transform, source.settingsVersion];
 }

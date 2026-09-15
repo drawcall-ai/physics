@@ -42,8 +42,7 @@ function doorAssembly() {
   const hinge = new RevoluteJoint({
     body0: frame,
     body1: door,
-    limits: [0, Math.PI / 2],
-  });
+  }).setLimits([0, Math.PI / 2]);
   hinge.position.set(-0.49, 1.05, 0);
   root.add(frame, door, hinge);
   return { root, frame, door, hinge };
@@ -98,11 +97,10 @@ describe("physics objects", () => {
   it("resolves explicit collider offsets and material overrides", () => {
     const material = { density: 42 };
     const body = new RigidBody({ colliders: false });
-    const collider = new BoxCollider({
-      size: [1, 2, 3],
-      material,
-      sensor: true,
-    });
+    const collider = new BoxCollider()
+      .setSize([1, 2, 3])
+      .setMaterial(material)
+      .setSensor(true);
     collider.position.y = 3;
     body.add(collider);
     expect(body.getColliders()[0]).toBe(collider);
@@ -113,9 +111,11 @@ describe("physics objects", () => {
     });
   });
   it("rejects incomplete frames", () => {
-    const { hinge } = doorAssembly();
-    hinge.options.frame0 = new Matrix4();
-    expect(() => hinge.validate()).toThrow("both local frames");
+    const { door } = doorAssembly();
+    expect(
+      () =>
+        new RevoluteJoint({ body0: null, body1: door, frame0: new Matrix4() }),
+    ).toThrow("both local frames");
   });
   it("supports explicit separated anchors and validates distance limits", () => {
     const body = new RigidBody();
@@ -125,28 +125,23 @@ describe("physics objects", () => {
       body1: body,
       frame0: new Matrix4().makeTranslation(0, 5, 0),
       frame1: new Matrix4().makeTranslation(0, 1, 0),
-      limits: [0, 4],
-    });
+    }).setLimits([0, 4]);
     const root = new Group();
     root.add(body, joint);
     expect(
       new Vector3().setFromMatrixPosition(joint.getFrame(0, new Matrix4())).y,
     ).toBe(5);
-    joint.options.limits = [-1, 4];
-    expect(() => joint.validate()).toThrow("nonnegative");
+    expect(() => joint.setLimits([-1, 4])).toThrow("nonnegative");
   });
-  it("rejects massless dynamic bodies and invalid collision masks", () => {
-    const body = new RigidBody({
-      colliders: false,
-      material: { density: 0 },
-    });
+  it("permits empty collider lists and validates collision masks at the setter", () => {
+    const body = new RigidBody({ colliders: false });
+    expect(body.getColliders()).toEqual([]);
     const collider = new BoxCollider();
     body.add(collider);
-    expect(() => body.getColliders()).toThrow("positive mass");
-    body.options.mass = 1;
-    collider.collisionGroups = { membership: 65536, filter: 1 };
-    expect(() => body.getColliders()).toThrow("16-bit");
-    collider.collisionGroups = { membership: 2, filter: 4 };
+    expect(() =>
+      collider.setCollisionGroups({ membership: 65536, filter: 1 }),
+    ).toThrow("16-bit");
+    collider.setCollisionGroups({ membership: 2, filter: 4 });
     expect(body.getColliders()[0]?.collisionGroups).toEqual({
       membership: 2,
       filter: 4,
@@ -202,7 +197,7 @@ it("uses explicit colliders before inspecting visual geometry and regenerates wh
 
 it("resolves plain material options without mutating them", () => {
   const material = { density: 42 };
-  const body = new RigidBody({ material });
+  const body = new RigidBody().setMaterial(material);
   const collider = new BoxCollider();
   body.add(collider);
   expect(body.getMaterial(collider)).toEqual({
@@ -213,7 +208,7 @@ it("resolves plain material options without mutating them", () => {
   });
   expect(material).toEqual({ density: 42 });
   material.density = 43;
-  expect(body.getMaterial(collider).density).toBe(43);
-  collider.material = { restitution: 0.9 };
+  expect(body.getMaterial(collider).density).toBe(42);
+  collider.setMaterial({ restitution: 0.9 });
   expect(body.getMaterial(collider).restitution).toBe(0.9);
 });

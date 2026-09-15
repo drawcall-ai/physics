@@ -1,6 +1,10 @@
 import { Mesh, Object3D } from "three";
-import { type PhysicsMaterial, RigidBody } from "@drawcall/physics";
-import type { PhysicsWorld, Vec3 } from "@drawcall/physics";
+import {
+  type PhysicsMaterial,
+  RigidBody,
+  splitTransform,
+} from "@drawcall/physics";
+import type { PhysicsWorld, RigidBodyOptions, Vec3 } from "@drawcall/physics";
 import { numeric, numbers, schemas, target } from "./layer.js";
 import type { Layer } from "./layer.js";
 
@@ -27,10 +31,11 @@ export function wrapBody(
   object: Object3D,
   world: PhysicsWorld,
   type: "static" | "dynamic" | "kinematic",
+  mass: Partial<RigidBodyOptions> = {},
 ): RigidBody {
   const parent = object.parent;
   if (!parent) throw new Error("Cannot reconstruct an orphan rigid body");
-  const body = new RigidBody({ world, type, colliders: false });
+  const body = new RigidBody({ ...mass, world, type, colliders: false });
   body.name = object.name;
   body.position.copy(object.position);
   body.quaternion.copy(object.quaternion);
@@ -101,4 +106,46 @@ function readMaterial(layer: Layer, path: string): PhysicsMaterial {
   };
   if (material.density === 0) material.density = 1000;
   return material;
+}
+
+export function massProperties(
+  layer: Layer,
+  path: string,
+  object: Object3D,
+): Partial<RigidBodyOptions> {
+  const mass = numeric(layer, path, "physics:mass", 0);
+  const optionalVector = (name: string) =>
+    numbers(layer, path, name) === undefined
+      ? undefined
+      : vector(layer, path, name, [0, 0, 0]);
+  let principalAxes: RigidBodyOptions["principalAxes"];
+  const axes = numbers(layer, path, "physics:principalAxes");
+  if (axes) {
+    const [x, y, z, w] = axes;
+    if (
+      axes.length !== 4 ||
+      x === undefined ||
+      y === undefined ||
+      z === undefined ||
+      w === undefined
+    )
+      throw new Error(`Expected quaternion ${path}.physics:principalAxes`);
+    if (axes.some((value) => value !== 0)) principalAxes = [x, y, z, w];
+  }
+  object.updateWorldMatrix(true, false);
+  const scale = splitTransform(object.matrixWorld).scale;
+  const center = optionalVector("physics:centerOfMass");
+  const inertia = optionalVector("physics:diagonalInertia");
+  return {
+    mass: mass === 0 ? undefined : mass,
+    centerOfMass: center && [
+      center[0] * scale.x,
+      center[1] * scale.y,
+      center[2] * scale.z,
+    ],
+    diagonalInertia: inertia?.some((value) => value !== 0)
+      ? inertia
+      : undefined,
+    principalAxes,
+  };
 }

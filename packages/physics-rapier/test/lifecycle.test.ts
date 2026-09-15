@@ -22,7 +22,9 @@ afterEach(() => {
 
 it("reads and writes velocity while staged, then initializes from the completed scaled hierarchy", async () => {
   const world = await setup();
-  const body = new RigidBody({ mass: 2, angularVelocity: [0, 1, 0] });
+  const body = new RigidBody({ mass: 2 }).setVelocity({
+    angular: new Vector3(0, 1, 0),
+  });
   world.unregister(body);
   expect(body.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
   const input = new Vector3(1, 0, 0);
@@ -89,7 +91,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
   world.update(0);
   body.teleport(new Matrix4().makeTranslation(20, 20, 20));
   body.setVelocity({ linear: new Vector3(9, 0, 0) });
-  body.options.linearVelocity = [100, 0, 0];
+  body.setVelocity({ linear: new Vector3(100, 0, 0) });
   world.reset();
   expect(
     body.getWorldPosition(new Vector3()).distanceTo(new Vector3(4, 8, 12)),
@@ -101,7 +103,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
 for (const axis of ["X", "Y", "Z"] as const) {
   it(`reads authored joint state with scaled anchors and ${axis} axis before backend sync`, async () => {
     const world = await setup();
-    const body = new RigidBody({ angularVelocity: [2, 3, 4] });
+    const body = new RigidBody().setVelocity({ angular: new Vector3(2, 3, 4) });
     body.position.set(2, 3, 4);
     body.scale.setScalar(2);
     body.add(new BoxCollider());
@@ -113,22 +115,16 @@ for (const axis of ["X", "Y", "Z"] as const) {
       frame1: new Matrix4().makeTranslation(0, 1, 0),
     });
     const initial = joint.getState();
-    expect(initial.distance).toBeCloseTo(Math.sqrt(4 + 25 + 16));
-    expect(initial.angularVelocity).toBeCloseTo(
+    expect(initial.velocity).toBeCloseTo(
       axis === "X" ? 2 : axis === "Y" ? 3 : 4,
     );
     world.update(0);
     const ready = joint.getState();
-    for (const key of [
-      "angle",
-      "angularVelocity",
-      "position",
-      "distance",
-    ] as const)
+    for (const key of ["position", "velocity"] as const)
       expect(ready[key]).toBeCloseTo(initial[key], 5);
-    joint.options.enabled = false;
+    joint.setEnabled(false);
     world.update(world.fixedDelta);
-    expect(Number.isFinite(joint.getState().distance)).toBe(true);
+    expect(Number.isFinite(joint.getState().position)).toBe(true);
   });
 }
 
@@ -166,17 +162,11 @@ for (const kind of ["spherical", "distance"] as const) {
     const joint =
       kind === "spherical"
         ? new SphericalJoint(options)
-        : new DistanceJoint({ ...options, limits: [0, 3] });
+        : new DistanceJoint(options).setLimits([0, 3]);
     const initial = joint.getState();
     world.update(0);
     const ready = joint.getState();
-    for (const key of [
-      "angle",
-      "angularVelocity",
-      "position",
-      "distance",
-    ] as const)
-      expect(ready[key]).toBeCloseTo(initial[key], 5);
+    expect(ready).toEqual(initial);
   });
 }
 

@@ -39,7 +39,8 @@ export function createRagdoll() {
     body1: RigidBody,
     position: [number, number, number],
   ) {
-    const joint = new SphericalJoint({ body0, body1, collideConnected: true });
+    const joint = new SphericalJoint({ body0, body1 });
+    joint.setCollideConnected(true);
     joint.name = name;
     joint.position.set(...position);
     scene.add(joint);
@@ -81,15 +82,15 @@ export function createRagdoll() {
       const joint = new RevoluteJoint({
         body0,
         body1,
-        collideConnected: true,
         axis: "X",
-        limits: [0, Math.PI * 0.75],
       });
+      joint.setCollideConnected(true);
+      joint.setLimits([0, Math.PI * 0.75]);
       joint.name = jointName;
       joint.position.set(body1.position.x, y, 0);
       scene.add(joint);
     }
   }
-  pelvis.options.linearVelocity = [0.6, 0, 0.8];
+  pelvis.setVelocity({ linear: new THREE.Vector3(0.6, 0, 0.8) });
   return scene;
 }

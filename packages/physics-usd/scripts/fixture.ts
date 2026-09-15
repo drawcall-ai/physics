@@ -25,9 +25,7 @@ door.add(new Mesh(new BoxGeometry(1, 2, 0.06), material));
 const hinge = new RevoluteJoint({
   body0: frame,
   body1: door,
-  limits: [0, Math.PI / 2],
-  drive: { targetPosition: Math.PI / 4, stiffness: 100, damping: 10 },
-});
+}).setLimits([0, Math.PI / 2]);
 hinge.position.set(0, 1, 0);
 assembly.add(frame, door, hinge);
 scene.add(assembly);

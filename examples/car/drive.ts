@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { RevoluteJoint, type PhysicsWorld } from "@drawcall/physics";
-import { specification, steeringMotor, type Car } from "./model";
+import { specification, steeringControl, type Car } from "./model";
 
 export function driveCar(world: PhysicsWorld, car: Car) {
   const input = {
@@ -11,17 +11,15 @@ export function driveCar(world: PhysicsWorld, car: Car) {
   };
   const body = car.chassis;
   const wheels = car.wheels;
-  let active = false;
-  let elapsed = 0;
   let steering = 0;
   let completed = false;
+  const steeringIntegral = new Map<RevoluteJoint, number>();
   const telemetry = {
     speed: 0,
     completed: false,
   };
   const unsubscribe = world.onBeforeStep((dt) => {
-    if (!active) return;
-    elapsed += dt;
+    const elapsed = world.time + dt;
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
       car.chassis.quaternion,
     );
@@ -53,19 +51,42 @@ export function driveCar(world: PhysicsWorld, car: Car) {
               specification.wheelbase /
                 (specification.wheelbase / Math.tan(steering) - wheel.x),
             );
+      const suspension = wheel.spring.getState();
+      wheel.spring.setEffort(
+        -specification.stiffness * suspension.position -
+          specification.damping * suspension.velocity,
+      );
       if (wheel.steering instanceof RevoluteJoint) {
-        wheel.steering.options.drive = {
-          targetPosition: angle,
-          ...steeringMotor,
-        };
+        const state = wheel.steering.getState();
+        const integral = THREE.MathUtils.clamp(
+          (steeringIntegral.get(wheel.steering) ?? 0) +
+            (angle - state.position) * dt,
+          -steeringControl.integralLimit,
+          steeringControl.integralLimit,
+        );
+        steeringIntegral.set(wheel.steering, integral);
+        wheel.steering.setEffort(
+          THREE.MathUtils.clamp(
+            steeringControl.stiffness * (angle - state.position) +
+              steeringControl.integral * integral -
+              steeringControl.damping * state.velocity,
+            -steeringControl.maxTorque,
+            steeringControl.maxTorque,
+          ),
+        );
       }
-      wheel.axle.options.drive = {
-        targetVelocity: brake ? 0 : Math.sign(throttle) * 55,
-        damping: brake ? 450 : 80,
-        maxForce: brake
-          ? brake * 1100
-          : Math.abs(throttle) * specification.torque,
-      };
+      const targetVelocity = brake ? 0 : Math.sign(throttle) * 55;
+      const torque = brake
+        ? brake * 1100
+        : Math.abs(throttle) * specification.torque;
+      wheel.axle.setEffort(
+        THREE.MathUtils.clamp(
+          (targetVelocity - wheel.axle.getState().velocity) *
+            (brake ? 450 : 80),
+          -torque,
+          torque,
+        ),
+      );
     }
     const velocity = body.getVelocity().linear;
     body.applyForce(
@@ -73,7 +94,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     );
   });
   const after = world.onAfterStep(() => {
-    active = true;
     telemetry.speed = body
       .getVelocity()
       .linear.dot(
@@ -85,9 +105,9 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     input,
     telemetry,
     reset() {
-      elapsed = 0;
       completed = false;
       steering = 0;
+      steeringIntegral.clear();
       input.throttle = input.steer = input.brake = 0;
       world.reset();
     },

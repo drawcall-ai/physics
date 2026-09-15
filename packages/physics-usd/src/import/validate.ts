@@ -1,4 +1,4 @@
-import { numeric, schemas } from "./layer.js";
+import { attribute, numeric, schemas } from "./layer.js";
 import type { Layer } from "./layer.js";
 
 export function validate(layer: Layer): void {
@@ -16,6 +16,9 @@ export function validate(layer: Layer): void {
     "rigidBodyEnabled",
     "kinematicEnabled",
     "mass",
+    "centerOfMass",
+    "diagonalInertia",
+    "principalAxes",
     "density",
     "velocity",
     "angularVelocity",
@@ -45,8 +48,6 @@ export function validate(layer: Layer): void {
     "PhysicsCollisionAPI",
     "PhysicsMeshCollisionAPI",
     "PhysicsMaterialAPI",
-    "PhysicsDriveAPI:angular",
-    "PhysicsDriveAPI:linear",
   ]);
   for (const [path, spec] of Object.entries(layer.specsByPath)) {
     if (spec.specType === 6) {
@@ -73,17 +74,11 @@ export function validate(layer: Layer): void {
         )
           throw new Error(`Unsupported USD transform operation on ${path}`);
       }
-      const drive = schemas(layer, path).filter((schema) =>
-        schema.startsWith("PhysicsDriveAPI:"),
-      );
-      const expected =
-        spec.fields.typeName === "PhysicsRevoluteJoint"
-          ? "PhysicsDriveAPI:angular"
-          : spec.fields.typeName === "PhysicsPrismaticJoint"
-            ? "PhysicsDriveAPI:linear"
-            : undefined;
-      if (drive.some((schema) => schema !== expected))
-        throw new Error(`Unsupported drive axis on ${path}`);
+      for (const schema of schemas(layer, path))
+        if (schema.startsWith("PhysicsDriveAPI"))
+          throw new Error(
+            `Unsupported USD drive schema ${schema} on prim ${path}`,
+          );
       if (spec.fields.typeName === "PhysicsScene" && ++scenes > 1)
         throw new Error("Multiple physics scenes are unsupported");
       for (const schema of schemas(layer, path))
@@ -93,21 +88,34 @@ export function validate(layer: Layer): void {
     const property = path.split(".").slice(1).join(".");
     if (property.startsWith("physics:") && !properties.has(property.slice(8)))
       throw new Error(`Unsupported USD physics property ${path}`);
+    if (property.startsWith("drive:"))
+      throw new Error(
+        `Unsupported USD drive property ${property} on prim ${path.split(".")[0]}`,
+      );
     if (
-      property.startsWith("drive:") &&
-      !/^drive:(angular|linear):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$/.test(
-        property,
-      )
-    )
-      throw new Error(`Unsupported USD drive property ${path}`);
-    if (
+      spec.specType === 6 &&
       schemas(layer, path).includes("PhysicsMassAPI") &&
-      !schemas(layer, path).includes("PhysicsRigidBodyAPI") &&
-      numeric(layer, path, "physics:mass", 0) !== 0
-    )
-      throw new Error(`Per-collider explicit mass is unsupported: ${path}`);
+      !schemas(layer, path).includes("PhysicsRigidBodyAPI")
+    ) {
+      const explicit =
+        numeric(layer, path, "physics:mass", 0) !== 0 ||
+        ["centerOfMass", "diagonalInertia", "principalAxes"].some(
+          (name) => attribute(layer, path, `physics:${name}`) !== undefined,
+        );
+      let parent = path.slice(0, path.lastIndexOf("/"));
+      while (parent && explicit) {
+        if (
+          schemas(layer, parent).includes("PhysicsRigidBodyAPI") ||
+          schemas(layer, parent).includes("PhysicsMassAPI")
+        )
+          throw new Error(
+            `Per-collider explicit mass properties are unsupported: ${path}`,
+          );
+        parent = parent.slice(0, parent.lastIndexOf("/"));
+      }
+    }
     if (
-      /\.(physics:(breakForce|breakTorque|centerOfMass|diagonalInertia|principalAxes|simulationOwner|filteredPairs)|physx)/.test(
+      /\.(physics:(breakForce|breakTorque|simulationOwner|filteredPairs)|physx)/.test(
         path,
       )
     )

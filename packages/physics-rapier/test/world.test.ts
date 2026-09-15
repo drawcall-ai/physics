@@ -12,7 +12,7 @@ function box() {
 it("adds bodies after stepping without resetting existing velocities or poses", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
   const first = box();
-  first.options.linearVelocity = [2, 0, 0];
+  first.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.update(world.fixedDelta);
   const previous = first.position.x;
   const second = box();
@@ -85,29 +85,20 @@ it("materializes bodies created by before-step callbacks", async () => {
   world.dispose();
 });
 
-it("updates live mass and type without replacing the body", async () => {
-  const world = await setupWorld({ gravity: [0, 0, 0] });
-  const body = box();
-  body.options.mass = 2;
-  world.update(world.fixedDelta);
+it("keeps creation options immutable while damping and gravity settings update live", async () => {
+  const world = await setupWorld();
+  const body = new RigidBody({ mass: 2 });
+  body.add(new Mesh(new BoxGeometry()));
+  expect(Reflect.set(body.options, "mass", 9)).toBe(false);
+  expect(Reflect.set(body.options, "type", "static")).toBe(false);
+  world.update(0);
   body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(1);
-  body.options.type = "static";
-  world.update(world.fixedDelta);
-  const x = body.position.x;
-  world.update(world.fixedDelta);
-  expect(body.position.x).toBe(x);
-  body.options.type = "dynamic";
-  body.options.gravityScale = 0;
-  body.options.linearDamping = 1;
-  world.update(world.fixedDelta);
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
+  body.setGravityScale(0);
+  body.setLinearDamping(1);
   world.update(world.fixedDelta);
   expect(body.getVelocity().linear.x).toBeLessThan(1);
-  body.options.canSleep = false;
-  expect(() => world.update(world.fixedDelta)).toThrow(
-    "canSleep cannot change",
-  );
+  expect(body.getVelocity().linear.y).toBe(0);
   world.dispose();
 });
 
@@ -138,10 +129,15 @@ it("rejects edits to captured joint frames", async () => {
     frame1: new Matrix4(),
   });
   world.update(world.fixedDelta);
-  joint.options.frame0 = new Matrix4().makeTranslation(0, 1, 0);
-  expect(() => world.update(world.fixedDelta)).toThrow(
-    "Joint frames cannot change",
-  );
+  expect(
+    Reflect.set(
+      joint.options,
+      "frame0",
+      new Matrix4().makeTranslation(0, 1, 0),
+    ),
+  ).toBe(false);
+  world.update(world.fixedDelta);
+  expect(body.position.y).toBeCloseTo(0);
   world.dispose();
 });
 
@@ -154,13 +150,13 @@ it("preserves a live joint when invalid replacement settings fail", async () => 
     body1: body,
     frame0: new Matrix4(),
     frame1: new Matrix4(),
-    limits: [0, 2],
   });
+  joint.setLimits([0, 2]);
   world.update(world.fixedDelta);
-  joint.options.limits = [1, 2];
+  joint.setLimits([1, 2]);
   expect(() => world.update(world.fixedDelta)).toThrow("zero minimum");
   expect(joint.getState().distance).toBeCloseTo(2, 1);
-  joint.options.limits = [0, 2];
+  joint.setLimits([0, 2]);
   world.update(world.fixedDelta);
   expect(joint.getState().distance).toBeCloseTo(2, 1);
   world.dispose();
@@ -173,14 +169,14 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   const joint = new FixedJoint({ body0: null, body1: body });
   joint.position.y = 3;
   world.update(world.fixedDelta);
-  joint.options.enabled = false;
+  joint.setEnabled(false);
   for (let i = 0; i < 15; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeLessThan(3);
-  expect(joint.getState().distance).toBeGreaterThanOrEqual(0);
-  joint.options.enabled = true;
+  expect(joint.getState().translation.length()).toBeGreaterThanOrEqual(0);
+  joint.setEnabled(true);
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeCloseTo(3, 2);
-  expect(joint.getState().distance).toBeLessThan(0.01);
+  expect(joint.getState().translation.length()).toBeLessThan(0.01);
   world.dispose();
 });
 
@@ -199,7 +195,7 @@ it("uses world matrices for teleport and rejects nonrigid transforms", async () 
   world.dispose();
 });
 
-it("reconnects a copied live joint without unregistering the authoring object", async () => {
+it("rejects copying joint identity and preserves the live constraint", async () => {
   const world = await setupWorld();
   try {
     const first = box();
@@ -207,14 +203,14 @@ it("reconnects a copied live joint without unregistering the authoring object", 
     const second = box();
     second.position.set(3, 4, 0);
     const joint = new FixedJoint({ body0: null, body1: first });
-    world.update(world.fixedDelta);
+    world.update(0);
     const source = new FixedJoint({ body0: null, body1: second });
-    joint.copy(source);
+    expect(() => joint.copy(source)).toThrow();
     source.dispose();
     for (let i = 0; i < 30; i++) world.update(world.fixedDelta);
-    expect(first.position.y).toBeLessThan(3);
-    expect(second.position.y).toBeCloseTo(4, 1);
-    second.dispose();
+    expect(first.position.y).toBeCloseTo(4, 1);
+    expect(second.position.y).toBeLessThan(3);
+    first.dispose();
     expect(joint.disposed).toBe(true);
   } finally {
     world.dispose();

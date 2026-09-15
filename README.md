@@ -33,8 +33,8 @@ door.add(new Mesh(new BoxGeometry(0.98, 2, 0.06), material));
 const hinge = new RevoluteJoint({
   body0: frame,
   body1: door,
-  limits: [0, Math.PI / 2],
 });
+hinge.setLimits([0, Math.PI / 2]);
 hinge.position.x = 0.06;
 scene.add(frame, door, hinge);
 
@@ -63,9 +63,12 @@ Construction calls `world.register(object)`. A backend creates pending resources
 before stepping, after geometry and initial transforms have been configured. New
 bodies and joints can be constructed while the simulation is running.
 
-Constructor settings live in `body.options` and `joint.options`. Their options
-reference is readonly, and body references/world selection cannot be reassigned.
-Mutable settings such as `hinge.options.drive` can change after construction.
+Constructor options are copied and readonly for the object’s lifetime: world, body
+type, collider strategy, mass properties, sleep capability, connected bodies, axis,
+and explicit frames. Mutable settings use methods, during construction and simulation.
+For example, call `body.setLinearDamping(0.1)`, `body.setGravityScale(1)`,
+`hinge.setLimits([0, 1])`, or `hinge.setEnabled(false)`. Read current values through
+getters such as `body.linearDamping` and `hinge.limits`; returned values are independent.
 
 `body.dispose()` releases its resources and connected joints. Removing a body from
 its Three.js parent does not dispose it. `world.dispose()` releases all its objects
@@ -75,19 +78,20 @@ and clears the default only if that world is still the default. A later
 ## Objects
 
 - `RigidBody extends Group`: `type` is `dynamic` (default), `static`, or
-  `kinematic`. Optional total `mass` overrides shape density. Body materials,
-  damping, velocities, gravity scale, and sleep policy are authored properties.
+  `kinematic`. Optional total `mass` overrides shape density. Set materials,
+  damping, velocities, and gravity scale through methods. Sleep capability is fixed.
 - `PhysicsMaterial`: plain options for static/dynamic friction, restitution, and density,
-  e.g. `material: { density: 42 }`. Omitted values use the standard defaults.
+  e.g. `body.setMaterial({ density: 42 })`. Omitted values use standard defaults.
 - `BoxCollider`, `SphereCollider`, `CapsuleCollider`, `CylinderCollider`,
   `MeshCollider`: explicit `Object3D` shapes. Their presence disables automatic generation on their body.
   Their transforms locate shapes relative to the body. Capsules and cylinders
   extend along Y; capsule `length` excludes the hemispheres.
 - `FixedJoint`, `RevoluteJoint`, `PrismaticJoint`, `SphericalJoint`,
   `DistanceJoint`: `Object3D` constraints. `body0: null` anchors to the world.
-  Revolute/prismatic joints have an `axis` (default Y), optional `limits`, and
-  optional `drive` with position/velocity targets, stiffness, damping, and force
-  limit. Distance joints require minimum/maximum `limits`.
+  Revolute/prismatic joints have an immutable `axis` (default Y), `setLimits()`,
+  and `setEffort()`. Clear axis limits with `setLimits(undefined)`. Distance joints
+  use `setLimits([minimum, maximum])`. Physics supplies constraints and effort;
+  actuator controllers belong in the application or robotics package.
 
 All quantities use meters, kilograms, seconds, and radians. Joint placement defines
 both initial local frames. Supply both `frame0` and `frame1` instead for explicit
@@ -107,7 +111,7 @@ when checking mutable settings without generating shapes or recalculating anchor
 with authored world scale baked into its dimensions or copied mesh vertices.
 `collider.source` identifies the authored collider or mesh. Source geometry is not mutated.
 `joint.getFrame()` accounts for scale in anchor positions; explicit frame rotations
-remain body-local. Numeric limits, drive settings, mass, and velocities retain their
+remain body-local. Numeric limits, mass, and velocities retain their
 physical units.
 
 Boxes support positive nonuniform scale. Spheres and capsules require uniform scale;
@@ -127,11 +131,16 @@ Bodies and joints support Three.js `.clone()` and `.copy()`, which preserve
 joint body references. For a complete mechanism, use `clone(root)` from
 `@drawcall/physics`, like Three.js SkeletonUtils: it clones an ordinary object
 hierarchy and reconnects internal joint references to cloned bodies. External
-body references remain external. Geometry and materials remain shared,
+body references remain external. Copying onto an existing physics object requires
+matching immutable configuration; use `clone(root)` to rebuild a mechanism with new
+body identities. Geometry and materials remain shared,
 application-owned resources. Clones register in their source world.
 
-Explicit colliders can declare `sensor: true` and
-`collisionGroups: { membership, filter }` using unsigned 16-bit masks. Adapters
+Explicit colliders use `setSensor(true)`, `setMaterial(...)`, and
+`setCollisionGroups({ membership, filter })` with unsigned 16-bit masks. Shape
+dimensions use `setSize`, `setRadius`, `setLength`, or `setHeight`; meshes use
+`setGeometry` with an immutable constructor `approximation`. Three.js transforms
+and supported geometry/child edits remain available. Adapters
 validate support and report unsupported properties instead of ignoring them.
 
 ## Adapters
@@ -160,8 +169,95 @@ an independent importer and solver.
 
 ### State access and static previews
 
-`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and `joint.getState()` work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and `joint.getState()` work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Linear velocity is measured at the center of mass; both velocity vectors use world-space axes. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
 
-`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update`, `step`, or `reset` on an authoring world still throws because it cannot simulate.
+`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update` or `reset` on an authoring world still throws because it cannot simulate.
 
 The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. State operations never force early backend creation; final parent scale, collider geometry, mass, and inertia are captured together. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
+
+## Joint measurements, effort, and time
+
+Fixed-joint state contains relative `translation` and `rotation`; spherical and
+distance joints report anchor `distance`.
+
+Revolute and prismatic `getState()` return `{ position, velocity }`, in radians and
+radians/second or meters and meters/second respectively. Revolute position counts
+turns each solver substep, even without reads. Motion must stay below half a turn
+per substep for unambiguous angular sampling. Teleports rebase the coordinate
+without counting a jump as traveled turns; reset restores the initialized coordinate.
+
+`joint.setEffort(value)` commands torque (N·m) or force (N) for one fixed substep.
+The final call wins; zero cancels. No new command means zero effort next substep.
+Positive effort increases the coordinate and applies the reaction to the connected
+body. Disabled joints do not apply effort; disable, reset, and disposal clear it.
+Commands made during construction wait for the next solver step; `update(0)` does
+not consume them. AuthoringWorld validates effort without retaining commands.
+
+```ts
+world.onBeforeStep(() => {
+  const { position, velocity } = hinge.getState();
+  hinge.setEffort(10 * (target - position) - 2 * velocity);
+});
+world.onAfterStep(() => sampleSensors(world.time));
+```
+
+`world.time` starts at zero and advances only after completed fixed substeps.
+Before-step callbacks see starting time; after-step callbacks see completed time
+and synchronized state. Sub-timestep updates and discarded catch-up time do not
+advance it. Reset restores zero; AuthoringWorld always reports zero.
+
+## Explicit mass and range queries
+
+Body options `centerOfMass` (meters), `diagonalInertia` (kg·m²), and `principalAxes`
+(unit quaternion `[x, y, z, w]`) describe body-local mass properties alongside
+`mass` (kg). Principal moments must be positive for dynamic bodies and satisfy the
+inertia triangle inequalities. A complete specification is authoritative; colliders
+do not contribute mass twice. Unspecified properties are inferred from colliders.
+A dynamic body without colliders requires explicit positive mass and inertia.
+Static and kinematic bodies can have no colliders without invented mass. Explicit
+COM and inertia already use physical units and are not multiplied by visual scale.
+Collider-derived values include captured collider scale. With a mass-only override,
+collider mass contributions keep their density ratios (or volume ratios when all
+densities are zero).
+
+```ts
+const link = new RigidBody({
+  colliders: false,
+  mass: 2,
+  centerOfMass: [0, 0.1, 0],
+  diagonalInertia: [0.02, 0.03, 0.04],
+  principalAxes: [0, 0, 0, 1],
+});
+world.update(0);
+const hit = world.raycast(origin, direction, 10, {
+  excludeBodies: [link],
+  includeSensors: false,
+});
+```
+
+Raycasts return the closest hit or `null`, including distance, world point/normal,
+body, and source collider or mesh identity. Direction is normalized internally;
+distance is in meters. Collision groups can filter queries; sensors are excluded
+by default. Rays starting inside a collider return its exit surface. Queries use
+prepared state, including completed steps and teleports; use `update(0)` to prepare
+completed construction. Queries never initialize unfinished bodies. AuthoringWorld
+throws an unsupported-query error.
+
+## Breaking migration
+
+Release core, Rapier, and USD together under the next minor version using the
+existing shared release tag workflow. Migrate consumers before upgrading:
+
+| Previous API                              | Replacement                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| Velocity options                          | `body.setVelocity({ linear, angular })` with Vector3 values               |
+| Damping, gravity, material options        | `setLinearDamping`, `setAngularDamping`, `setGravityScale`, `setMaterial` |
+| Writable collider properties/options      | Collider setting and dimension methods                                    |
+| Joint enabled/contact/limit options       | `setEnabled`, `setCollideConnected`, `setLimits`                          |
+| Joint drive options / JointDrive          | Application controller calling `setEffort` each substep                   |
+| Axis angle/angularVelocity fields         | `getState().position` / `.velocity`                                       |
+| Changing body type, mass, or joint frames | Dispose and recreate with new constructor options                         |
+| USD PhysicsDriveAPI                       | Unsupported; driven imports fail with the prim and schema/property        |
+
+There are no aliases for removed APIs. USD interchange carries physical constraints
+and mass properties; robotics owns actuator models and ROS integration.

@@ -16,11 +16,13 @@ export const simulationOptions = {
   solverIterations: 32,
 };
 
-// A stiff, torque-limited steering servo must overcome stationary tire scrub.
-export const steeringMotor = {
-  stiffness: 300000,
-  damping: 1500,
-  maxForce: 4000,
+// Integral feedback overcomes stationary tire scrub without stiff solver motors.
+export const steeringControl = {
+  stiffness: 6000,
+  damping: 70,
+  integral: 12000,
+  maxTorque: 4000,
+  integralLimit: 0.15,
 };
 
 export const specification = {
@@ -72,12 +74,10 @@ export function createCar(world: PhysicsWorld) {
     const result = new RigidBody({ world, mass, canSleep: false });
     result.name = name;
     result.position.set(...position);
-    result.add(
-      new BoxCollider({
-        size,
-        collisionGroups: { membership: 2, filter: collides ? 1 : 0 },
-      }),
-    );
+    const collider = new BoxCollider();
+    collider.setSize(size);
+    collider.setCollisionGroups({ membership: 2, filter: collides ? 1 : 0 });
+    result.add(collider);
     root.add(result);
     return result;
   }
@@ -116,13 +116,8 @@ export function createCar(world: PhysicsWorld) {
         axis: "Y",
         frame0: new THREE.Matrix4().makeTranslation(x, -0.52, z),
         frame1: new THREE.Matrix4(),
-        limits: [-specification.droop, specification.bump],
-        drive: {
-          stiffness: specification.stiffness,
-          damping: specification.damping,
-          targetPosition: 0,
-        },
       });
+      spring.setLimits([-specification.droop, specification.bump]);
       spring.name = `${name}Suspension`;
       const steeringFrames = {
         body0: carrier,
@@ -134,24 +129,26 @@ export function createCar(world: PhysicsWorld) {
         ? new RevoluteJoint({
             ...steeringFrames,
             axis: "Y",
-            limits: [-0.6, 0.6],
-            drive: { ...steeringMotor },
           })
         : new FixedJoint(steeringFrames);
+      if (steering instanceof RevoluteJoint) steering.setLimits([-0.6, 0.6]);
       steering.name = `${name}${front ? "Steering" : "KnuckleMount"}`;
       const tire = new RigidBody({
         world,
         mass: 22,
         canSleep: false,
-        material: { dynamicFriction: 1.2, staticFriction: 1.2, restitution: 0 },
+      });
+      tire.setMaterial({
+        dynamicFriction: 1.2,
+        staticFriction: 1.2,
+        restitution: 0,
       });
       tire.name = `${name}Wheel`;
       tire.position.copy(carrier.position);
-      const collider = new CylinderCollider({
-        radius: specification.wheelRadius,
-        height: 0.26,
-        collisionGroups: { membership: 2, filter: 1 },
-      });
+      const collider = new CylinderCollider();
+      collider.setRadius(specification.wheelRadius);
+      collider.setHeight(0.26);
+      collider.setCollisionGroups({ membership: 2, filter: 1 });
       collider.rotation.z = Math.PI / 2;
       tire.add(collider);
       const wheel = new THREE.Mesh(
@@ -173,7 +170,6 @@ export function createCar(world: PhysicsWorld) {
         axis: "X",
         frame0: new THREE.Matrix4(),
         frame1: new THREE.Matrix4(),
-        drive: { targetVelocity: 0, damping: 80, maxForce: 0 },
       });
       axle.name = `${name}Motor`;
       // Spring geometry is visual only; force comes from the prismatic joint.

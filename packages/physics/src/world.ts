@@ -1,18 +1,18 @@
-import type { Matrix4, Vector3 } from "three";
-import { Joint } from "./joints.js";
+import type { Matrix4, Vector3, Quaternion, Object3D } from "three";
+import { Joint, AxisJoint } from "./joints.js";
 import { RigidBody } from "./body.js";
 import {
-  initialVelocity,
-  setInitialVelocity,
+  authoredVelocity,
+  setAuthoredVelocity,
   setWorldPose,
   authoredJointState,
 } from "./state.js";
-import type { Vec3 } from "./objects.js";
+import type { Vec3, CollisionGroups } from "./objects.js";
 
 export interface PhysicsOptions {
-  gravity?: Vec3;
-  fixedDelta?: number;
-  maxSubsteps?: number;
+  readonly gravity?: Vec3;
+  readonly fixedDelta?: number;
+  readonly maxSubsteps?: number;
 }
 
 export interface PhysicsVelocity {
@@ -20,17 +20,47 @@ export interface PhysicsVelocity {
   angular: Vector3;
 }
 
-export interface PhysicsJointState {
-  angle: number;
-  angularVelocity: number;
+export interface AxisJointState {
   position: number;
+  velocity: number;
+}
+export interface FixedJointState {
+  translation: Vector3;
+  rotation: Quaternion;
+}
+export interface SphericalJointState {
   distance: number;
+}
+export interface DistanceJointState {
+  distance: number;
+}
+export type PhysicsJointState =
+  AxisJointState | FixedJointState | SphericalJointState | DistanceJointState;
+export interface RaycastOptions {
+  readonly collisionGroups?: CollisionGroups;
+  readonly includeSensors?: boolean;
+  readonly excludeBodies?: readonly RigidBody[];
+}
+export interface RaycastHit {
+  distance: number;
+  point: Vector3;
+  normal: Vector3;
+  body: RigidBody;
+  collider: Object3D;
 }
 
 export interface PhysicsWorld {
   register(object: RigidBody | Joint): void;
   unregister(object: RigidBody | Joint): void;
   readonly fixedDelta: number;
+  readonly time: number;
+  raycast(
+    origin: Vector3,
+    direction: Vector3,
+    maxDistance: number,
+    options?: RaycastOptions,
+  ): RaycastHit | null;
+  setJointEffort(object: AxisJoint, value: number): void;
   update(delta: number): void;
   reset(): void;
   dispose(): void;
@@ -66,7 +96,24 @@ export function clearDefaultWorld(world: PhysicsWorld): void {
 
 /** Owns authoring objects without loading a simulation backend. */
 export class AuthoringWorld implements PhysicsWorld {
-  readonly fixedDelta = 1 / 60;
+  get fixedDelta(): number {
+    return 1 / 60;
+  }
+  get time(): number {
+    return 0;
+  }
+  raycast(
+    _origin: Vector3,
+    _direction: Vector3,
+    _maxDistance: number,
+    _options?: RaycastOptions,
+  ): never {
+    throw new Error("AuthoringWorld does not support raycast queries");
+  }
+  setJointEffort(object: AxisJoint, value: number): void {
+    this.assertObject(object);
+    if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
+  }
   readonly #objects = new Set<RigidBody | Joint>();
   #disposed = false;
 
@@ -111,11 +158,11 @@ export class AuthoringWorld implements PhysicsWorld {
   }
   getVelocity(object: RigidBody): PhysicsVelocity {
     this.assertObject(object);
-    return initialVelocity(object);
+    return authoredVelocity(object);
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
     this.assertObject(object);
-    setInitialVelocity(object, value);
+    setAuthoredVelocity(object, value);
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
     this.assertObject(object);

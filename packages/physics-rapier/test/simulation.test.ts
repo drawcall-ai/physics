@@ -38,17 +38,15 @@ describe("RapierWorld", () => {
     );
     simulation.dispose();
   });
-  it("rejects invalid live drive targets before stepping", async () => {
+  it("rejects invalid effort commands before stepping", async () => {
     const simulation = await setupWorld();
     const scene = new Group(),
       body = box();
     const hinge = new RevoluteJoint({ body0: null, body1: body });
     scene.add(body, hinge);
 
-    hinge.options.drive = { targetPosition: NaN };
-    expect(() => simulation.update(simulation.fixedDelta)).toThrow("targets must be finite");
-    hinge.options.drive = { damping: -1 };
-    expect(() => simulation.update(simulation.fixedDelta)).toThrow("coefficients");
+    expect(() => hinge.setEffort(NaN)).toThrow("finite");
+    expect(() => hinge.setEffort(Infinity)).toThrow("finite");
     simulation.dispose();
   });
   it("distributes explicit mass over compound colliders", async () => {
@@ -78,17 +76,13 @@ describe("RapierWorld", () => {
     const scene = new Group();
     const floor = new RigidBody({ type: "static", colliders: false });
     floor.add(
-      new BoxCollider({
-        size: [10, 1, 10],
-        collisionGroups: { membership: 1, filter: 1 },
-      }),
+      new BoxCollider()
+        .setSize([10, 1, 10])
+        .setCollisionGroups({ membership: 1, filter: 1 }),
     );
     const falling = new RigidBody({ colliders: false, mass: 1 });
     falling.add(
-      new BoxCollider({
-        size: [1, 1, 1],
-        collisionGroups: { membership: 2, filter: 2 },
-      }),
+      new BoxCollider().setCollisionGroups({ membership: 2, filter: 2 }),
     );
     falling.position.y = 2;
     scene.add(floor, falling);
@@ -156,15 +150,28 @@ describe("RapierWorld", () => {
     const hinge = new RevoluteJoint({
       body0: frame,
       body1: door,
-      limits: [0, 1.5],
-      drive: { targetPosition: 1, stiffness: 50, damping: 10, maxForce: 100 },
+    });
+    hinge.setLimits([0, 1.5]);
+    simulation.onBeforeStep(() => {
+      const state = hinge.getState();
+      hinge.setEffort(50 * (1 - state.position) - 10 * state.velocity);
     });
     hinge.position.x = 0.5;
     assembly.add(frame, door, hinge);
 
     steps(simulation, 240);
-    expect(hinge.getState().angle).toBeCloseTo(1, 1);
-    expect(hinge.getState().distance).toBeLessThan(0.01);
+    expect(hinge.getState().position).toBeCloseTo(1, 1);
+    const frame0 = hinge
+      .getFrame(0, new Matrix4())
+      .premultiply(frame.matrixWorld);
+    const frame1 = hinge
+      .getFrame(1, new Matrix4())
+      .premultiply(door.matrixWorld);
+    expect(
+      new Vector3()
+        .setFromMatrixPosition(frame0)
+        .distanceTo(new Vector3().setFromMatrixPosition(frame1)),
+    ).toBeLessThan(0.01);
     simulation.dispose();
   });
   it("drives a slider and surfaces invalid live material edits", async () => {
@@ -178,19 +185,19 @@ describe("RapierWorld", () => {
       body0: null,
       body1: body,
       axis: "X",
-      limits: [0, 2],
-      drive: { targetPosition: 1, stiffness: 50, damping: 10 },
+    });
+    slider.setLimits([0, 2]);
+    simulation.onBeforeStep(() => {
+      const state = slider.getState();
+      slider.setEffort(50 * (1 - state.position) - 10 * state.velocity);
     });
     scene.add(slider);
 
     steps(simulation);
     expect(body.position.x).toBeCloseTo(1, 1);
-    body.options.material = {
-      staticFriction: 1,
-      dynamicFriction: 0.2,
-    };
+    body.setMaterial({ staticFriction: 1, dynamicFriction: 0.2 });
     expect(() => simulation.update(simulation.fixedDelta)).toThrow("friction");
-    body.options.material = {};
+    body.setMaterial({});
     simulation.update(simulation.fixedDelta);
     expect(new Vector3().setFromMatrixPosition(body.matrixWorld).x).toBeCloseTo(
       1,
@@ -215,8 +222,7 @@ describe("RapierWorld", () => {
                 body1: body,
                 frame0: new Matrix4(),
                 frame1: new Matrix4(),
-                limits: [0, 2],
-              });
+              }).setLimits([0, 2]);
       scene.add(joint);
 
       steps(simulation);

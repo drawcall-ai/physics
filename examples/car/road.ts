@@ -24,13 +24,10 @@ export function createRoad(world: PhysicsWorld) {
   const floor = new RigidBody({ world, type: "static" });
   floor.name = "Road";
   floor.position.set(0, -0.15, 30);
-  floor.add(
-    box([8, 0.3, 90], asphalt),
-    new BoxCollider({
-      size: [8, 0.3, 90],
-      collisionGroups: { membership: 1, filter: 2 },
-    }),
-  );
+  const floorCollider = new BoxCollider();
+  floorCollider.setSize([8, 0.3, 90]);
+  floorCollider.setCollisionGroups({ membership: 1, filter: 2 });
+  floor.add(box([8, 0.3, 90], asphalt), floorCollider);
   root.add(floor);
   for (const x of [-3.6, 3.6]) {
     const line = box([0.09, 0.012, 90], white);
@@ -72,14 +69,10 @@ export function createRoad(world: PhysicsWorld) {
     body.name = name;
     body.position.set(x, 0.005, z);
     const mesh = new THREE.Mesh(geometry, yellow);
-    body.add(
-      mesh,
-      new MeshCollider({
-        geometry,
-        approximation: "trimesh",
-        collisionGroups: { membership: 1, filter: 2 },
-      }),
-    );
+    const collider = new MeshCollider({ approximation: "trimesh" });
+    collider.setGeometry(geometry);
+    collider.setCollisionGroups({ membership: 1, filter: 2 });
+    body.add(mesh, collider);
     root.add(body);
   }
   bump("Low speed hump 80mm", 12, 0.08, 1.5);
