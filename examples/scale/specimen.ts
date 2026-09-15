@@ -32,9 +32,10 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   ) {
     const body = new RigidBody({
       world,
+      type,
       colliders,
       ...(type === "static" ? {} : { mass: 2 }),
-    }).setType(type);
+    });
     if (spin && type === "dynamic")
       body.setVelocity({ angular: new T.Vector3(1.4, 0.7, 1.1) });
     bodies.push(body);

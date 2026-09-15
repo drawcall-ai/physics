@@ -308,3 +308,27 @@ it("accepts total mass or complete explicit mass properties and rejects partial 
     ),
   ).not.toThrow();
 });
+
+it("captures immutable body type and preserves it with independent velocity when cloning", () => {
+  const options: { type: "kinematic" | "static" } = { type: "kinematic" };
+  const body = new RigidBody(options).setVelocity({
+    linear: new Vector3(3, 0, 0),
+  });
+  options.type = "static";
+  expect(new RigidBody().bodyType).toBe("dynamic");
+  expect(body.bodyType).toBe("kinematic");
+  expect(body.options.type).toBe("kinematic");
+  expect(Reflect.set(body, "bodyType", "static")).toBe(false);
+  expect(Reflect.set(body.options, "type", "static")).toBe(false);
+  const copy = body.clone();
+  expect(copy.bodyType).toBe("kinematic");
+  expect(copy.getVelocity().linear.x).toBe(3);
+  copy.setVelocity({ linear: new Vector3(5, 0, 0) });
+  expect(body.getVelocity().linear.x).toBe(3);
+  expect(() => new RigidBody({ type: "static" }).copy(body)).toThrow(
+    "immutable",
+  );
+  expect(() =>
+    new RigidBody({ type: "dynamic" }).copy(new RigidBody()),
+  ).not.toThrow();
+});

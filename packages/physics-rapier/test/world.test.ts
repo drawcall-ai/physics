@@ -42,7 +42,7 @@ it("adds joints after bodies are already simulating", async () => {
 
 it("updates collider geometry without resetting the body", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
-  const floor = new RigidBody({}).setType("static");
+  const floor = new RigidBody({ type: "static" });
   const mesh = new Mesh(new BoxGeometry(1, 1, 1));
   floor.add(mesh);
   const body = box();
@@ -104,7 +104,7 @@ it("keeps creation options immutable while damping and gravity settings update l
 
 it("removes automatic colliders when geometry is removed", async () => {
   const world = await setupWorld();
-  const floor = new RigidBody({}).setType("static");
+  const floor = new RigidBody({ type: "static" });
   const mesh = new Mesh(new BoxGeometry(10, 1, 10));
   const distant = new Mesh(new BoxGeometry(1, 1, 1));
   distant.position.x = 20;

@@ -130,7 +130,7 @@ for (const axis of ["X", "Y", "Z"] as const) {
 
 it("rejects disposed, foreign, invalid, and premature simulation operations", async () => {
   const world = await setup();
-  const body = new RigidBody({}).setType("kinematic");
+  const body = new RigidBody({ type: "kinematic" });
   expect(() => body.setVelocity({ linear: new Vector3(NaN, 0, 0) })).toThrow(
     "finite",
   );
@@ -172,7 +172,7 @@ for (const kind of ["spherical", "distance"] as const) {
 
 it("preserves world scale through static teleport and reset under a nonuniform parent", async () => {
   const world = await setup();
-  const body = new RigidBody({}).setType("static");
+  const body = new RigidBody({ type: "static" });
   body.add(new BoxCollider());
   const parent = new Group().add(body);
   parent.scale.set(2, 3, 4);

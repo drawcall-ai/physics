@@ -36,12 +36,6 @@ export class JointMotor {
           "Motor gains and maximum effort must be finite and nonnegative",
         );
     }
-    if (
-      options.model !== undefined &&
-      options.model !== "force" &&
-      options.model !== "acceleration"
-    )
-      throw new Error("Unknown motor model");
     this.#options = Object.freeze({ ...options });
     motors.set(options.joint, this);
   }
@@ -82,8 +76,6 @@ export class JointMotor {
   }
   setEnabled(value: boolean): this {
     this.assertLive();
-    if (typeof value !== "boolean")
-      throw new Error("Motor enabled must be boolean");
     this.#enabled = value;
     this.#version++;
     return this;

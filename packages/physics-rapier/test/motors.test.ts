@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { Matrix4, Vector3 } from "three";
+import { Vector3 } from "three";
 import {
   JointMotor,
   PrismaticJoint,
@@ -143,39 +143,5 @@ it("rejects motor/effort conflicts before applying any forces and permits explic
   world.update(0);
   expect(first.getState().velocity).toBeCloseTo(0.1, 5);
   expect(second.getState().velocity).toBeCloseTo(0, 5);
-  world.dispose();
-});
-
-it("clears motion and queued kinematic targets on type transitions while honoring later velocity commands", async () => {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-  const moving = body().setVelocity({ linear: new Vector3(1, 0, 0) });
-  world.update(0.01);
-  moving.setType("static");
-  const position = moving.position.x;
-  world.update(0.02);
-  expect(moving.position.x).toBeCloseTo(position, 5);
-  expect(moving.getVelocity().linear.length()).toBe(0);
-  moving.setType("dynamic").setVelocity({ linear: new Vector3(2, 0, 0) });
-  world.update(0.01);
-  expect(moving.getVelocity().linear.x).toBeCloseTo(2, 5);
-  moving.setType("kinematic");
-  moving.setKinematicTarget(new Matrix4().makeTranslation(10, 0, 0));
-  moving.setType("dynamic").setType("kinematic");
-  const before = moving.position.x;
-  world.update(0.01);
-  expect(moving.position.x).toBeCloseTo(before, 5);
-  moving.setKinematicTarget(new Matrix4().makeTranslation(1, 0, 0));
-  world.update(0.01);
-  expect(moving.position.x).toBeCloseTo(1, 5);
-  world.dispose();
-});
-
-it("rejects a transition to dynamic when a prepared colliderless body has no mass", async () => {
-  const world = await setupWorld();
-  const empty = new RigidBody({ colliders: false }).setType("static");
-  world.update(0);
-  expect(() => empty.setType("dynamic")).toThrow(/mass|inertia/);
-  expect(empty.bodyType).toBe("static");
-  expect(() => world.update(world.fixedDelta)).not.toThrow();
   world.dispose();
 });

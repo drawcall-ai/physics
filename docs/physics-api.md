@@ -80,8 +80,12 @@ controller restrictions.
 A separate motor follows an [established actuator model](https://mujoco.readthedocs.io/en/3.3.5/computation/#actuation-model), while immutable gains
 and mechanical joint limits are deliberate scope choices. Engine APIs commonly
 allow live changes; this integration does not require exposing them. Physical
-limits stay in joint constructor options. Body type switching remains available
-through `setType`, preserving an existing capability.
+limits and body type stay in constructor options. Changing either requires
+recreating the object. This avoids runtime transition state and matches the
+construction-time [fixed/free distinction used by Genesis](https://genesis-world.readthedocs.io/en/latest/user_guide/physics/rigid_bodies.html).
+TypeScript constrains the body-type enum; core does not duplicate it with a
+runtime membership check. External importers validate their input at the parsing
+boundary. Numeric physics invariants still require runtime checks.
 
 ## Raycast policy
 

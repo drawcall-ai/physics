@@ -23,7 +23,7 @@ import { setupWorld } from "@drawcall/physics-rapier";
 const world = await setupWorld({ gravity: [0, -9.81, 0] });
 const scene = new Group();
 const material = new MeshStandardMaterial();
-const frame = new RigidBody().setType("static");
+const frame = new RigidBody({ type: "static" });
 frame.add(new Mesh(new BoxGeometry(0.1, 2.2, 0.15), material));
 
 const door = new RigidBody({ mass: 20 });
@@ -63,10 +63,10 @@ Construction calls `world.register(object)`. A backend creates pending resources
 before stepping, after geometry and initial transforms have been configured. New
 bodies and joints can be constructed while the simulation is running.
 
-Constructor options are copied and readonly for the object’s lifetime: world, collider strategy, mass properties, sleep capability, connected bodies, axis,
+Constructor options are copied and readonly for the object’s lifetime: world, body type, collider strategy, mass properties, sleep capability, connected bodies, axis,
 physical joint limits, and explicit frames. Mutable settings use methods, during construction and simulation.
 For example, call `body.setLinearDamping(0.1)`, `body.setGravityScale(1)`,
-`body.setType("kinematic")`, or `hinge.setEnabled(false)`. Read current values through
+or `hinge.setEnabled(false)`. Read current values through
 getters such as `body.linearDamping` and `hinge.limits`; returned values are independent.
 
 `body.dispose()` releases its resources and connected joints. Removing a body from
@@ -78,9 +78,8 @@ and clears the default only if that world is still the default. A later
 
 - `RigidBody extends Group`: `bodyType` is `dynamic` (default), `static`, or
   `kinematic`. Optional total `mass` overrides shape density. Set materials,
-  damping, velocities, gravity scale, and type through methods. Sleep capability is fixed.
-  A type transition clears velocity, forces, and pending kinematic targets; setting
-  the same type preserves them. Set new velocity/targets after changing type.
+  damping, velocities, and gravity scale through methods. Body `type` and sleep
+  capability are immutable constructor options; recreate the body to change them.
 - `PhysicsMaterial`: plain options for static/dynamic friction, restitution, and density,
   e.g. `body.setMaterial({ density: 42 })`. Omitted values use standard defaults.
 - `BoxCollider`, `SphereCollider`, `CapsuleCollider`, `CylinderCollider`,
@@ -294,16 +293,16 @@ throws an unsupported-query error.
 Release core, Rapier, and USD together under the next minor version using the
 existing shared release tag workflow. Migrate consumers before upgrading:
 
-| Previous API                         | Replacement                                                                  |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| Velocity options                     | `body.setVelocity({ linear, angular })` with Vector3 values                  |
-| Damping, gravity, material options   | `setLinearDamping`, `setAngularDamping`, `setGravityScale`, `setMaterial`    |
-| Writable collider properties/options | Constructor options for dimensions; methods for material, sensor, and groups |
-| Joint enabled/contact options        | `setEnabled`, `setCollideConnected`; limits remain constructor options       |
-| Joint drive options / JointDrive     | `new JointMotor({ joint, ...configuration })` and `motor.setTarget(...)`     |
-| Axis angle/angularVelocity fields    | `getState().position` / `.velocity`                                          |
-| Body type option                     | `body.setType(type)`; mass and joint frames remain immutable                 |
-| USD PhysicsDriveAPI                  | Preserved through `JointMotor`                                               |
+| Previous API                              | Replacement                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------- |
+| Velocity options                          | `body.setVelocity({ linear, angular })` with Vector3 values                  |
+| Damping, gravity, material options        | `setLinearDamping`, `setAngularDamping`, `setGravityScale`, `setMaterial`    |
+| Writable collider properties/options      | Constructor options for dimensions; methods for material, sensor, and groups |
+| Joint enabled/contact options             | `setEnabled`, `setCollideConnected`; limits remain constructor options       |
+| Joint drive options / JointDrive          | `new JointMotor({ joint, ...configuration })` and `motor.setTarget(...)`     |
+| Axis angle/angularVelocity fields         | `getState().position` / `.velocity`                                          |
+| Changing body type, mass, or joint frames | Recreate with new immutable constructor options                              |
+| USD PhysicsDriveAPI                       | Preserved through `JointMotor`                                               |
 
 There are no aliases for removed APIs. USD interchange carries physical constraints
 motors and mass properties; robotics owns command timing, controller restrictions, custom actuator models, and ROS integration.

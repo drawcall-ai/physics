@@ -188,7 +188,7 @@ it("registers each cloned joint once without unregistering it", () => {
 
 it("supports a static preview callback without a backend or step observers", () => {
   const world = setup();
-  const body = new RigidBody().setType("kinematic");
+  const body = new RigidBody({ type: "kinematic" });
   world.unregister(body);
   const before = vi.fn(),
     after = vi.fn();

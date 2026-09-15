@@ -112,7 +112,7 @@ def PhysicsPrismaticJoint "Slider" (
 );
 
 it("roundtrips velocity braking and unbounded force", async () => {
-  const body = new RigidBody({ world }).setType("static");
+  const body = new RigidBody({ world, type: "static" });
   const slider = new PrismaticJoint({ body0: null, body1: body });
   new JointMotor({ joint: slider, damping: 5 }).setTarget({ velocity: 0 });
   const imported = new PhysicsUSDLoader().parse(
@@ -134,7 +134,7 @@ it("roundtrips velocity braking and unbounded force", async () => {
 });
 
 it("rejects disabled and untargeted motor export instead of changing actuation", async () => {
-  const body = new RigidBody({ world }).setType("static");
+  const body = new RigidBody({ world, type: "static" });
   const joint = new RevoluteJoint({ body0: null, body1: body });
   const motor = new JointMotor({ joint, stiffness: 10 });
   const scene = new Group().add(body, joint);

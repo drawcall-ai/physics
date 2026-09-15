@@ -29,7 +29,7 @@ function inertialBody(world: RapierWorld) {
 
 it("rejects invalid rays and accepts zero range and very small finite directions", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ world, colliders: false }).setType("static");
+  const body = new RigidBody({ world, colliders: false, type: "static" });
   body.add(new BoxCollider());
   world.update(0);
   const origin = new Vector3(-2, 0, 0);
@@ -150,8 +150,8 @@ it("requires sufficient dynamic colliderless inertia but accepts static and kine
   const massOnly = new RigidBody({ world, colliders: false, mass: 1 });
   expect(() => world.update(0)).toThrow(/mass|inertia/i);
   massOnly.dispose();
-  new RigidBody({ world, colliders: false }).setType("static");
-  new RigidBody({ world, colliders: false }).setType("kinematic");
+  new RigidBody({ world, colliders: false, type: "static" });
+  new RigidBody({ world, colliders: false, type: "kinematic" });
   expect(() => world.update(0)).not.toThrow();
   expect(
     () =>

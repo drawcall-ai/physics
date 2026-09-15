@@ -20,6 +20,7 @@ export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
 export interface RigidBodyOptions {
   readonly world?: PhysicsWorld;
+  readonly type?: RigidBodyType;
   readonly colliders?: AutoColliders;
   readonly mass?: number;
   readonly canSleep?: boolean;
@@ -37,26 +38,8 @@ export class RigidBody extends Group {
   get options(): RigidBodyOptions {
     return this.#options;
   }
-  #bodyType: RigidBodyType = "dynamic";
   get bodyType(): RigidBodyType {
-    return this.#bodyType;
-  }
-  setType(value: RigidBodyType): this {
-    this.assertLive();
-    if (!["dynamic", "static", "kinematic"].includes(value))
-      throw new Error("Unknown rigid body type");
-    if (this.#bodyType === value) return this;
-    const previous = this.#bodyType;
-    this.#bodyType = value;
-    this.#version++;
-    try {
-      this.setVelocity({ linear: new Vector3(), angular: new Vector3() });
-    } catch (error) {
-      this.#bodyType = previous;
-      this.#version++;
-      throw error;
-    }
-    return this;
+    return this.options.type ?? "dynamic";
   }
   #linearDamping = 0;
   #angularDamping = 0;
@@ -211,7 +194,6 @@ export class RigidBody extends Group {
     if (!sameOptions(this.options, source.options))
       throw new Error("Rigid body copy requires matching immutable options");
     super.copy(source, recursive);
-    this.setType(source.bodyType);
     this.setVelocity(source.getVelocity());
     this.setLinearDamping(source.linearDamping)
       .setAngularDamping(source.angularDamping)
@@ -382,6 +364,7 @@ function sameTuple(
 }
 function sameOptions(a: RigidBodyOptions, b: RigidBodyOptions): boolean {
   return (
+    (a.type ?? "dynamic") === (b.type ?? "dynamic") &&
     (a.colliders ?? "auto") === (b.colliders ?? "auto") &&
     a.mass === b.mass &&
     (a.canSleep ?? true) === (b.canSleep ?? true) &&

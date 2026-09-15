@@ -13,7 +13,7 @@ import {
 import { setupWorld, type RapierWorld } from "../src/index.js";
 
 function box(type: "dynamic" | "static" | "kinematic" = "dynamic") {
-  const body = new RigidBody({ mass: 1 }).setType(type);
+  const body = new RigidBody({ mass: 1, type: type });
   body.add(new Mesh(new BoxGeometry(1, 1, 1)));
   return body;
 }
@@ -75,7 +75,7 @@ describe("RapierWorld", () => {
   it("honors collision membership and filter masks", async () => {
     const simulation = await setupWorld();
     const scene = new Group();
-    const floor = new RigidBody({ colliders: false }).setType("static");
+    const floor = new RigidBody({ colliders: false, type: "static" });
     floor.add(
       new BoxCollider({ size: [10, 1, 10] }).setCollisionGroups({
         membership: 1,
@@ -96,7 +96,7 @@ describe("RapierWorld", () => {
   it("keeps the opening of a compound frame empty", async () => {
     const simulation = await setupWorld();
     const scene = new Group(),
-      frame = new RigidBody({}).setType("static"),
+      frame = new RigidBody({ type: "static" }),
       falling = box();
     for (const x of [-2, 2]) {
       const post = new Mesh(new BoxGeometry(0.2, 4, 0.2));

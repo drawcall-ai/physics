@@ -206,13 +206,12 @@ describe("mass and queries", () => {
       centerOfMass: [0, 0, 0],
       diagonalInertia: [1, 1, 1],
       principalAxes: [0, 0, 0, 1],
-    })
-      .setType("static")
-      .add(
-        new MeshCollider({ approximation: "trimesh" }).setGeometry(
-          new PlaneGeometry(1, 1),
-        ),
-      );
+      type: "static",
+    }).add(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(
+        new PlaneGeometry(1, 1),
+      ),
+    );
     expect(() => world.update(0)).not.toThrow();
     world.dispose();
   });
@@ -255,7 +254,7 @@ describe("mass and queries", () => {
 
   it("queries only prepared bodies and current teleports, including inside exits and source identity", async () => {
     const world = await setupWorld();
-    const moving = new RigidBody({}).setType("static");
+    const moving = new RigidBody({ type: "static" });
     const mesh = new Mesh(new BoxGeometry(2, 2, 2));
     moving.add(mesh);
     const origin = new Vector3(-3, 0, 0),
@@ -281,7 +280,7 @@ describe("mass and queries", () => {
 
   it("filters sensors and interaction groups", async () => {
     const world = await setupWorld();
-    const sensor = new RigidBody({ colliders: false }).setType("static");
+    const sensor = new RigidBody({ colliders: false, type: "static" });
     sensor.add(
       new BoxCollider()
         .setSensor(true)
@@ -340,7 +339,7 @@ it("cancels only one joint command when several joints act on a body", async () 
 
 it("changes primitive dimensions by replacing the collider on its existing body", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
-  const body = new RigidBody({}).setType("static");
+  const body = new RigidBody({ type: "static" });
   const original = new BoxCollider();
   body.add(original);
   world.update(0);

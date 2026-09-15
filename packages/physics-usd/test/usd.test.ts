@@ -50,7 +50,7 @@ function doorAssembly() {
   assembly.position.set(2, 3, 4);
   assembly.rotation.y = 0.6;
   scene.add(assembly);
-  const frame = new RigidBody().setType("static");
+  const frame = new RigidBody({ type: "static" });
   frame.name = "Frame";
   const material = new MeshStandardMaterial({ color: "brown" });
   for (const x of [-0.55, 0.55]) {
@@ -119,7 +119,7 @@ describe("USD Physics interchange", () => {
   });
 
   it("cleans up failed imports without disposing a supplied world", () => {
-    const existing = new RigidBody().setType("static");
+    const existing = new RigidBody({ type: "static" });
     expect(() =>
       new PhysicsUSDLoader({ world }).parse(`#usda 1.0
 (
@@ -465,7 +465,7 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
     "Collider must belong",
   );
   collider.removeFromParent();
-  const outside = new RigidBody().setType("static");
+  const outside = new RigidBody({ type: "static" });
   const joint = new FixedJoint({ body0: null, body1: outside });
   scene.add(joint);
   await expect(exporter.parseAsync(scene)).rejects.toThrow(
@@ -506,15 +506,15 @@ it("clones imported assemblies with remapped joints and independent disposal", a
     throw new Error("Missing cloned door bodies");
   expect(copiedDoor.disposed).toBe(true);
   expect(originalDoor.disposed).toBe(false);
-  expect(() =>
-    new RigidBody({ world: imported.world }).setType("static"),
+  expect(
+    () => new RigidBody({ world: imported.world, type: "static" }),
   ).not.toThrow();
   imported.dispose();
 });
 
 it("exports static groups without rigid-body schemas and preserves their compound colliders", async () => {
   const scene = new Group();
-  const floor = new RigidBody().setType("static");
+  const floor = new RigidBody({ type: "static" });
   floor.name = "Floor";
   floor.position.set(2, 3, 4);
   floor.add(new Mesh(new BoxGeometry()));

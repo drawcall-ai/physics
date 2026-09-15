@@ -47,7 +47,6 @@ export abstract class Joint<
   }
   setEnabled(value: boolean): this {
     this.assertLive();
-    if (typeof value !== "boolean") throw new Error("Enabled must be boolean");
     this.#enabled = value;
     this.changed();
     if (!value && this instanceof AxisJoint) this.world.setJointEffort(this, 0);
@@ -55,8 +54,6 @@ export abstract class Joint<
   }
   setCollideConnected(value: boolean): this {
     this.assertLive();
-    if (typeof value !== "boolean")
-      throw new Error("Collide connected must be boolean");
     this.#collideConnected = value;
     this.changed();
     return this;
@@ -245,8 +242,6 @@ export interface AxisJointOptions extends JointOptions {
 }
 export abstract class AxisJoint extends Joint<AxisJointOptions> {
   constructor(options: AxisJointOptions) {
-    if (options.axis !== undefined && !["X", "Y", "Z"].includes(options.axis))
-      throw new Error("Joint axis must be X, Y or Z");
     if (options.limits) validateLimits(options.limits);
     super({
       ...options,

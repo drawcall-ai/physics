@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { Group, Vector3 } from "three";
+import { Group } from "three";
 import {
   AuthoringWorld,
   JointMotor,
@@ -136,23 +136,4 @@ it("clones motor configuration and target state while rebinding the copied joint
   copy.dispose();
   expect(copiedMotor.disposed).toBe(true);
   expect(motor.disposed).toBe(false);
-});
-
-it("clears authored velocity on actual body type changes and preserves it on no-op changes", () => {
-  const body = new RigidBody().setVelocity({
-    linear: new Vector3(1, 2, 3),
-    angular: new Vector3(4, 5, 6),
-  });
-  expect(body.bodyType).toBe("dynamic");
-  body.setType("dynamic");
-  expect(body.getVelocity().linear.toArray()).toEqual([1, 2, 3]);
-  body.setType("kinematic");
-  expect(body.getVelocity().linear.length()).toBe(0);
-  expect(body.getVelocity().angular.length()).toBe(0);
-  body.setVelocity({ linear: new Vector3(3, 0, 0) });
-  expect(body.clone().bodyType).toBe("kinematic");
-  expect(body.clone().getVelocity().linear.x).toBe(3);
-  expect(Reflect.set(body, "bodyType", "static")).toBe(false);
-  body.dispose();
-  expect(() => body.setType("static")).toThrow("disposed");
 });

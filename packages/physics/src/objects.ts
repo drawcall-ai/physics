@@ -67,7 +67,6 @@ export abstract class Collider extends Object3D {
     return this;
   }
   setSensor(value: boolean): this {
-    if (typeof value !== "boolean") throw new Error("Sensor must be boolean");
     this.#sensor = value;
     this.#version++;
     return this;
@@ -202,11 +201,6 @@ export class MeshCollider extends Collider {
     options: { readonly approximation?: "convexHull" | "trimesh" } = {},
   ) {
     super();
-    if (
-      options.approximation !== undefined &&
-      !["convexHull", "trimesh"].includes(options.approximation)
-    )
-      throw new Error("Invalid mesh collider approximation");
     this.#approximation = options.approximation ?? "convexHull";
   }
   get geometry(): BufferGeometry {

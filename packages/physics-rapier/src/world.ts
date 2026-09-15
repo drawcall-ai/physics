@@ -182,8 +182,8 @@ export class RapierWorld implements PhysicsWorld {
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
     this.assertObject(object);
-    if (!this.bodies.has(object)) return setAuthoredVelocity(object, value);
-    const body = this.getBody(object);
+    const body = this.bodies.get(object)?.body;
+    if (!body) return setAuthoredVelocity(object, value);
     if (value.linear) body.setLinvel(value.linear, true);
     if (value.angular) body.setAngvel(value.angular, true);
   }
@@ -301,8 +301,6 @@ export class RapierWorld implements PhysicsWorld {
       throw new Error(
         "Body backend is not initialized; finish assembly and call world.update(0) before simulation operations.",
       );
-    if (binding.settings !== object.settingsVersion)
-      refreshBody(this.api, this.backend, object, binding);
     return binding.body;
   }
   private flush(pendingOnly = false): void {

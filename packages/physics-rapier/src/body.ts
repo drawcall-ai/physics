@@ -28,7 +28,6 @@ export interface BodyBinding {
   velocity: PhysicsVelocity;
   shapes: string;
   settings: number;
-  type: AuthoredBody["bodyType"];
   sources: Map<number, Object3D>;
   scale: Vector3;
   colliderScales: Map<Object3D, Vector3>;
@@ -64,7 +63,6 @@ export function createBody(
     colliderScales: new Map(),
     shapes: "",
     settings: -1,
-    type: object.bodyType,
     sources: new Map(),
   };
   try {
@@ -183,23 +181,6 @@ export function refreshBody(
   }
   const settings = object.settingsVersion;
   if (settings === binding.settings) return;
-  if (binding.type !== object.bodyType) {
-    body.setBodyType(
-      object.bodyType === "static"
-        ? api.RigidBodyType.Fixed
-        : object.bodyType === "kinematic"
-          ? api.RigidBodyType.KinematicPositionBased
-          : api.RigidBodyType.Dynamic,
-      true,
-    );
-    body.setLinvel(new Vector3(), true);
-    body.setAngvel(new Vector3(), true);
-    body.resetForces(false);
-    body.resetTorques(false);
-    body.setNextKinematicTranslation(body.translation());
-    body.setNextKinematicRotation(body.rotation());
-    binding.type = object.bodyType;
-  }
   body.setLinearDamping(object.linearDamping);
   body.setAngularDamping(object.angularDamping);
   body.setGravityScale(object.gravityScale, true);

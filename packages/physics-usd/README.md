@@ -60,7 +60,7 @@ colliders, and joints. `src/export/` owns USD prim writing and USDZ packaging.
 package's public API.
 
 Static bodies export as transformed collider groups with `PhysicsMassAPI` and no
-`PhysicsRigidBodyAPI`. Import reconstructs the group as `new RigidBody().setType("static")`,
+`PhysicsRigidBodyAPI`. Import reconstructs the group as `new RigidBody({ type: "static" })`,
 preserving compound colliders and joint targets. Dynamic and kinematic bodies
 retain the rigid-body schema.
 
@@ -79,13 +79,14 @@ complete explicit mass, center of mass and inertia. Principal axes default to id
 Mass-only configuration continues to use collider-derived inertia; arbitrary partial
 mass-property overrides are rejected.
 
-Mutable values use `body.setType(...)`, `body.setVelocity(...)`,
+Body type is an immutable constructor option, with `"dynamic"` as its default.
+Recreate the body to change it. Mutable values use `body.setVelocity(...)`,
 `joint.setEnabled(...)`, `joint.setCollideConnected(...)`, and collider
 `setMaterial(...)`, `setSensor(...)`, and `setCollisionGroups(...)`.
 Mechanical joint limits are immutable constructor options.
 
 Create a separate `JointMotor({ joint, stiffness, damping, maxForce, model })`
-and call `motor.setTarget({ position, velocity })`. Export reads current body type,
+and call `motor.setTarget({ position, velocity })`. Export reads the configured body type, current
 velocities and motor targets. Omitted target coordinates default to zero; gains
 remain active. Use zero stiffness for velocity-only motors, and a zero velocity
 target with damping for braking. Motors start enabled but inactive until targeted.
