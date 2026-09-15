@@ -133,11 +133,7 @@ export function validate(layer: Layer): void {
         parent = parent.slice(0, parent.lastIndexOf("/"));
       }
     }
-    if (
-      /\.(physics:(breakForce|breakTorque|simulationOwner|filteredPairs)|physx)/.test(
-        path,
-      )
-    )
+    if (property.startsWith("physx"))
       throw new Error(`Unsupported USD physics property ${path}`);
     if (spec.fields.timeSamples !== undefined)
       throw new Error(`Animated physics properties are unsupported: ${path}`);

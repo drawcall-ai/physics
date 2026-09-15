@@ -4,8 +4,8 @@ import {
   RigidBody,
   splitTransform,
 } from "@drawcall/physics";
-import type { PhysicsWorld, RigidBodyOptions, Vec3 } from "@drawcall/physics";
-import { numeric, numbers, schemas, target } from "./layer.js";
+import type { PhysicsWorld, MassProperties, Vec3 } from "@drawcall/physics";
+import { attribute, numeric, numbers, schemas, target } from "./layer.js";
 import type { Layer } from "./layer.js";
 
 export function vector(
@@ -24,7 +24,7 @@ export function wrapBody(
   object: Object3D,
   world: PhysicsWorld,
   type: "static" | "dynamic" | "kinematic",
-  mass: Partial<RigidBodyOptions> = {},
+  mass: MassProperties = {},
 ): RigidBody {
   const parent = object.parent;
   if (!parent) throw new Error("Cannot reconstruct an orphan rigid body");
@@ -105,13 +105,13 @@ export function massProperties(
   layer: Layer,
   path: string,
   object: Object3D,
-): Partial<RigidBodyOptions> {
+): MassProperties {
   const mass = numeric(layer, path, "physics:mass", 0);
   const optionalVector = (name: string) =>
-    numbers(layer, path, name) === undefined
+    attribute(layer, path, name) === undefined
       ? undefined
       : vector(layer, path, name, [0, 0, 0]);
-  let principalAxes: RigidBodyOptions["principalAxes"];
+  let principalAxes: MassProperties["principalAxes"];
   const axes = numbers(layer, path, "physics:principalAxes");
   if (axes) {
     if (axes.length !== 4)
@@ -123,16 +123,23 @@ export function massProperties(
   const scale = splitTransform(object.matrixWorld).scale;
   const center = optionalVector("physics:centerOfMass");
   const inertia = optionalVector("physics:diagonalInertia");
+  const diagonalInertia = inertia?.some((value) => value !== 0)
+    ? inertia
+    : undefined;
+  if (!center && !diagonalInertia && !principalAxes)
+    return { mass: mass === 0 ? undefined : mass };
+  if (mass === 0 || !center || !diagonalInertia)
+    throw new Error(
+      `Explicit mass properties require mass, centerOfMass and diagonalInertia: ${path}`,
+    );
   return {
-    mass: mass === 0 ? undefined : mass,
-    centerOfMass: center && [
+    mass,
+    centerOfMass: [
       center[0] * scale.x,
       center[1] * scale.y,
       center[2] * scale.z,
     ],
-    diagonalInertia: inertia?.some((value) => value !== 0)
-      ? inertia
-      : undefined,
+    diagonalInertia,
     principalAxes,
   };
 }

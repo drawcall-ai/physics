@@ -63,11 +63,12 @@ Construction calls `world.register(object)`. A backend creates pending resources
 before stepping, after geometry and initial transforms have been configured. New
 bodies and joints can be constructed while the simulation is running.
 
-Constructor options are copied and immutable: body type/mass, collider dimensions,
+Constructor options are copied and typed readonly: body type/mass, collider dimensions,
 joint bodies/frames/limits, and motor gains. Recreate objects to change them.
 Mutable settings use methods: `setVelocity`, `setLinearDamping`, `setAngularDamping`,
 `setGravityScale`, `setMaterial`, `setEnabled`, and `setCollideConnected`.
-There are no duplicate writable-property or mutable-option paths.
+Private state and readonly configuration use TypeScript; numeric physics and
+external-input constraints are checked at runtime.
 
 `body.dispose()` releases its resources and connected joints. Removing a body from
 its Three.js parent does not dispose it. `world.dispose()` releases all its objects

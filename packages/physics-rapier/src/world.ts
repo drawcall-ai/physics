@@ -48,17 +48,14 @@ export class RapierWorld implements PhysicsWorld {
   private disposed = false;
   private readonly before = new Set<(delta: number) => void>();
   private readonly after = new Set<(delta: number) => void>();
-  private readonly timestep: number;
-  get fixedDelta(): number {
-    return this.timestep;
-  }
+  readonly fixedDelta: number;
   private readonly maxSubsteps: number;
 
   constructor(
     private readonly api: typeof Rapier,
     options: RapierOptions = {},
   ) {
-    this.timestep = options.fixedDelta ?? 1 / 60;
+    this.fixedDelta = options.fixedDelta ?? 1 / 60;
     this.maxSubsteps = options.maxSubsteps ?? 5;
     if (!Number.isFinite(this.fixedDelta) || this.fixedDelta <= 0)
       throw new Error("fixedDelta must be positive and finite.");
@@ -230,7 +227,6 @@ export class RapierWorld implements PhysicsWorld {
   }
   setJointEffort(object: AxisJoint, value: number): void {
     this.assertObject(object);
-    if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
     const binding = this.joints.get(object);
     if (!binding) {
       if (value === 0) return;
@@ -238,8 +234,6 @@ export class RapierWorld implements PhysicsWorld {
         "Joint backend is not initialized; call world.update(0) before applying effort",
       );
     }
-    if (value !== 0 && object.motor?.active)
-      throw new Error("Disable the joint motor before applying effort");
     binding.effort = object.enabled ? value : 0;
   }
   getJointState(object: Joint) {

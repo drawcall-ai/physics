@@ -9,67 +9,67 @@ import type {
   AxisJointState,
 } from "./world.js";
 
-export interface JointOptions {
+export type JointOptions = {
   readonly body0: RigidBody | null;
   readonly body1: RigidBody;
-  readonly frame0?: Matrix4;
-  readonly frame1?: Matrix4;
-}
+} & (
+  | { readonly frame0?: never; readonly frame1?: never }
+  | { readonly frame0: Matrix4; readonly frame1: Matrix4 }
+);
 export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
-  get world(): PhysicsWorld {
-    return this.#options.body1.world;
-  }
-  #disposed = false;
-  #enabled = true;
-  #collideConnected = false;
-  #version = 0;
-  #options: Options;
+  readonly world: PhysicsWorld;
+  private readonly config: Options;
   get options(): Options {
-    return Object.freeze({
-      ...this.#options,
-      frame0: this.#options.frame0?.clone(),
-      frame1: this.#options.frame1?.clone(),
-    });
+    return {
+      ...this.config,
+      frame0: this.config.frame0?.clone(),
+      frame1: this.config.frame1?.clone(),
+    };
   }
+  private isDisposed = false;
+  private currentEnabled = true;
+  private currentCollideConnected = false;
+  private version = 0;
   get enabled(): boolean {
-    return this.#enabled;
+    return this.currentEnabled;
   }
   get collideConnected(): boolean {
-    return this.#collideConnected;
+    return this.currentCollideConnected;
   }
   get settingsVersion(): number {
-    return this.#version;
+    return this.version;
   }
   protected assertLive(): void {
     if (this.disposed) throw new Error("Joint has been disposed");
   }
   setEnabled(value: boolean): this {
     this.assertLive();
-    this.#enabled = value;
-    this.#version++;
+    this.currentEnabled = value;
+    this.version++;
     if (!value && this instanceof AxisJoint) this.world.setJointEffort(this, 0);
     return this;
   }
   setCollideConnected(value: boolean): this {
     this.assertLive();
-    this.#collideConnected = value;
-    this.#version++;
+    this.currentCollideConnected = value;
+    this.version++;
     return this;
   }
 
   constructor(options: Options) {
     super();
-    this.#options = Object.freeze({
+    this.world = options.body1.world;
+    this.config = {
       ...options,
       frame0: options.frame0?.clone(),
       frame1: options.frame1?.clone(),
-    });
-    if ((options.frame0 === undefined) !== (options.frame1 === undefined))
-      throw new Error("Joint requires both local frames or neither");
-    if (options.frame0) assertRigidTransform(options.frame0);
-    if (options.frame1) assertRigidTransform(options.frame1);
+    };
+    if (options.frame0) {
+      assertRigidTransform(options.frame0);
+      assertRigidTransform(options.frame1);
+    }
     if (options.body0 && options.body0.world !== this.world)
       throw new Error("Joint bodies must belong to the same world");
     if (options.body0 === options.body1)
@@ -80,19 +80,19 @@ export abstract class Joint<
   }
 
   get disposed(): boolean {
-    return this.#disposed;
+    return this.isDisposed;
   }
 
   dispose(): void {
-    if (this.#disposed) return;
+    if (this.isDisposed) return;
     if (this instanceof AxisJoint) this.motor?.dispose();
     this.world.unregister(this);
     this.removeFromParent();
-    this.#disposed = true;
+    this.isDisposed = true;
   }
 
   getState(): PhysicsJointState | AxisJointState {
-    return this.world.getJointState(this);
+    return connectionState(this);
   }
 
   override clone(recursive = true): this {
@@ -143,8 +143,8 @@ export abstract class Joint<
     if (source === this) return this;
     if (this.disposed || source.disposed)
       throw new Error("Cannot copy a disposed joint");
-    const a = this.#options,
-      b = source.#options;
+    const a = this.config,
+      b = source.config;
     if (
       a.body0 !== b.body0 ||
       a.body1 !== b.body1 ||
@@ -152,7 +152,7 @@ export abstract class Joint<
       !sameFrame(a.frame1, b.frame1) ||
       (this instanceof AxisJoint &&
         source instanceof AxisJoint &&
-        ((this.options.axis ?? "Y") !== (source.options.axis ?? "Y") ||
+        ((this.config.axis ?? "Y") !== (source.config.axis ?? "Y") ||
           !sameLimits(this.limits, source.limits))) ||
       (this instanceof DistanceJoint &&
         source instanceof DistanceJoint &&
@@ -181,22 +181,22 @@ export abstract class Joint<
   validate(): void {
     if (
       this.disposed ||
-      this.#options.body0?.disposed ||
-      this.#options.body1.disposed
+      this.config.body0?.disposed ||
+      this.config.body1.disposed
     )
       throw new Error("Cannot validate a disposed joint or body");
-    this.#options.body0?.updateWorldMatrix(true, false);
-    this.#options.body1.updateWorldMatrix(true, false);
+    this.config.body0?.updateWorldMatrix(true, false);
+    this.config.body1.updateWorldMatrix(true, false);
     this.updateWorldMatrix(true, false);
     splitTransform(this.matrixWorld);
-    if (this.#options.body0) splitTransform(this.#options.body0.matrixWorld);
-    splitTransform(this.#options.body1.matrixWorld);
+    if (this.config.body0) splitTransform(this.config.body0.matrixWorld);
+    splitTransform(this.config.body1.matrixWorld);
   }
 
   getFrame(index: 0 | 1, target: Matrix4): Matrix4 {
     this.validate();
-    const frame = index === 0 ? this.#options.frame0 : this.#options.frame1;
-    const body = index === 0 ? this.#options.body0 : this.#options.body1;
+    const frame = index === 0 ? this.config.frame0 : this.config.frame1;
+    const body = index === 0 ? this.config.body0 : this.config.body1;
     if (frame) {
       target.copy(frame);
       if (body)
@@ -218,18 +218,16 @@ export class FixedJoint extends Joint {
     return connectionState(this);
   }
 }
-export interface AxisJointOptions extends JointOptions {
+export type AxisJointOptions = JointOptions & {
   readonly axis?: "X" | "Y" | "Z";
   readonly limits?: readonly [number, number];
-}
+};
 export abstract class AxisJoint extends Joint<AxisJointOptions> {
   constructor(options: AxisJointOptions) {
     if (options.limits) validateLimits(options.limits);
     super({
       ...options,
-      limits:
-        options.limits &&
-        Object.freeze<readonly [number, number]>([...options.limits]),
+      limits: options.limits && [...options.limits],
     });
   }
   get limits(): readonly [number, number] | undefined {
@@ -239,9 +237,10 @@ export abstract class AxisJoint extends Joint<AxisJointOptions> {
     return getJointMotor(this);
   }
   override getState(): AxisJointState {
-    const state = super.getState();
-    if (!("velocity" in state)) throw new Error("Expected axis joint state");
-    return state;
+    const state = this.world.getJointState(this);
+    return this instanceof RevoluteJoint
+      ? { position: state.angle, velocity: state.angularVelocity }
+      : { position: state.position, velocity: state.velocity };
   }
   setEffort(value: number): this {
     this.assertLive();
@@ -259,9 +258,9 @@ export class SphericalJoint extends Joint {
     return connectionState(this);
   }
 }
-export interface DistanceJointOptions extends JointOptions {
+export type DistanceJointOptions = JointOptions & {
   readonly limits?: readonly [number, number];
-}
+};
 export class DistanceJoint extends Joint<
   DistanceJointOptions & { readonly limits: readonly [number, number] }
 > {
@@ -271,7 +270,7 @@ export class DistanceJoint extends Joint<
     if (limits[0] < 0) throw new Error("Distance limits must be nonnegative");
     super({
       ...options,
-      limits: Object.freeze<readonly [number, number]>([limits[0], limits[1]]),
+      limits: [limits[0], limits[1]],
     });
   }
   override getState(): PhysicsJointState {
@@ -313,7 +312,6 @@ function sameLimits(
 }
 
 function connectionState(joint: Joint): PhysicsJointState {
-  const state = joint.world.getJointState(joint);
-  if (!("angle" in state)) throw new Error("Expected non-axis joint state");
+  const { velocity: _velocity, ...state } = joint.world.getJointState(joint);
   return state;
 }

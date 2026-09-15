@@ -87,10 +87,10 @@ it("materializes bodies created by before-step callbacks", async () => {
 
 it("keeps creation options immutable while damping and gravity settings update live", async () => {
   const world = await setupWorld();
-  const body = new RigidBody({ mass: 2 });
+  const options = { mass: 2 };
+  const body = new RigidBody(options);
   body.add(new Mesh(new BoxGeometry()));
-  expect(Reflect.set(body.options, "mass", 9)).toBe(false);
-  expect(Reflect.set(body.options, "type", "static")).toBe(false);
+  options.mass = 9;
   world.update(0);
   body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(1);
@@ -119,23 +119,13 @@ it("removes automatic colliders when geometry is removed", async () => {
   world.dispose();
 });
 
-it("rejects edits to captured joint frames", async () => {
+it("copies caller-owned joint frames", async () => {
   const world = await setupWorld();
   const body = box();
-  const joint = new FixedJoint({
-    body0: null,
-    body1: body,
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-  });
+  const frame = new Matrix4();
+  new FixedJoint({ body0: null, body1: body, frame0: frame, frame1: frame });
   world.update(world.fixedDelta);
-  expect(
-    Reflect.set(
-      joint.options,
-      "frame0",
-      new Matrix4().makeTranslation(0, 1, 0),
-    ),
-  ).toBe(false);
+  frame.makeTranslation(0, 1, 0);
   world.update(world.fixedDelta);
   expect(body.position.y).toBeCloseTo(0);
   world.dispose();
@@ -156,7 +146,6 @@ it("copies immutable distance limits without changing a prepared joint", async (
   world.update(world.fixedDelta);
   limits[1] = 8;
   expect(joint.limits).toEqual([0, 2]);
-  expect(Reflect.set(joint.limits, 1, 8)).toBe(false);
   world.update(world.fixedDelta);
   expect(joint.getState().distance).toBeCloseTo(2, 1);
   world.dispose();

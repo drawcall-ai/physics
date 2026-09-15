@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, expectTypeOf, it } from "vitest";
 import {
   AuthoringWorld,
   JointMotor,
+  type JointMotorOptions,
+  type JointMotorTarget,
   RevoluteJoint,
   RigidBody,
   setDefaultWorld,
@@ -25,7 +27,9 @@ it("authors one motor per axis joint without an implicit initial target", () => 
   expect(motor.options).not.toBe(options);
   options.stiffness = 100;
   expect(motor.options.stiffness).toBe(10);
-  expect(Object.isFrozen(motor.options)).toBe(true);
+  expectTypeOf<Pick<JointMotor, "options">>().toEqualTypeOf<{
+    readonly options: JointMotorOptions;
+  }>();
   expect(motor.enabled).toBe(true);
   expect(motor.target).toBeUndefined();
   expect(motor.active).toBe(false);
@@ -40,7 +44,9 @@ it("replaces targets, supplies omitted zero coordinates and retains them while d
   motor.setTarget(target);
   target.position = 99;
   expect(motor.target).toEqual({ position: 1, velocity: 2 });
-  expect(Object.isFrozen(motor.target)).toBe(true);
+  expectTypeOf<Pick<JointMotor, "target">>().toEqualTypeOf<{
+    readonly target: JointMotorTarget | undefined;
+  }>();
   motor.setTarget({ velocity: 0 });
   expect(motor.target).toEqual({ position: 0, velocity: 0 });
   expect(motor.active).toBe(true);
@@ -49,9 +55,6 @@ it("replaces targets, supplies omitted zero coordinates and retains them while d
   expect(motor.target).toEqual({ position: 0, velocity: 0 });
   motor.setEnabled(true);
   expect(motor.active).toBe(true);
-  expect(Reflect.set(motor, "enabled", false)).toBe(false);
-  expect(Reflect.set(motor, "options", {})).toBe(false);
-  expect(Reflect.set(motor, "target", {})).toBe(false);
 });
 
 it("requires explicitly disabling an active motor before independent effort", () => {
@@ -60,9 +63,6 @@ it("requires explicitly disabling an active motor before independent effort", ()
     velocity: 1,
   });
   expect(() => joint.setEffort(2)).toThrow("Disable the joint motor");
-  expect(() => world.setJointEffort(joint, 2)).toThrow(
-    "Disable the joint motor",
-  );
   joint.setEffort(0);
   motor.setEnabled(false);
   joint.setEffort(2);
@@ -82,7 +82,7 @@ it("validates immutable gains and finite targets without changing existing state
     expect(joint.motor).toBeUndefined();
   }
   const motor = new JointMotor({ joint: hinge() }).setTarget({ position: 1 });
-  expect(() => motor.setTarget({})).toThrow("requires position or velocity");
+  expectTypeOf<{}>().not.toExtend<Parameters<JointMotor["setTarget"]>[0]>();
   expect(() => motor.setTarget({ velocity: Infinity })).toThrow("finite");
   expect(motor.target).toEqual({ position: 1, velocity: 0 });
 });

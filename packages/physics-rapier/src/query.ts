@@ -1,6 +1,7 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   validateVector,
+  validateGroups,
   type RigidBody,
   type RaycastOptions,
   type RaycastHit,
@@ -29,13 +30,7 @@ export function raycast(
       "Ray requires a nonzero direction and finite nonnegative distance",
     );
   const groups = options.collisionGroups;
-  if (
-    groups &&
-    ![groups.membership, groups.filter].every(
-      (value) => Number.isInteger(value) && value >= 0 && value <= 65535,
-    )
-  )
-    throw new Error("Collision groups must be unsigned 16-bit masks");
+  if (groups) validateGroups(groups);
   const ray = new api.Ray(
     origin,
     new Vector3(

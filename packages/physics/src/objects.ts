@@ -38,37 +38,37 @@ function positive(value: number): number {
 }
 export abstract class Collider extends Object3D {
   source: Object3D = this;
-  #material?: PhysicsMaterial;
-  #groups?: CollisionGroups;
-  #sensor = false;
-  #version = 0;
+  private currentMaterial?: PhysicsMaterial;
+  private currentGroups?: CollisionGroups;
+  private currentSensor = false;
+  private version = 0;
   get settingsVersion(): number {
-    return this.#version;
+    return this.version;
   }
   get material(): PhysicsMaterial | undefined {
-    return this.#material;
+    return this.currentMaterial;
   }
   get collisionGroups(): CollisionGroups | undefined {
-    return this.#groups;
+    return this.currentGroups;
   }
   get sensor(): boolean {
-    return this.#sensor;
+    return this.currentSensor;
   }
   setMaterial(value: PhysicsMaterial | undefined): this {
     if (value) validateMaterial(value);
-    this.#material = value && Object.freeze({ ...value });
-    this.#version++;
+    this.currentMaterial = value && { ...value };
+    this.version++;
     return this;
   }
   setCollisionGroups(value: CollisionGroups | undefined): this {
     if (value) validateGroups(value);
-    this.#groups = value && Object.freeze({ ...value });
-    this.#version++;
+    this.currentGroups = value && { ...value };
+    this.version++;
     return this;
   }
   setSensor(value: boolean): this {
-    this.#sensor = value;
-    this.#version++;
+    this.currentSensor = value;
+    this.version++;
     return this;
   }
   abstract shape(): Shape;
@@ -101,18 +101,11 @@ export type Shape =
       approximation: "convexHull" | "trimesh";
     };
 export class BoxCollider extends Collider {
-  readonly #size: Vec3;
+  readonly size: Vec3;
   constructor(options: { readonly size?: Vec3 } = {}) {
     super();
     const size = options.size ?? [1, 1, 1];
-    this.#size = Object.freeze([
-      positive(size[0]),
-      positive(size[1]),
-      positive(size[2]),
-    ]);
-  }
-  get size(): Vec3 {
-    return this.#size;
+    this.size = [positive(size[0]), positive(size[1]), positive(size[2])];
   }
   shape(): Shape {
     return { kind: "box", size: this.size };
@@ -124,13 +117,10 @@ export class BoxCollider extends Collider {
   }
 }
 export class SphereCollider extends Collider {
-  readonly #radius: number;
+  readonly radius: number;
   constructor(options: { readonly radius?: number } = {}) {
     super();
-    this.#radius = positive(options.radius ?? 0.5);
-  }
-  get radius(): number {
-    return this.#radius;
+    this.radius = positive(options.radius ?? 0.5);
   }
   shape(): Shape {
     return { kind: "sphere", radius: this.radius };
@@ -142,20 +132,14 @@ export class SphereCollider extends Collider {
   }
 }
 export class CapsuleCollider extends Collider {
-  readonly #radius: number;
-  readonly #length: number;
+  readonly radius: number;
+  readonly length: number;
   constructor(
     options: { readonly radius?: number; readonly length?: number } = {},
   ) {
     super();
-    this.#radius = positive(options.radius ?? 0.5);
-    this.#length = positive(options.length ?? 1);
-  }
-  get radius(): number {
-    return this.#radius;
-  }
-  get length(): number {
-    return this.#length;
+    this.radius = positive(options.radius ?? 0.5);
+    this.length = positive(options.length ?? 1);
   }
   shape(): Shape {
     return { kind: "capsule", radius: this.radius, length: this.length };
@@ -167,20 +151,14 @@ export class CapsuleCollider extends Collider {
   }
 }
 export class CylinderCollider extends Collider {
-  readonly #radius: number;
-  readonly #height: number;
+  readonly radius: number;
+  readonly height: number;
   constructor(
     options: { readonly radius?: number; readonly height?: number } = {},
   ) {
     super();
-    this.#radius = positive(options.radius ?? 0.5);
-    this.#height = positive(options.height ?? 1);
-  }
-  get radius(): number {
-    return this.#radius;
-  }
-  get height(): number {
-    return this.#height;
+    this.radius = positive(options.radius ?? 0.5);
+    this.height = positive(options.height ?? 1);
   }
   shape(): Shape {
     return { kind: "cylinder", radius: this.radius, height: this.height };
@@ -192,22 +170,19 @@ export class CylinderCollider extends Collider {
   }
 }
 export class MeshCollider extends Collider {
-  #geometry = new BufferGeometry();
-  readonly #approximation: "convexHull" | "trimesh";
-  get approximation(): "convexHull" | "trimesh" {
-    return this.#approximation;
-  }
+  private currentGeometry = new BufferGeometry();
+  readonly approximation: "convexHull" | "trimesh";
   constructor(
     options: { readonly approximation?: "convexHull" | "trimesh" } = {},
   ) {
     super();
-    this.#approximation = options.approximation ?? "convexHull";
+    this.approximation = options.approximation ?? "convexHull";
   }
   get geometry(): BufferGeometry {
-    return this.#geometry;
+    return this.currentGeometry;
   }
   setGeometry(value: BufferGeometry): this {
-    this.#geometry = value;
+    this.currentGeometry = value;
     return this;
   }
   shape(): Shape {

@@ -30,6 +30,9 @@ export interface PhysicsJointState {
   position: number;
   distance: number;
 }
+export interface JointMeasurements extends PhysicsJointState {
+  velocity: number;
+}
 export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
   readonly includeSensors?: boolean;
@@ -54,11 +57,11 @@ export interface PhysicsWorld {
     maxDistance: number,
     options?: RaycastOptions,
   ): RaycastHit | null;
-  setJointEffort(object: AxisJoint, value: number): void;
   update(delta: number): void;
   reset(): void;
   dispose(): void;
-  /** Backend integration; scene code calls methods on bodies and joints. */
+  /** Backend integration; validated scene commands arrive through body and joint methods. */
+  setJointEffort(object: AxisJoint, value: number): void;
   getVelocity(object: RigidBody): PhysicsVelocity;
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void;
   teleport(object: RigidBody, matrix: Matrix4): void;
@@ -67,7 +70,7 @@ export interface PhysicsWorld {
   applyForce(object: RigidBody, force: Vector3, point?: Vector3): void;
   wake(object: RigidBody): void;
   sleep(object: RigidBody): void;
-  getJointState(object: Joint): PhysicsJointState | AxisJointState;
+  getJointState(object: Joint): JointMeasurements;
   onBeforeStep(callback: (delta: number) => void): () => void;
   onAfterStep(callback: (delta: number) => void): () => void;
 }
@@ -90,12 +93,8 @@ export function clearDefaultWorld(world: PhysicsWorld): void {
 
 /** Owns authoring objects without loading a simulation backend. */
 export class AuthoringWorld implements PhysicsWorld {
-  get fixedDelta(): number {
-    return 1 / 60;
-  }
-  get time(): number {
-    return 0;
-  }
+  readonly fixedDelta = 1 / 60;
+  readonly time = 0;
   raycast(
     _origin: Vector3,
     _direction: Vector3,
@@ -104,32 +103,29 @@ export class AuthoringWorld implements PhysicsWorld {
   ): never {
     throw new Error("AuthoringWorld does not support raycast queries");
   }
-  setJointEffort(object: AxisJoint, value: number): void {
+  setJointEffort(object: AxisJoint, _value: number): void {
     this.assertObject(object);
-    if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
-    if (value !== 0 && object.motor?.active)
-      throw new Error("Disable the joint motor before applying effort");
   }
-  readonly #objects = new Set<RigidBody | Joint>();
-  #disposed = false;
+  private readonly registered = new Set<RigidBody | Joint>();
+  private isDisposed = false;
 
   get objects(): ReadonlySet<RigidBody | Joint> {
-    return this.#objects;
+    return this.registered;
   }
 
   register(object: RigidBody | Joint): void {
-    if (this.#disposed) throw new Error("Physics world has been disposed");
+    if (this.isDisposed) throw new Error("Physics world has been disposed");
     if (object.world !== this)
       throw new Error("Object belongs to another physics world");
     if (object.disposed)
       throw new Error("Cannot register a disposed physics object");
-    this.#objects.add(object);
+    this.registered.add(object);
   }
 
   unregister(object: RigidBody | Joint): void {
-    if (!this.#objects.delete(object)) return;
+    if (!this.registered.delete(object)) return;
     if (object instanceof RigidBody) {
-      for (const joint of this.#objects) {
+      for (const joint of this.registered) {
         if (
           joint instanceof Joint &&
           (joint.options.body0 === object || joint.options.body1 === object)
@@ -140,9 +136,9 @@ export class AuthoringWorld implements PhysicsWorld {
   }
 
   dispose(): void {
-    if (this.#disposed) return;
-    for (const object of this.#objects) object.dispose();
-    this.#disposed = true;
+    if (this.isDisposed) return;
+    for (const object of this.registered) object.dispose();
+    this.isDisposed = true;
     clearDefaultWorld(this);
   }
 
@@ -180,19 +176,19 @@ export class AuthoringWorld implements PhysicsWorld {
   sleep(object: RigidBody): void {
     this.assertObject(object);
   }
-  getJointState(object: Joint): PhysicsJointState | AxisJointState {
+  getJointState(object: Joint): JointMeasurements {
     this.assertObject(object);
     return authoredJointState(object);
   }
   onBeforeStep(_callback: (delta: number) => void): () => void {
-    if (this.#disposed) throw new Error("Physics world has been disposed");
+    if (this.isDisposed) throw new Error("Physics world has been disposed");
     return () => {};
   }
   onAfterStep(_callback: (delta: number) => void): () => void {
     return this.onBeforeStep(_callback);
   }
   private assertObject(object: RigidBody | Joint): void {
-    if (this.#disposed) throw new Error("Physics world has been disposed");
+    if (this.isDisposed) throw new Error("Physics world has been disposed");
     if (object.disposed) throw new Error("Physics object has been disposed");
     if (object.world !== this)
       throw new Error("Object belongs to another world");

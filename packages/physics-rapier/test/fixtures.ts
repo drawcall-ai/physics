@@ -21,7 +21,7 @@ export async function createWorld(options: RapierOptions = {}) {
   return world;
 }
 
-export function inertialBody(options: RigidBodyOptions = {}) {
+export function inertialBody(options: Partial<RigidBodyOptions> = {}) {
   return new RigidBody({
     mass: 1,
     centerOfMass: [0, 0, 0],

@@ -205,7 +205,7 @@ function measureJoint(object: Joint, binding: JointBinding) {
 export function readJointState(object: Joint, binding: JointBinding) {
   const state = measureJoint(object, binding);
   if (object instanceof RevoluteJoint && binding.position !== undefined)
-    return { ...state, position: binding.position };
+    return { ...state, angle: binding.position };
   return state;
 }
 
@@ -215,7 +215,7 @@ export function sampleJoint(
   rebase = false,
 ): void {
   if (!(object instanceof RevoluteJoint)) return;
-  const angle = measureJoint(object, binding).position;
+  const angle = measureJoint(object, binding).angle;
   if (rebase || binding.angle === undefined || binding.position === undefined)
     binding.position = angle;
   else

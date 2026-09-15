@@ -18,72 +18,69 @@ import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
 
 export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
-export interface RigidBodyOptions {
+export type MassProperties =
+  | {
+      readonly mass?: number;
+      readonly centerOfMass?: never;
+      readonly diagonalInertia?: never;
+      readonly principalAxes?: never;
+    }
+  | {
+      readonly mass: number;
+      readonly centerOfMass: Vec3;
+      readonly diagonalInertia: Vec3;
+      readonly principalAxes?: readonly [number, number, number, number];
+    };
+export type RigidBodyOptions = MassProperties & {
   readonly world?: PhysicsWorld;
   readonly type?: RigidBodyType;
   readonly colliders?: AutoColliders;
-  readonly mass?: number;
   readonly canSleep?: boolean;
-  readonly centerOfMass?: Vec3;
-  readonly diagonalInertia?: Vec3;
-  readonly principalAxes?: readonly [number, number, number, number];
-}
+};
 export class RigidBody extends Group {
-  #disposed = false;
-  #world: PhysicsWorld;
-  get world(): PhysicsWorld {
-    return this.#world;
-  }
-  #options: RigidBodyOptions;
-  get options(): RigidBodyOptions {
-    return this.#options;
-  }
-  get bodyType(): RigidBodyType {
-    return this.options.type ?? "dynamic";
-  }
-  #linearDamping = 0;
-  #angularDamping = 0;
-  #gravityScale = 1;
-  #material?: PhysicsMaterial;
-  #version = 0;
-  #materialVersion = 0;
+  private isDisposed = false;
+  readonly world: PhysicsWorld;
+  readonly options: RigidBodyOptions;
+  readonly bodyType: RigidBodyType;
+  private currentLinearDamping = 0;
+  private currentAngularDamping = 0;
+  private currentGravityScale = 1;
+  private currentMaterial?: PhysicsMaterial;
+  private version = 0;
+  private materialRevision = 0;
   get materialVersion(): number {
-    return this.#materialVersion;
+    return this.materialRevision;
   }
 
   constructor(options: RigidBodyOptions = {}) {
     super();
-    this.#world = options.world ?? getDefaultWorld();
-    this.#options = Object.freeze({
-      ...options,
-      centerOfMass:
-        options.centerOfMass && Object.freeze<Vec3>([...options.centerOfMass]),
-      diagonalInertia:
-        options.diagonalInertia &&
-        Object.freeze<Vec3>([...options.diagonalInertia]),
-      principalAxes:
-        options.principalAxes &&
-        Object.freeze<readonly [number, number, number, number]>([
-          ...options.principalAxes,
-        ]),
-    });
+    this.world = options.world ?? getDefaultWorld();
+    this.bodyType = options.type ?? "dynamic";
+    this.options = options.centerOfMass
+      ? {
+          ...options,
+          centerOfMass: [...options.centerOfMass],
+          diagonalInertia: [...options.diagonalInertia],
+          principalAxes: options.principalAxes && [...options.principalAxes],
+        }
+      : { ...options };
     validateMass(this.options);
     this.world.register(this);
   }
   get settingsVersion(): number {
-    return this.#version;
+    return this.version;
   }
   get linearDamping(): number {
-    return this.#linearDamping;
+    return this.currentLinearDamping;
   }
   get angularDamping(): number {
-    return this.#angularDamping;
+    return this.currentAngularDamping;
   }
   get gravityScale(): number {
-    return this.#gravityScale;
+    return this.currentGravityScale;
   }
   get material(): PhysicsMaterial | undefined {
-    return this.#material;
+    return this.currentMaterial;
   }
   private assertLive(): void {
     if (this.disposed) throw new Error("Rigid body has been disposed");
@@ -91,41 +88,41 @@ export class RigidBody extends Group {
   setLinearDamping(value: number): this {
     this.assertLive();
     validateDamping(value);
-    this.#linearDamping = value;
-    this.#version++;
+    this.currentLinearDamping = value;
+    this.version++;
     return this;
   }
   setAngularDamping(value: number): this {
     this.assertLive();
     validateDamping(value);
-    this.#angularDamping = value;
-    this.#version++;
+    this.currentAngularDamping = value;
+    this.version++;
     return this;
   }
   setGravityScale(value: number): this {
     this.assertLive();
     if (!Number.isFinite(value))
       throw new Error("Gravity scale must be finite");
-    this.#gravityScale = value;
-    this.#version++;
+    this.currentGravityScale = value;
+    this.version++;
     return this;
   }
   setMaterial(value: PhysicsMaterial | undefined): this {
     this.assertLive();
     if (value) validateMaterial(value);
-    this.#material = value && Object.freeze({ ...value });
-    this.#materialVersion++;
+    this.currentMaterial = value && { ...value };
+    this.materialRevision++;
     return this;
   }
   get disposed(): boolean {
-    return this.#disposed;
+    return this.isDisposed;
   }
 
   dispose(): void {
-    if (this.#disposed) return;
+    if (this.isDisposed) return;
     this.world.unregister(this);
     this.removeFromParent();
-    this.#disposed = true;
+    this.isDisposed = true;
   }
 
   getVelocity(): PhysicsVelocity {
@@ -310,35 +307,17 @@ function validateDamping(value: number): void {
     throw new Error("Damping must be finite and nonnegative");
 }
 function validateMass(options: RigidBodyOptions): void {
-  const explicit =
-    options.centerOfMass !== undefined ||
-    options.diagonalInertia !== undefined ||
-    options.principalAxes !== undefined;
-  if (
-    explicit &&
-    (options.mass === undefined ||
-      options.centerOfMass === undefined ||
-      options.diagonalInertia === undefined)
-  )
-    throw new Error(
-      "Explicit mass properties require mass, centerOfMass and diagonalInertia together",
-    );
   if (
     options.mass !== undefined &&
     (!Number.isFinite(options.mass) || options.mass <= 0)
   )
     throw new Error("Body mass must be positive");
-  if (
-    options.centerOfMass &&
-    (options.centerOfMass.length !== 3 ||
-      !options.centerOfMass.every(Number.isFinite))
-  )
+  if (options.centerOfMass && !options.centerOfMass.every(Number.isFinite))
     throw new Error("Center of mass must be finite");
   const inertia = options.diagonalInertia;
   if (
     inertia &&
-    (inertia.length !== 3 ||
-      !inertia.every((v) => Number.isFinite(v) && v > 0) ||
+    (!inertia.every((v) => Number.isFinite(v) && v > 0) ||
       inertia.some((v) => 2 * v > inertia[0] + inertia[1] + inertia[2] + 1e-10))
   )
     throw new Error(
@@ -346,8 +325,7 @@ function validateMass(options: RigidBodyOptions): void {
     );
   if (
     options.principalAxes &&
-    (options.principalAxes.length !== 4 ||
-      !options.principalAxes.every(Number.isFinite) ||
+    (!options.principalAxes.every(Number.isFinite) ||
       Math.abs(Math.hypot(...options.principalAxes) - 1) > 1e-6)
   )
     throw new Error("Principal axes must be a normalized quaternion");
@@ -359,7 +337,7 @@ function sameTuple(
 ): boolean {
   return a === undefined
     ? b === undefined
-    : b !== undefined && a.length === b.length && a.every((v, i) => v === b[i]);
+    : b !== undefined && a.every((v, i) => v === b[i]);
 }
 function sameOptions(a: RigidBodyOptions, b: RigidBodyOptions): boolean {
   return (

@@ -66,3 +66,30 @@ def PhysicsPrismaticJoint "Slider" (
     for (const scene of scenes) scene.dispose();
   }
 });
+
+it.each(["mass", "centerOfMass", "diagonalInertia"])(
+  "rejects external explicit mass properties missing %s",
+  (missing) => {
+    const properties = {
+      mass: "float physics:mass = 2",
+      centerOfMass: "point3f physics:centerOfMass = (0, 0, 0)",
+      diagonalInertia: "float3 physics:diagonalInertia = (1, 1, 1)",
+    };
+    const text = `#usda 1.0
+(
+ metersPerUnit = 1
+)
+def Xform "Body" (
+ prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+)
+{
+${Object.entries(properties)
+  .filter(([name]) => name !== missing)
+  .map(([, value]) => value)
+  .join("\n")}
+}`;
+    expect(() => new PhysicsUSDLoader().parse(text)).toThrow(
+      "Explicit mass properties require mass, centerOfMass and diagonalInertia",
+    );
+  },
+);

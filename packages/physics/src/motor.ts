@@ -1,4 +1,4 @@
-import { AxisJoint } from "./joints.js";
+import type { AxisJoint } from "./joints.js";
 
 export interface JointMotorOptions {
   readonly joint: AxisJoint;
@@ -15,14 +15,12 @@ const motors = new WeakMap<AxisJoint, JointMotor>();
 
 /** One native actuator per axis joint. No target means no actuation. */
 export class JointMotor {
-  readonly #options: JointMotorOptions;
-  #target?: JointMotorTarget;
-  #enabled = true;
-  #disposed = false;
-  #version = 0;
+  readonly options: JointMotorOptions;
+  private currentTarget?: JointMotorTarget;
+  private currentEnabled = true;
+  private isDisposed = false;
+  private version = 0;
   constructor(options: JointMotorOptions) {
-    if (!(options.joint instanceof AxisJoint))
-      throw new Error("Joint motors require a single-axis joint");
     if (options.joint.disposed)
       throw new Error("Cannot motorize a disposed joint");
     if (motors.has(options.joint)) throw new Error("Joint already has a motor");
@@ -36,55 +34,54 @@ export class JointMotor {
           "Motor gains and maximum effort must be finite and nonnegative",
         );
     }
-    this.#options = Object.freeze({ ...options });
+    this.options = { ...options };
     motors.set(options.joint, this);
   }
-  get options(): JointMotorOptions {
-    return this.#options;
-  }
   get target(): JointMotorTarget | undefined {
-    return this.#target;
+    return this.currentTarget;
   }
   get enabled(): boolean {
-    return this.#enabled;
+    return this.currentEnabled;
   }
   get active(): boolean {
     return !this.disposed && this.enabled && this.target !== undefined;
   }
   get disposed(): boolean {
-    return this.#disposed;
+    return this.isDisposed;
   }
   get settingsVersion(): number {
-    return this.#version;
+    return this.version;
   }
-  setTarget(value: Partial<JointMotorTarget>): this {
+  setTarget(
+    value:
+      | { readonly position: number; readonly velocity?: number }
+      | { readonly position?: number; readonly velocity: number },
+  ): this {
     this.assertLive();
-    if (value.position === undefined && value.velocity === undefined)
-      throw new Error("Motor target requires position or velocity");
     if (
       [value.position, value.velocity].some(
         (v) => v !== undefined && !Number.isFinite(v),
       )
     )
       throw new Error("Motor targets must be finite");
-    this.#target = Object.freeze({
+    this.currentTarget = {
       position: value.position ?? 0,
       velocity: value.velocity ?? 0,
-    });
-    this.#version++;
+    };
+    this.version++;
     return this;
   }
   setEnabled(value: boolean): this {
     this.assertLive();
-    this.#enabled = value;
-    this.#version++;
+    this.currentEnabled = value;
+    this.version++;
     return this;
   }
   dispose(): void {
     if (this.disposed) return;
     motors.delete(this.options.joint);
-    this.#disposed = true;
-    this.#version++;
+    this.isDisposed = true;
+    this.version++;
   }
   private assertLive(): void {
     if (this.disposed || this.options.joint.disposed)

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import {
   BoxCollider,
   CapsuleCollider,
@@ -18,8 +18,9 @@ it("captures immutable dimensions and independent material/group settings", () =
   material.density = 99;
   groups.filter = 0;
   expect(box.size).toEqual([1, 2, 3]);
-  expect(Object.isFrozen(box.size)).toBe(true);
-  expect(Reflect.set(box, "size", [9, 9, 9])).toBe(false);
+  expectTypeOf<Pick<BoxCollider, "size">>().toEqualTypeOf<{
+    readonly size: readonly [number, number, number];
+  }>();
   const copy = box
     .clone()
     .setMaterial({ density: 20 })
@@ -41,7 +42,9 @@ it("clones configured primitive dimensions and rejects mismatched copies", () =>
     new CylinderCollider({ radius: 2, height: 4 }),
   ]) {
     expect(collider.clone().shape()).toEqual(collider.shape());
-    expect(Reflect.set(collider, "radius", 9)).toBe(false);
+    expectTypeOf<Pick<typeof collider, "radius">>().toEqualTypeOf<{
+      readonly radius: number;
+    }>();
   }
   expect(() =>
     new SphereCollider().copy(new SphereCollider({ radius: 2 })),
@@ -65,9 +68,6 @@ it("rejects invalid dimensions at construction", () => {
     "positive and finite",
   );
   expect(() => new CylinderCollider({ height: Infinity })).toThrow(
-    "positive and finite",
-  );
-  expect(() => Reflect.construct(BoxCollider, [{ size: [1, 2] }])).toThrow(
     "positive and finite",
   );
 });

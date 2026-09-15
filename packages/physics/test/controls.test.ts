@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, expectTypeOf, it } from "vitest";
 import { Matrix4, Vector3 } from "three";
 import {
   AuthoringWorld,
@@ -10,6 +10,8 @@ import {
   RigidBody,
   setDefaultWorld,
   type RigidBodyOptions,
+  type JointOptions,
+  type Vec3,
 } from "../src/index.js";
 
 let world: AuthoringWorld;
@@ -18,21 +20,24 @@ beforeEach(() => {
   setDefaultWorld(world);
 });
 afterEach(() => world.dispose());
-const mass: RigidBodyOptions = {
+const mass = {
   mass: 1,
   centerOfMass: [0, 0, 0],
   diagonalInertia: [1, 1, 1],
-};
+} satisfies RigidBodyOptions;
 
 it("copies immutable configuration, retaining resource identities and independent joint frames", () => {
   const centerOfMass: [number, number, number] = [1, 2, 3];
   const options = { ...mass, world, centerOfMass };
   const body = new RigidBody(options);
+  expectTypeOf<
+    Pick<RigidBody, "world" | "options" | "bodyType">
+  >().toEqualTypeOf<
+    Readonly<Pick<RigidBody, "world" | "options" | "bodyType">>
+  >();
   options.mass = 20;
   centerOfMass[0] = 9;
   expect(body.options).toEqual({ ...mass, world, centerOfMass: [1, 2, 3] });
-  expect(Object.isFrozen(body.options.centerOfMass)).toBe(true);
-  expect(Reflect.set(body, "world", world)).toBe(false);
   const frame0 = new Matrix4().makeTranslation(2, 0, 0);
   const limits: [number, number] = [-1, 2];
   const joint = new RevoluteJoint({
@@ -48,7 +53,6 @@ it("copies immutable configuration, retaining resource identities and independen
   expect(joint.getFrame(0, new Matrix4()).elements[12]).toBe(2);
   expect(joint.options.body1).toBe(body);
   expect(joint.clone().limits).toEqual([-1, 2]);
-  expect(Object.isFrozen(joint.limits)).toBe(true);
   expect(() =>
     new RevoluteJoint({ body0: null, body1: body }).copy(joint),
   ).toThrow("immutable");
@@ -63,15 +67,24 @@ it("copies immutable configuration, retaining resource identities and independen
   ).toThrow("immutable");
 });
 
-it.each<[RigidBodyOptions, string]>([
+const invalidMass: [RigidBodyOptions, string][] = [
   [{ mass: 0 }, "mass"],
-  [{ ...mass, diagonalInertia: [1, 1, 3] }, "triangle"],
-  [{ ...mass, diagonalInertia: [0, 1, 1] }, "positive"],
-  [{ ...mass, principalAxes: [0, 0, 0, 2] }, "normalized"],
-  [{ mass: 1, centerOfMass: [0, 0, 0] }, "together"],
-  [{ mass: 1, diagonalInertia: [1, 1, 1] }, "together"],
-  [{ mass: 1, principalAxes: [0, 0, 0, 1] }, "together"],
-])(
+  [{ ...mass, diagonalInertia: [1, 1, 3] satisfies Vec3 }, "triangle"],
+  [{ ...mass, diagonalInertia: [0, 1, 1] satisfies Vec3 }, "positive"],
+  [
+    {
+      ...mass,
+      principalAxes: [0, 0, 0, 2] satisfies readonly [
+        number,
+        number,
+        number,
+        number,
+      ],
+    },
+    "normalized",
+  ],
+];
+it.each(invalidMass)(
   "rejects invalid mass properties before registration: %j",
   (options, error) => {
     expect(() => new RigidBody(options)).toThrow(error);
@@ -180,7 +193,6 @@ it("copies immutable body type and clones independent velocity", () => {
   });
   options.type = "static";
   expect(body.bodyType).toBe("kinematic");
-  expect(Reflect.set(body.options, "type", "static")).toBe(false);
   const copy = body.clone();
   expect(copy.bodyType).toBe("kinematic");
   copy.setVelocity({ linear: new Vector3(5, 0, 0) });
@@ -188,4 +200,18 @@ it("copies immutable body type and clones independent velocity", () => {
   expect(() => new RigidBody({ type: "static" }).copy(body)).toThrow(
     "immutable",
   );
+});
+
+it("expresses complete mass and paired joint frames in the types", () => {
+  expectTypeOf<{
+    mass: number;
+    centerOfMass: Vec3;
+  }>().not.toMatchTypeOf<RigidBodyOptions>();
+  expectTypeOf<{
+    body0: null;
+    body1: RigidBody;
+    frame0: Matrix4;
+  }>().not.toMatchTypeOf<JointOptions>();
+  expectTypeOf<{ mass: number }>().toMatchTypeOf<RigidBodyOptions>();
+  expectTypeOf<typeof mass>().toMatchTypeOf<RigidBodyOptions>();
 });

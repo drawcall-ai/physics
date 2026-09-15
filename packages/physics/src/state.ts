@@ -1,18 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "./body.js";
-import {
-  AxisJoint,
-  PrismaticJoint,
-  RevoluteJoint,
-  FixedJoint,
-  type Joint,
-} from "./joints.js";
+import { AxisJoint, PrismaticJoint, FixedJoint, type Joint } from "./joints.js";
 import { splitTransform } from "./transforms.js";
-import type {
-  PhysicsVelocity,
-  PhysicsJointState,
-  AxisJointState,
-} from "./world.js";
+import type { PhysicsVelocity, JointMeasurements } from "./world.js";
 
 /** Authored velocity is independent of immutable creation options and backend reset snapshots. */
 const velocities = new WeakMap<RigidBody, PhysicsVelocity>();
@@ -28,14 +18,8 @@ export function setAuthoredVelocity(
   value: Partial<PhysicsVelocity>,
 ): void {
   const next = authoredVelocity(object);
-  if (value.linear) {
-    validateVector(value.linear);
-    next.linear.copy(value.linear);
-  }
-  if (value.angular) {
-    validateVector(value.angular);
-    next.angular.copy(value.angular);
-  }
+  if (value.linear) next.linear.copy(value.linear);
+  if (value.angular) next.angular.copy(value.angular);
   velocities.set(object, next);
 }
 export function validateVector(value: Vector3): void {
@@ -60,7 +44,7 @@ export function authoredJointState(
     body: RigidBody,
     point: Vector3,
   ) => Vector3 = authoredVelocityAtPoint,
-): PhysicsJointState | AxisJointState {
+): JointMeasurements {
   object.validate();
   const options = object.options;
   const frame = (index: 0 | 1): Matrix4 => {
@@ -106,7 +90,7 @@ export function authoredJointState(
     object instanceof PrismaticJoint
       ? velocityAtPoint(body1, anchor1)
       : new Vector3();
-  const measured = jointState(
+  return jointState(
     a,
     b,
     velocity0.angular,
@@ -114,12 +98,6 @@ export function authoredJointState(
     linear0,
     linear1,
   );
-  if (object instanceof RevoluteJoint)
-    return { position: measured.angle, velocity: measured.angularVelocity };
-  if (object instanceof AxisJoint)
-    return { position: measured.position, velocity: measured.velocity };
-  const { velocity: _velocity, ...state } = measured;
-  return state;
 }
 
 /** Construction-time point velocity can use an explicit COM, but never infer one. */

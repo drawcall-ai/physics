@@ -110,13 +110,6 @@ describe("physics objects", () => {
       position: { y: 3 },
     });
   });
-  it("rejects incomplete frames", () => {
-    const { door } = doorAssembly();
-    expect(
-      () =>
-        new RevoluteJoint({ body0: null, body1: door, frame0: new Matrix4() }),
-    ).toThrow("both local frames");
-  });
   it("supports explicit separated anchors and validates distance limits", () => {
     const body = new RigidBody();
     body.add(new Mesh(new SphereGeometry()));
