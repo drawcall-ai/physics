@@ -91,19 +91,36 @@ it("validates controls before storing and clones independent readable settings",
 
 it("validates physical mass specifications before registration", () => {
   expect(() => new RigidBody({ mass: 0 })).toThrow("mass");
-  expect(() => new RigidBody({ diagonalInertia: [1, 1, 3] })).toThrow(
-    "triangle",
-  );
-  expect(() => new RigidBody({ diagonalInertia: [0, 1, 1] })).toThrow(
-    "positive",
-  );
-  expect(() => new RigidBody({ principalAxes: [0, 0, 0, 2] })).toThrow(
-    "normalized",
-  );
+  expect(
+    () =>
+      new RigidBody({
+        mass: 1,
+        centerOfMass: [0, 0, 0],
+        diagonalInertia: [1, 1, 3],
+      }),
+  ).toThrow("triangle");
+  expect(
+    () =>
+      new RigidBody({
+        mass: 1,
+        centerOfMass: [0, 0, 0],
+        diagonalInertia: [0, 1, 1],
+      }),
+  ).toThrow("positive");
+  expect(
+    () =>
+      new RigidBody({
+        mass: 1,
+        centerOfMass: [0, 0, 0],
+        diagonalInertia: [1, 1, 1],
+        principalAxes: [0, 0, 0, 2],
+      }),
+  ).toThrow("normalized");
   expect(world.objects.size).toBe(0);
   const body = new RigidBody({
     mass: 2,
     diagonalInertia: [1, 1, 1],
+    centerOfMass: [0, 0, 0],
     colliders: false,
   });
   expect(body.getColliders()).toEqual([]);
@@ -111,9 +128,8 @@ it("validates physical mass specifications before registration", () => {
 });
 
 it("compares immutable copy values independently of option order and explicit defaults", () => {
-  const source = new RigidBody({ mass: 2, type: "dynamic" });
+  const source = new RigidBody({ mass: 2 });
   const target = new RigidBody({
-    type: "dynamic",
     mass: 2,
     colliders: "auto",
     canSleep: true,
@@ -133,9 +149,11 @@ it("compares immutable copy values independently of option order and explicit de
 it("keeps construction controls readable and validates authoring effort without simulation", () => {
   const body = new RigidBody();
   const limits: [number, number] = [-1, 2];
-  const joint = new RevoluteJoint({ body0: null, body1: body })
-    .setLimits(limits)
-    .setCollideConnected(true);
+  const joint = new RevoluteJoint({
+    body0: null,
+    body1: body,
+    limits,
+  }).setCollideConnected(true);
   limits[0] = -99;
   expect(joint.limits).toEqual([-1, 2]);
   joint.setEffort(2).setEffort(3).setEnabled(false).setEnabled(true);
@@ -143,10 +161,11 @@ it("keeps construction controls readable and validates authoring effort without 
   expect(joint.collideConnected).toBe(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
   expect(() => joint.setEffort(NaN)).toThrow("finite");
-  joint.setLimits(undefined);
-  expect(joint.limits).toBeUndefined();
-  expect(() =>
-    new DistanceJoint({ body0: null, body1: body }).setLimits([-1, 2]),
+  expect(
+    new RevoluteJoint({ body0: null, body1: body }).limits,
+  ).toBeUndefined();
+  expect(
+    () => new DistanceJoint({ body0: null, body1: body, limits: [-1, 2] }),
   ).toThrow("nonnegative");
   const foreign = new AuthoringWorld();
   expect(() => foreign.setJointEffort(joint, 2)).toThrow("another world");
@@ -160,10 +179,18 @@ it("keeps construction controls readable and validates authoring effort without 
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
-  const body0 = new RigidBody({ centerOfMass: [0, 0, 0] }).setVelocity({
+  const body0 = new RigidBody({
+    mass: 1,
+    centerOfMass: [0, 0, 0],
+    diagonalInertia: [1, 1, 1],
+  }).setVelocity({
     angular: new Vector3(0, 0, 2),
   });
-  const body1 = new RigidBody({ centerOfMass: [0, 0, 0] }).setVelocity({
+  const body1 = new RigidBody({
+    mass: 1,
+    centerOfMass: [0, 0, 0],
+    diagonalInertia: [1, 1, 1],
+  }).setVelocity({
     linear: new Vector3(3, 0, 0),
     angular: new Vector3(0, 0, 4),
   });
@@ -226,9 +253,58 @@ it("honors subclass copy overrides for standalone joint cloning", () => {
 it("keeps authoring reads explicit when rotating slider velocity needs inferred mass", () => {
   const body = new RigidBody().setVelocity({ angular: new Vector3(0, 0, 2) });
   const slider = new PrismaticJoint({ body0: null, body1: body });
-  expect(() => slider.getState()).toThrow("specify centerOfMass");
+  expect(() => slider.getState()).toThrow("complete explicit mass properties");
   expect(body.getVelocity().angular.z).toBe(2);
   body.setVelocity({ angular: new Vector3(), linear: new Vector3(0, 3, 0) });
   expect(slider.getState().position).toBe(0);
   expect(slider.getState().velocity).toBeCloseTo(3);
+});
+
+it("captures immutable joint limits and rejects incompatible copies", () => {
+  const body = new RigidBody();
+  const limits: [number, number] = [-1, 2];
+  const hinge = new RevoluteJoint({ body0: null, body1: body, limits });
+  limits[0] = -99;
+  expect(hinge.options.limits).toEqual([-1, 2]);
+  expect(Object.isFrozen(hinge.limits)).toBe(true);
+  expect(Reflect.set(hinge, "limits", [-3, 3])).toBe(false);
+  const copy = hinge.clone();
+  expect(copy.limits).toEqual([-1, 2]);
+  expect(copy.limits).not.toBe(hinge.limits);
+  expect(() =>
+    new RevoluteJoint({ body0: null, body1: body }).copy(hinge),
+  ).toThrow("immutable");
+  const distance = new DistanceJoint({
+    body0: null,
+    body1: body,
+    limits: [1, 3],
+  });
+  expect(distance.clone().options.limits).toEqual([1, 3]);
+  expect(() =>
+    new DistanceJoint({ body0: null, body1: body }).copy(distance),
+  ).toThrow("immutable");
+});
+
+it("accepts total mass or complete explicit mass properties and rejects partial overrides", () => {
+  expect(new RigidBody({ mass: 2 }).options.mass).toBe(2);
+  expect(() => new RigidBody({ centerOfMass: [0, 0, 0] })).toThrow("together");
+  expect(() => new RigidBody({ mass: 2, centerOfMass: [0, 0, 0] })).toThrow(
+    "together",
+  );
+  expect(() => new RigidBody({ mass: 2, diagonalInertia: [1, 1, 1] })).toThrow(
+    "together",
+  );
+  expect(() => new RigidBody({ mass: 2, principalAxes: [0, 0, 0, 1] })).toThrow(
+    "together",
+  );
+  const complete = new RigidBody({
+    mass: 2,
+    centerOfMass: [0, 0, 0],
+    diagonalInertia: [1, 1, 1],
+  });
+  expect(() =>
+    new RigidBody({ ...complete.options, principalAxes: [0, 0, 0, 1] }).copy(
+      complete,
+    ),
+  ).not.toThrow();
 });

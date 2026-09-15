@@ -130,7 +130,7 @@ for (const axis of ["X", "Y", "Z"] as const) {
 
 it("rejects disposed, foreign, invalid, and premature simulation operations", async () => {
   const world = await setup();
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody({}).setType("kinematic");
   expect(() => body.setVelocity({ linear: new Vector3(NaN, 0, 0) })).toThrow(
     "finite",
   );
@@ -162,7 +162,7 @@ for (const kind of ["spherical", "distance"] as const) {
     const joint =
       kind === "spherical"
         ? new SphericalJoint(options)
-        : new DistanceJoint(options).setLimits([0, 3]);
+        : new DistanceJoint({ ...options, limits: [0, 3] });
     const initial = joint.getState();
     world.update(0);
     const ready = joint.getState();
@@ -172,7 +172,7 @@ for (const kind of ["spherical", "distance"] as const) {
 
 it("preserves world scale through static teleport and reset under a nonuniform parent", async () => {
   const world = await setup();
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({}).setType("static");
   body.add(new BoxCollider());
   const parent = new Group().add(body);
   parent.scale.set(2, 3, 4);

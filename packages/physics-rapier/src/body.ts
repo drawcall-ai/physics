@@ -28,6 +28,7 @@ export interface BodyBinding {
   velocity: PhysicsVelocity;
   shapes: string;
   settings: number;
+  type: AuthoredBody["bodyType"];
   sources: Map<number, Object3D>;
   scale: Vector3;
   colliderScales: Map<Object3D, Vector3>;
@@ -40,9 +41,9 @@ export function createBody(
 ): BodyBinding {
   const options = object.options;
   const desc =
-    options.type === "static"
+    object.bodyType === "static"
       ? api.RigidBodyDesc.fixed()
-      : options.type === "kinematic"
+      : object.bodyType === "kinematic"
         ? api.RigidBodyDesc.kinematicPositionBased()
         : api.RigidBodyDesc.dynamic();
   const { pose, scale } = splitTransform(object.matrixWorld);
@@ -63,6 +64,7 @@ export function createBody(
     colliderScales: new Map(),
     shapes: "",
     settings: -1,
+    type: object.bodyType,
     sources: new Map(),
   };
   try {
@@ -109,8 +111,7 @@ export function refreshBody(
     const completeMass =
       options.mass !== undefined &&
       options.centerOfMass !== undefined &&
-      options.diagonalInertia !== undefined &&
-      options.principalAxes !== undefined;
+      options.diagonalInertia !== undefined;
     const descriptors = resolved.map((shape) => {
       const desc = collider(api, shape, object);
       return completeMass ? desc.setDensity(0) : desc;
@@ -133,7 +134,7 @@ export function refreshBody(
           shape.setMass((options.mass * shape.mass()) / inferredMass);
       }
       if (
-        (options.type ?? "dynamic") === "dynamic" &&
+        object.bodyType === "dynamic" &&
         options.mass === undefined &&
         next.reduce((sum, shape) => sum + shape.mass(), 0) <= 0
       )
@@ -145,50 +146,16 @@ export function refreshBody(
     const previous = body.numColliders() - next.length;
     for (let i = 0; i < previous; i++)
       world.removeCollider(body.collider(0), true);
-    body.setAdditionalMassProperties(
-      0,
-      new Vector3(),
-      new Vector3(),
-      new Quaternion(),
-      true,
-    );
+    if (completeMass) {
+      body.setAdditionalMassProperties(
+        options.mass,
+        new Vector3(...options.centerOfMass),
+        new Vector3(...options.diagonalInertia),
+        new Quaternion(...(options.principalAxes ?? [0, 0, 0, 1])),
+        true,
+      );
+    }
     body.recomputeMassPropertiesFromColliders();
-    if (
-      options.centerOfMass ||
-      options.diagonalInertia ||
-      options.principalAxes ||
-      !next.length
-    ) {
-      const mass = options.mass ?? body.mass();
-      const center = options.centerOfMass
-        ? new Vector3(...options.centerOfMass)
-        : body.localCom();
-      const inertia = options.diagonalInertia
-        ? new Vector3(...options.diagonalInertia)
-        : body.principalInertia();
-      const axes = options.principalAxes
-        ? new Quaternion(...options.principalAxes)
-        : body.principalInertiaLocalFrame();
-      if (
-        (options.type ?? "dynamic") === "dynamic" &&
-        (mass <= 0 || Math.min(inertia.x, inertia.y, inertia.z) <= 0)
-      )
-        throw new Error("Dynamic body requires positive mass and inertia");
-      for (const shape of next) shape.setDensity(0);
-      body.setAdditionalMassProperties(mass, center, inertia, axes, true);
-      body.recomputeMassPropertiesFromColliders();
-    }
-    if ((options.type ?? "dynamic") === "dynamic") {
-      const inertia = body.principalInertia();
-      if (
-        ![body.mass(), inertia.x, inertia.y, inertia.z].every(
-          (value) => Number.isFinite(value) && value > 0,
-        )
-      )
-        throw new Error(
-          "Dynamic body requires positive finite mass and inertia",
-        );
-    }
     binding.sources = new Map(
       next.map((shape, index) => {
         const source = colliders[index];
@@ -205,8 +172,34 @@ export function refreshBody(
       ]),
     );
   }
+  if (object.bodyType === "dynamic") {
+    const inertia = body.principalInertia();
+    if (
+      ![body.mass(), inertia.x, inertia.y, inertia.z].every(
+        (value) => Number.isFinite(value) && value > 0,
+      )
+    )
+      throw new Error("Dynamic body requires positive finite mass and inertia");
+  }
   const settings = object.settingsVersion;
   if (settings === binding.settings) return;
+  if (binding.type !== object.bodyType) {
+    body.setBodyType(
+      object.bodyType === "static"
+        ? api.RigidBodyType.Fixed
+        : object.bodyType === "kinematic"
+          ? api.RigidBodyType.KinematicPositionBased
+          : api.RigidBodyType.Dynamic,
+      true,
+    );
+    body.setLinvel(new Vector3(), true);
+    body.setAngvel(new Vector3(), true);
+    body.resetForces(false);
+    body.resetTorques(false);
+    body.setNextKinematicTranslation(body.translation());
+    body.setNextKinematicRotation(body.rotation());
+    binding.type = object.bodyType;
+  }
   body.setLinearDamping(object.linearDamping);
   body.setAngularDamping(object.angularDamping);
   body.setGravityScale(object.gravityScale, true);

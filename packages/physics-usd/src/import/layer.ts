@@ -59,6 +59,14 @@ export function parseLayer(text: string): Layer {
           throw new Error(`Invalid displayName on ${path}`);
         spec.fields.displayName = displayName;
       }
+      for (const axis of ["angular", "linear"]) {
+        const name = `drive:${axis}:physics:maxForce`;
+        // Three's parser turns USDA's positive infinity token into NaN.
+        if (value[`float ${name}`] !== "inf") continue;
+        const property = specsByPath[`${path}.${name}`];
+        if (!property) throw new Error(`Missing USD property ${path}.${name}`);
+        property.fields.default = Infinity;
+      }
       visit(value, path);
     }
   };

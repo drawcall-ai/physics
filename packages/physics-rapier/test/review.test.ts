@@ -19,6 +19,7 @@ async function createWorld() {
 }
 function inertialBody(world: RapierWorld) {
   return new RigidBody({
+    centerOfMass: [0, 0, 0],
     world,
     colliders: false,
     mass: 1,
@@ -28,7 +29,7 @@ function inertialBody(world: RapierWorld) {
 
 it("rejects invalid rays and accepts zero range and very small finite directions", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ world, type: "static", colliders: false });
+  const body = new RigidBody({ world, colliders: false }).setType("static");
   body.add(new BoxCollider());
   world.update(0);
   const origin = new Vector3(-2, 0, 0);
@@ -95,6 +96,7 @@ it("applies effort through rotated local frames beneath a transformed parent", a
     frame0: frame,
     frame1: frame,
   });
+  world.update(0);
   hinge.setEffort(2);
   world.update(world.fixedDelta);
   const axis = new Vector3(1, 0, 0).applyQuaternion(parent.quaternion);
@@ -119,6 +121,7 @@ it("applies opposing slider forces at offset anchors and clears pending effort o
     frame0: frame,
     frame1: frame,
   });
+  world.update(0);
   slider.setEffort(3);
   world.update(world.fixedDelta);
   expect(slider.getState().velocity).toBeGreaterThan(0);
@@ -147,14 +150,26 @@ it("requires sufficient dynamic colliderless inertia but accepts static and kine
   const massOnly = new RigidBody({ world, colliders: false, mass: 1 });
   expect(() => world.update(0)).toThrow(/mass|inertia/i);
   massOnly.dispose();
-  new RigidBody({ world, type: "static", colliders: false });
-  new RigidBody({ world, type: "kinematic", colliders: false });
+  new RigidBody({ world, colliders: false }).setType("static");
+  new RigidBody({ world, colliders: false }).setType("kinematic");
   expect(() => world.update(0)).not.toThrow();
   expect(
-    () => new RigidBody({ world, mass: 0, diagonalInertia: [1, 1, 1] }),
+    () =>
+      new RigidBody({
+        centerOfMass: [0, 0, 0],
+        world,
+        mass: 0,
+        diagonalInertia: [1, 1, 1],
+      }),
   ).toThrow();
   expect(
-    () => new RigidBody({ world, mass: 1, diagonalInertia: [1, 1, 3] }),
+    () =>
+      new RigidBody({
+        centerOfMass: [0, 0, 0],
+        world,
+        mass: 1,
+        diagonalInertia: [1, 1, 3],
+      }),
   ).toThrow();
 });
 
@@ -165,12 +180,14 @@ it("rotates the principal inertia axes used for angular response", async () => {
     Math.PI / 2,
   );
   const ordinary = new RigidBody({
+    centerOfMass: [0, 0, 0],
     world,
     colliders: false,
     mass: 1,
     diagonalInertia: [1, 2, 3],
   });
   const rotated = new RigidBody({
+    centerOfMass: [0, 0, 0],
     world,
     colliders: false,
     mass: 1,

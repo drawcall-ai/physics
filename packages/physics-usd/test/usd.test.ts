@@ -28,6 +28,7 @@ import {
   SphereCollider,
   SphericalJoint,
   Joint,
+  JointMotor,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
 import {
@@ -49,7 +50,7 @@ function doorAssembly() {
   assembly.position.set(2, 3, 4);
   assembly.rotation.y = 0.6;
   scene.add(assembly);
-  const frame = new RigidBody({ type: "static" });
+  const frame = new RigidBody().setType("static");
   frame.name = "Frame";
   const material = new MeshStandardMaterial({ color: "brown" });
   for (const x of [-0.55, 0.55]) {
@@ -67,7 +68,14 @@ function doorAssembly() {
   const hinge = new RevoluteJoint({
     body0: frame,
     body1: door,
-  }).setLimits([0, Math.PI / 2]);
+    limits: [0, Math.PI / 2],
+  });
+  new JointMotor({
+    joint: hinge,
+    stiffness: 100,
+    damping: 10,
+    maxForce: 40,
+  }).setTarget({ position: Math.PI / 4, velocity: 0.4 });
   hinge.position.set(-0.49, 1.05, 0);
   assembly.add(frame, door, hinge);
   return { scene, frame, door, hinge };
@@ -111,7 +119,7 @@ describe("USD Physics interchange", () => {
   });
 
   it("cleans up failed imports without disposing a supplied world", () => {
-    const existing = new RigidBody({ type: "static" });
+    const existing = new RigidBody().setType("static");
     expect(() =>
       new PhysicsUSDLoader({ world }).parse(`#usda 1.0
 (
@@ -184,6 +192,11 @@ def Cube "Crate" (
     expect(joint.options.body0).toBe(frame);
     expect(joint.options.body1).toBe(loadedDoor);
     expect(joint.limits).toEqual(hinge.limits);
+    expect(joint.motor?.options.stiffness).toBeCloseTo(100);
+    expect(joint.motor?.options.damping).toBeCloseTo(10);
+    expect(joint.motor?.options.maxForce).toBe(40);
+    expect(joint.motor?.target?.position).toBeCloseTo(Math.PI / 4);
+    expect(joint.motor?.target?.velocity).toBeCloseTo(0.4);
     expect(
       new Vector3()
         .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
@@ -232,11 +245,12 @@ def Cube "Crate" (
       body,
       new FixedJoint(options),
       new SphericalJoint(options),
-      new DistanceJoint(options).setLimits([0, 2]),
+      new DistanceJoint({ ...options, limits: [0, 2] }),
       new PrismaticJoint({
         ...options,
         axis: "Z",
-      }).setLimits([-1, 1]),
+        limits: [-1, 1],
+      }),
     );
     const result = new PhysicsUSDLoader().parse(
       await new PhysicsUSDExporter().parseAsync(scene),
@@ -308,8 +322,8 @@ def Cube "Crate" (
     expect(text).toContain("subLayers = [@visuals.usda@]");
     expect(text).toContain('"PhysicsRigidBodyAPI"');
     expect(text).toContain("physics:upperLimit = 90");
-    expect(text).not.toContain("drive:");
-    expect(text).not.toContain("PhysicsDriveAPI");
+    expect(text).toContain("drive:angular:physics:targetPosition = 45");
+    expect(text).toContain("PhysicsDriveAPI:angular");
     expect(text).toContain('displayName = "Door"');
     expect(text).not.toContain("glts:");
   });
@@ -451,7 +465,7 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
     "Collider must belong",
   );
   collider.removeFromParent();
-  const outside = new RigidBody({ type: "static" });
+  const outside = new RigidBody().setType("static");
   const joint = new FixedJoint({ body0: null, body1: outside });
   scene.add(joint);
   await expect(exporter.parseAsync(scene)).rejects.toThrow(
@@ -492,15 +506,15 @@ it("clones imported assemblies with remapped joints and independent disposal", a
     throw new Error("Missing cloned door bodies");
   expect(copiedDoor.disposed).toBe(true);
   expect(originalDoor.disposed).toBe(false);
-  expect(
-    () => new RigidBody({ world: imported.world, type: "static" }),
+  expect(() =>
+    new RigidBody({ world: imported.world }).setType("static"),
   ).not.toThrow();
   imported.dispose();
 });
 
 it("exports static groups without rigid-body schemas and preserves their compound colliders", async () => {
   const scene = new Group();
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody().setType("static");
   floor.name = "Floor";
   floor.position.set(2, 3, 4);
   floor.add(new Mesh(new BoxGeometry()));
@@ -520,7 +534,7 @@ it("exports static groups without rigid-body schemas and preserves their compoun
   try {
     const copy = loaded.getObjectByName("Floor");
     if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
-    expect(copy.options.type).toBe("static");
+    expect(copy.bodyType).toBe("static");
     expect(copy.getColliders()).toHaveLength(2);
     expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
   } finally {

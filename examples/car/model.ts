@@ -6,6 +6,7 @@ import {
   PrismaticJoint,
   RevoluteJoint,
   FixedJoint,
+  JointMotor,
   type PhysicsWorld,
   type Vec3,
 } from "@drawcall/physics";
@@ -16,13 +17,11 @@ export const simulationOptions = {
   solverIterations: 32,
 };
 
-// Integral feedback overcomes stationary tire scrub without stiff solver motors.
-export const steeringControl = {
-  stiffness: 6000,
-  damping: 70,
-  integral: 12000,
-  maxTorque: 4000,
-  integralLimit: 0.15,
+// A stiff, torque-limited native servo overcomes stationary tire scrub.
+export const steeringMotor = {
+  stiffness: 300000,
+  damping: 1500,
+  maxForce: 4000,
 };
 
 export const specification = {
@@ -32,7 +31,6 @@ export const specification = {
   track: 1.8,
   stiffness: 35000,
   damping: 3200,
-  torque: 480,
   droop: 0.16,
   bump: 0.22,
 };
@@ -113,10 +111,15 @@ export function createCar(world: PhysicsWorld) {
         body0: chassis,
         body1: carrier,
         axis: "Y",
+        limits: [-specification.droop, specification.bump],
         frame0: new THREE.Matrix4().makeTranslation(x, -0.52, z),
         frame1: new THREE.Matrix4(),
       });
-      spring.setLimits([-specification.droop, specification.bump]);
+      new JointMotor({
+        joint: spring,
+        stiffness: specification.stiffness,
+        damping: specification.damping,
+      }).setTarget({ position: 0 });
       spring.name = `${name}Suspension`;
       const steeringFrames = {
         body0: carrier,
@@ -128,9 +131,15 @@ export function createCar(world: PhysicsWorld) {
         ? new RevoluteJoint({
             ...steeringFrames,
             axis: "Y",
+            limits: [-0.6, 0.6],
           })
         : new FixedJoint(steeringFrames);
-      if (steering instanceof RevoluteJoint) steering.setLimits([-0.6, 0.6]);
+      const servo =
+        steering instanceof RevoluteJoint
+          ? new JointMotor({ joint: steering, ...steeringMotor }).setTarget({
+              position: 0,
+            })
+          : undefined;
       steering.name = `${name}${front ? "Steering" : "KnuckleMount"}`;
       const tire = new RigidBody({
         world,
@@ -172,6 +181,12 @@ export function createCar(world: PhysicsWorld) {
         frame1: new THREE.Matrix4(),
       });
       axle.name = `${name}Motor`;
+      const motor = new JointMotor({
+        joint: axle,
+        damping: 450,
+        maxForce: 1100,
+      });
+      motor.setTarget({ velocity: 0 });
       // Spring geometry is visual only; force comes from the prismatic joint.
       const points = Array.from(
         { length: 97 },
@@ -208,6 +223,8 @@ export function createCar(world: PhysicsWorld) {
         spring,
         steering,
         axle,
+        servo,
+        motor,
         coil,
         damper,
       });

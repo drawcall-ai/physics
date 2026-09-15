@@ -124,7 +124,7 @@ it("rejects singular transforms, shear and nonuniform moving ancestors", () => {
   body.scale.setScalar(1);
   root.scale.set(2, 1, 1);
   expect(() => body.getColliders()).toThrow("uniform ancestor");
-  const fixed = new RigidBody({ type: "static" });
+  const fixed = new RigidBody().setType("static");
   root.add(fixed.add(new Mesh(new BoxGeometry())));
   fixed.rotation.z = 0.5;
   expect(() => fixed.getColliders()).toThrow("shear");

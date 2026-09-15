@@ -27,7 +27,7 @@ import {
 
 function doorAssembly() {
   const root = new Group();
-  const frame = new RigidBody({ type: "static" });
+  const frame = new RigidBody().setType("static");
   for (const x of [-0.55, 0.55]) {
     const post = new Mesh(new BoxGeometry(0.1, 2.2, 0.15));
     post.position.set(x, 1.1, 0);
@@ -42,7 +42,8 @@ function doorAssembly() {
   const hinge = new RevoluteJoint({
     body0: frame,
     body1: door,
-  }).setLimits([0, Math.PI / 2]);
+    limits: [0, Math.PI / 2],
+  });
   hinge.position.set(-0.49, 1.05, 0);
   root.add(frame, door, hinge);
   return { root, frame, door, hinge };
@@ -124,13 +125,16 @@ describe("physics objects", () => {
       body1: body,
       frame0: new Matrix4().makeTranslation(0, 5, 0),
       frame1: new Matrix4().makeTranslation(0, 1, 0),
-    }).setLimits([0, 4]);
+      limits: [0, 4],
+    });
     const root = new Group();
     root.add(body, joint);
     expect(
       new Vector3().setFromMatrixPosition(joint.getFrame(0, new Matrix4())).y,
     ).toBe(5);
-    expect(() => joint.setLimits([-1, 4])).toThrow("nonnegative");
+    expect(
+      () => new DistanceJoint({ ...joint.options, limits: [-1, 4] }),
+    ).toThrow("nonnegative");
   });
   it("permits empty collider lists and validates collision masks at the setter", () => {
     const body = new RigidBody({ colliders: false });
@@ -153,7 +157,7 @@ describe("physics objects", () => {
       new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3),
     );
     geometry.setIndex([0, 1, 3]);
-    const body = new RigidBody({ type: "static" });
+    const body = new RigidBody().setType("static");
     body.add(new Mesh(geometry));
     expect(() => body.getColliders()).toThrow("index is outside");
     geometry.setIndex([0, 1]);

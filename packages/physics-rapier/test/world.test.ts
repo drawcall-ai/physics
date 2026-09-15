@@ -42,7 +42,7 @@ it("adds joints after bodies are already simulating", async () => {
 
 it("updates collider geometry without resetting the body", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({}).setType("static");
   const mesh = new Mesh(new BoxGeometry(1, 1, 1));
   floor.add(mesh);
   const body = box();
@@ -104,7 +104,7 @@ it("keeps creation options immutable while damping and gravity settings update l
 
 it("removes automatic colliders when geometry is removed", async () => {
   const world = await setupWorld();
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({}).setType("static");
   const mesh = new Mesh(new BoxGeometry(10, 1, 10));
   const distant = new Mesh(new BoxGeometry(1, 1, 1));
   distant.position.x = 20;
@@ -141,22 +141,22 @@ it("rejects edits to captured joint frames", async () => {
   world.dispose();
 });
 
-it("preserves a live joint when invalid replacement settings fail", async () => {
+it("copies immutable distance limits without changing a prepared joint", async () => {
   const world = await setupWorld();
   const body = box();
   body.position.y = -2;
+  const limits: [number, number] = [0, 2];
   const joint = new DistanceJoint({
     body0: null,
     body1: body,
     frame0: new Matrix4(),
     frame1: new Matrix4(),
+    limits,
   });
-  joint.setLimits([0, 2]);
   world.update(world.fixedDelta);
-  joint.setLimits([1, 2]);
-  expect(() => world.update(world.fixedDelta)).toThrow("zero minimum");
-  expect(joint.getState().distance).toBeCloseTo(2, 1);
-  joint.setLimits([0, 2]);
+  limits[1] = 8;
+  expect(joint.limits).toEqual([0, 2]);
+  expect(Reflect.set(joint.limits, 1, 8)).toBe(false);
   world.update(world.fixedDelta);
   expect(joint.getState().distance).toBeCloseTo(2, 1);
   world.dispose();

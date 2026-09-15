@@ -144,7 +144,7 @@ export function autoShape(mesh: Mesh, body: RigidBody): Shape {
     approximation:
       body.options.colliders === "trimesh" ||
       ((body.options.colliders ?? "auto") === "auto" &&
-        body.options.type === "static")
+        body.bodyType === "static")
         ? "trimesh"
         : "convexHull",
   };

@@ -17,7 +17,9 @@ export function createRagdoll() {
     position: [number, number, number],
     mass: number,
   ) {
-    const body = new RigidBody(mass === 0 ? { type: "static" } : { mass });
+    const body = new RigidBody(mass === 0 ? {} : { mass }).setType(
+      mass === 0 ? "static" : "dynamic",
+    );
     body.name = name;
     body.position.set(...position);
     body.add(
@@ -83,9 +85,9 @@ export function createRagdoll() {
         body0,
         body1,
         axis: "X",
+        limits: [0, Math.PI * 0.75],
       });
       joint.setCollideConnected(true);
-      joint.setLimits([0, Math.PI * 0.75]);
       joint.name = jointName;
       joint.position.set(body1.position.x, y, 0);
       scene.add(joint);

@@ -7,6 +7,7 @@ import {
   RevoluteJoint,
   SphericalJoint,
   authoredJointState,
+  type JointMotor,
   type Joint,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
@@ -62,6 +63,9 @@ function createJoint(
       );
       result.setLocalFrame1(a, rotation0.clone().multiply(rotation));
       result.setLocalFrame2(b, rotation1.clone().multiply(rotation));
+      if (!(result instanceof api.UnitImpulseJoint))
+        throw new Error("Expected a Rapier unit joint");
+      if (object.options.limits) result.setLimits(...object.options.limits);
     }
     configure(api, object, result);
     return result;
@@ -81,7 +85,24 @@ export function configure(
     return;
   if (!(target instanceof api.UnitImpulseJoint))
     throw new Error("Expected a Rapier unit joint.");
-  target.setLimits(...(object.limits ?? [-Number.MAX_VALUE, Number.MAX_VALUE]));
+  const motor = object.motor;
+  const targetState = motor?.active ? motor.target : undefined;
+  target.configureMotorModel(
+    motor?.options.model === "acceleration"
+      ? api.MotorModel.AccelerationBased
+      : api.MotorModel.ForceBased,
+  );
+  target.setMotorMaxForce(
+    targetState ? (motor?.options.maxForce ?? Number.MAX_VALUE) : 0,
+  );
+  target.configureMotor(
+    targetState ? targetState.position : 0,
+    targetState ? targetState.velocity : 0,
+    targetState ? (motor?.options.stiffness ?? 0) : 0,
+    targetState ? (motor?.options.damping ?? 0) : 0,
+  );
+  target.body1().wakeUp();
+  target.body2().wakeUp();
 }
 
 export function applyEffort(
@@ -118,6 +139,9 @@ export interface JointBinding {
   frames: readonly [Matrix4, Matrix4];
   bodies: readonly [Rapier.RigidBody, Rapier.RigidBody];
   settings: number;
+  effort: number;
+  motor?: JointMotor;
+  motorSettings: number;
   angle?: number;
   position?: number;
 }
@@ -131,6 +155,8 @@ export function prepareJoint(
   previous?: JointBinding,
 ): JointBinding {
   object.validate();
+  if (previous?.effort && object instanceof AxisJoint && object.motor?.active)
+    throw new Error("Disable the joint motor before applying effort");
   const binding =
     previous ??
     ({
@@ -141,16 +167,27 @@ export function prepareJoint(
       bodies: [first, second],
       target: undefined,
       settings: -1,
+      effort: 0,
+      motorSettings: -1,
     } satisfies JointBinding);
   if (!previous) sampleJoint(object, binding, true);
-  if (binding.settings === object.settingsVersion) return binding;
+  const motor = object instanceof AxisJoint ? object.motor : undefined;
+  const motorSettings = motor?.settingsVersion ?? -1;
+  if (
+    binding.settings === object.settingsVersion &&
+    binding.motor === motor &&
+    binding.motorSettings === motorSettings
+  )
+    return binding;
   if (!object.enabled) {
     if (binding.target) world.removeImpulseJoint(binding.target, true);
     binding.target = undefined;
     binding.settings = object.settingsVersion;
+    binding.motor = motor;
+    binding.motorSettings = motorSettings;
     return binding;
   }
-  if (!binding.target || object instanceof DistanceJoint) {
+  if (!binding.target) {
     const replacement = createJoint(
       api,
       world,
@@ -160,10 +197,11 @@ export function prepareJoint(
       first,
       second,
     );
-    if (binding.target) world.removeImpulseJoint(binding.target, true);
     binding.target = replacement;
   } else configure(api, object, binding.target);
   binding.settings = object.settingsVersion;
+  binding.motor = motor;
+  binding.motorSettings = motorSettings;
   return binding;
 }
 

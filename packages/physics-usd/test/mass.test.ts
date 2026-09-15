@@ -87,54 +87,13 @@ def Xform "Body" (
   }
 });
 
-it.each([
-  [
-    'prepend apiSchemas = ["PhysicsDriveAPI:angular"]',
-    "",
-    "PhysicsDriveAPI:angular",
-  ],
-  [
-    'prepend apiSchemas = ["PhysicsDriveAPI:linear"]',
-    "",
-    "PhysicsDriveAPI:linear",
-  ],
-  [
-    "",
-    "float drive:angular:physics:stiffness = 3",
-    "drive:angular:physics:stiffness",
-  ],
-  [
-    "",
-    "float drive:custom:physics:targetPosition = 3",
-    "drive:custom:physics:targetPosition",
-  ],
-])(
-  "rejects driven imports with the unsupported field and prim: %s %s",
-  (schema, property, field) => {
-    const text = `#usda 1.0
-(
- metersPerUnit = 1
-)
-def PhysicsRevoluteJoint "Hinge" (
- ${schema}
-)
-{
- ${property}
-}`;
-    expect(() => new PhysicsUSDLoader().parse(text)).toThrow(
-      `Unsupported USD drive`,
-    );
-    expect(() => new PhysicsUSDLoader().parse(text)).toThrow(field);
-    expect(() => new PhysicsUSDLoader().parse(text)).toThrow("/Hinge");
-  },
-);
-
 it("roundtrips method-authored velocities and constraint settings", async () => {
   const scene = new Group();
   const body = new RigidBody({
     world,
     colliders: false,
     mass: 2,
+    centerOfMass: [0, 0, 0],
     diagonalInertia: [2, 2, 2],
   });
   body.name = "Body";
@@ -142,8 +101,11 @@ it("roundtrips method-authored velocities and constraint settings", async () => 
     linear: new Vector3(1, 2, 3),
     angular: new Vector3(0, Math.PI, 0),
   });
-  const joint = new PrismaticJoint({ body0: null, body1: body })
-    .setLimits([-2, 3])
+  const joint = new PrismaticJoint({
+    body0: null,
+    body1: body,
+    limits: [-2, 3],
+  })
     .setEnabled(false)
     .setCollideConnected(true);
   scene.add(body, joint);

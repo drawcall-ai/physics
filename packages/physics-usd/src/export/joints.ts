@@ -69,5 +69,29 @@ export function writeJoint(
       `float physics:lowerLimit = ${joint.limits[0] * factor}`,
       `float physics:upperLimit = ${joint.limits[1] * factor}`,
     );
+  const motor = joint.motor;
+  if (!motor) return prim;
+  if (!motor.enabled || !motor.target)
+    throw new Error(
+      "USD PhysicsDriveAPI cannot represent a disabled or untargeted motor; dispose it before export",
+    );
+  const axis = joint instanceof RevoluteJoint ? "angular" : "linear";
+  const prefix = `drive:${axis}:physics:`;
+  prim.schemas.push(`PhysicsDriveAPI:${axis}`);
+  prim.properties.push(
+    `uniform token ${prefix}type = "${motor.options.model ?? "force"}"`,
+    `float ${prefix}stiffness = ${(motor.options.stiffness ?? 0) / factor}`,
+    `float ${prefix}damping = ${(motor.options.damping ?? 0) / factor}`,
+  );
+  if (motor.target.position !== undefined)
+    prim.properties.push(
+      `float ${prefix}targetPosition = ${motor.target.position * factor}`,
+    );
+  if (motor.target.velocity !== undefined)
+    prim.properties.push(
+      `float ${prefix}targetVelocity = ${motor.target.velocity * factor}`,
+    );
+  if (motor.options.maxForce !== undefined)
+    prim.properties.push(`float ${prefix}maxForce = ${motor.options.maxForce}`);
   return prim;
 }

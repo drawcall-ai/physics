@@ -39,9 +39,8 @@ drivetrain at 120 Hz with 32 solver iterations.
 `pnpm --filter @drawcall/example-car test` runs bump-course, braking, reverse,
 rear-alignment, and stationary-steering regressions in `car/test/`.
 
-The car computes suspension force, steering torque, and axle torque locally in
-`onBeforeStep` using measured joint position/velocity and `setEffort`. Steering
-uses bounded integral feedback to overcome stationary tire scrub. These gains are
-validated at fixed timesteps of 1/120 s and 1/240 s; changing the timestep or vehicle
-mass/inertia requires retuning an explicit effort controller. The physics package
-contains no actuator targets, gains, or drive-model dependency.
+The car uses native `JointMotor` actuators for suspension, steering, and wheel
+velocity. Gains and effort ceilings are constructor configuration; the driver
+updates targets in `onBeforeStep`. Throttle sets wheel speed, braking requests
+zero velocity, and coasting disables the wheel motor. Steering and suspension
+remain active. Tests cover fixed timesteps of 1/120 s and 1/240 s.

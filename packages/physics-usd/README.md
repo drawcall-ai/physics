@@ -27,7 +27,8 @@ Supported mapping:
 - Friction, restitution, and density through USD physics materials.
 - Fixed, revolute, prismatic, unrestricted spherical, and bounded distance joints.
 - Both body-local joint frames, world anchoring through `body0`, enable state, connected-body collision state.
-- SI stage units and Y-up. Angular limits and velocity convert between radians and USD's degree-based angular units.
+- Revolute/prismatic `JointMotor` drives with position/velocity targets, stiffness, damping, maximum force/torque, and force/acceleration models.
+- SI stage units and Y-up. Angular limits, targets, velocities and drive gains convert between radians and USD's degree-based angular units.
 
 Import creates actual `RigidBody`, collider, material, and joint instances. It resolves inherited physics material bindings and density. The returned `PhysicsUSDScene` extends Three.js `Group`; its `gravity` preserves the stage's gravity. Use `clone(scene)` from `@drawcall/physics` to remap joint references to cloned bodies while retaining the same world. Native `scene.clone()` follows Three.js behavior and retains original joint references. Disposing a clone releases its own registrations. By default each imported scene owns an `AuthoringWorld`: loading works without a default world and never replaces the application's default world. `scene.dispose()` releases the imported bodies and joints. Visual geometry and materials retain normal Three.js ownership; release any owned visual resources before `scene.dispose()`, which detaches bodies. Pass `new PhysicsUSDLoader({ world })` to register imported objects in a running simulation; disposing the imported scene releases only its objects and keeps that supplied world alive. A loading manager can be supplied as `{ manager }`.
 
@@ -59,7 +60,7 @@ colliders, and joints. `src/export/` owns USD prim writing and USDZ packaging.
 package's public API.
 
 Static bodies export as transformed collider groups with `PhysicsMassAPI` and no
-`PhysicsRigidBodyAPI`. Import reconstructs the group as `RigidBody({ type: "static" })`,
+`PhysicsRigidBodyAPI`. Import reconstructs the group as `new RigidBody().setType("static")`,
 preserving compound colliders and joint targets. Dynamic and kinematic bodies
 retain the rigid-body schema.
 
@@ -74,11 +75,24 @@ explicit moments and principal axes remain unchanged. Export writes a rigid body
 transform with scale baked into geometry. USD uses the same SI/Y-up
 convention; quaternion serialization converts xyzw to USD wxyz. Non-SI stages
 remain explicitly unsupported. Colliders may be absent when a dynamic body has
-sufficient explicit mass and inertia.
+complete explicit mass, center of mass and inertia. Principal axes default to identity.
+Mass-only configuration continues to use collider-derived inertia; arbitrary partial
+mass-property overrides are rejected.
 
-Mutable values now use methods: `body.setVelocity(...)`,
-`joint.setLimits(...)`, `joint.setEnabled(...)`, `joint.setCollideConnected(...)`,
-and collider `setMaterial(...)`, `setSensor(...)`, and `setCollisionGroups(...)`.
-Export reads current values. Drives are no longer part of physics interchange:
-imports reject every `PhysicsDriveAPI` schema and `drive:` property with its prim
-path. Implement controllers outside physics and command joint effort directly.
+Mutable values use `body.setType(...)`, `body.setVelocity(...)`,
+`joint.setEnabled(...)`, `joint.setCollideConnected(...)`, and collider
+`setMaterial(...)`, `setSensor(...)`, and `setCollisionGroups(...)`.
+Mechanical joint limits are immutable constructor options.
+
+Create a separate `JointMotor({ joint, stiffness, damping, maxForce, model })`
+and call `motor.setTarget({ position, velocity })`. Export reads current body type,
+velocities and motor targets. Omitted target coordinates default to zero; gains
+remain active. Use zero stiffness for velocity-only motors, and a zero velocity
+target with damping for braking. Motors start enabled but inactive until targeted.
+
+USD `PhysicsDriveAPI` retains native motor semantics and supports both force and
+acceleration models. An imported drive with no authored target uses USD’s zero
+target defaults. Disabled or untargeted motors cannot be represented faithfully
+by the standard schema and are rejected on export; dispose such motors before
+exporting a constraint-only asset. Disposing an imported joint also disposes its
+motor. No custom USD control metadata is introduced.

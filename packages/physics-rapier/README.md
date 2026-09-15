@@ -18,13 +18,13 @@ world.update(deltaSeconds);
 
 `setupWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
 
-Dynamic bodies require collider-derived mass/inertia or explicit positive mass and inertia; static and kinematic bodies may be colliderless. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
+Dynamic bodies require collider-derived mass/inertia or a complete explicit mass specification; static and kinematic bodies may be colliderless. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
 
-New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry changes, collider properties and materials. Body damping and gravity scale methods update live; body type and `canSleep` are fixed at creation.
+New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry changes, collider properties and materials. Body damping, gravity scale, and `setType("dynamic" | "static" | "kinematic")` update live; `canSleep` is fixed at creation. Bodies default to dynamic. An actual type transition clears velocity, body forces, and any queued kinematic target. Calling `setType()` with the current type leaves motion unchanged. A later velocity or kinematic-target command applies to the new type. Unsupported transitions, such as a triangle-mesh body becoming dynamic, throw and preserve the previous type.
 
 Body and collider scale are captured once; later scale edits throw and require disposing and recreating the affected bodies and joints. New colliders capture their scale when added. Explicit body mass stays fixed; density-derived mass and inertia follow the scaled shapes.
 
-Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Limit and connected-contact setters update before each step. Changing joint transforms afterward does not move captured anchors. Editing explicit frame options after creation throws; dispose and create a new joint to change its anchors. Distance-limit changes recreate the constraint while retaining its anchors. Disable/re-enable a joint with `joint.setEnabled(value)`.
+Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Physical limits are copied immutable constructor options. Connected-contact settings update through `setCollideConnected()`. Changing joint transforms afterward does not move captured anchors. Dispose and create a new joint to change its anchors or limits. Disable/re-enable a joint with `joint.setEnabled(value)`.
 
 Use methods directly on the objects:
 
@@ -59,11 +59,47 @@ observers run. Even if an after-step observer throws, that completed interval is
 consumed and cannot be replayed. Catch-up time beyond `maxSubsteps` is discarded,
 not counted as simulated time. Reset restores zero.
 
-Revolute/prismatic `setEffort` applies one substep of torque/force with equal
-reaction on the connected dynamic body. Last call wins, zero cancels, and pending
-effort survives no-step updates. Disable/reset/dispose clear commands. Independent
-body forces remain independent. Controllers should submit effort in `onBeforeStep`.
-The car example implements suspension, steering, and propulsion locally.
+## Joint motors and direct effort
+
+`JointMotor` maps to Rapier's native solver motor; targets persist across substeps.
+
+```ts
+const motor = new JointMotor({
+  joint: hinge,
+  stiffness: 100,
+  damping: 10,
+  maxForce: 20,
+});
+motor.setTarget({ position: 0.5 });
+motor.setEnabled(false);
+```
+
+Import `JointMotor` from `@drawcall/physics`. Motor configuration is immutable;
+recreate the motor to change gains, maximum force, model, or connected joint.
+A new motor is enabled but has no target and exerts no actuation. Each
+`setTarget()` replaces the previous target, filling omitted position or velocity
+with zero. Configured stiffness and damping both remain active. Use zero
+stiffness for a pure velocity motor; zero velocity with damping produces braking.
+Disabling or disposing the motor removes actuation and preserves the joint.
+The default `model: "force"` and optional `model: "acceleration"` use Rapier's
+corresponding formulations. `maxForce` bounds force in N for sliders and torque in
+N·m for hinges; Rapier handles timestep conversion. Absent `maxForce` is unbounded.
+Native motors drive the car's suspension, steering, and axles.
+
+Revolute/prismatic `setEffort()` requires a prepared joint, just like body force
+operations. Finish assembly and call `world.update(0)`, or submit commands from
+`onBeforeStep`, which runs after existing assemblies are prepared. Newly created
+joints inside that callback must wait for a preparation boundary before effort.
+A command applies torque/force for one substep with equal reaction on the connected
+dynamic body. Last call wins, zero cancels, and pending effort survives no-step
+updates. Disable/reset/dispose clear commands. Independent body forces remain
+independent. Zero cancellation on an unprepared joint is harmless.
+
+Disable an active motor before direct effort control. A nonzero effort with an
+active motor throws, including when a motor is activated after effort was set;
+no part of that substep is simulated. Cancel the effort with `setEffort(0)` or
+disable the motor explicitly. Combined motor and feed-forward effort is not
+supported.
 
 Revolute measurements track continuous turns at each substep. Angular movement
 must stay below π radians per substep; orientation samples cannot distinguish
@@ -77,7 +113,12 @@ with source identity, or null. Options support `collisionGroups`, `includeSensor
 `update(0)` or another update prepares it. Teleports update queries immediately.
 
 Explicit `mass`, `centerOfMass`, `diagonalInertia`, and `principalAxes` are immutable
-body-local properties. Complete specifications override collider contributions;
-partial specifications infer missing properties from colliders. Explicit inertia
+body-local properties. Specify either total `mass` alone or `mass`, `centerOfMass`, and
+`diagonalInertia` together. `principalAxes` is optional for the complete form and
+defaults to identity. Other partial specifications are rejected. Complete
+specifications override collider mass and inertia even after geometry edits and
+permit valid colliderless bodies. Mass-only bodies retain collider-derived COM
+and inertia, with density-weighted masses normalized to the specified total;
+zero-density colliders use uniform density for this inference. Explicit inertia
 is supplied in physical kg·m² and is not rescaled with visual geometry. See the
 core README for units, validity requirements, and the breaking migration table.

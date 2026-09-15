@@ -38,10 +38,7 @@ export class RapierWorld implements PhysicsWorld {
   private readonly backend: Rapier.World;
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
-  private readonly joints = new Map<
-    Joint,
-    { effort: number; binding?: JointBinding }
-  >();
+  private readonly joints = new Map<Joint, JointBinding | undefined>();
   private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
   private completedTime = 0;
@@ -87,7 +84,7 @@ export class RapierWorld implements PhysicsWorld {
     if (object.world !== this)
       throw new Error("Object belongs to another world.");
     if (object instanceof RigidBody) this.objects.add(object);
-    else if (!this.joints.has(object)) this.joints.set(object, { effort: 0 });
+    else if (!this.joints.has(object)) this.joints.set(object, undefined);
   }
   unregister(object: RigidBody | Joint): void {
     if (object instanceof RigidBody) {
@@ -101,7 +98,7 @@ export class RapierWorld implements PhysicsWorld {
       this.bodies.delete(object);
       return;
     }
-    const target = this.joints.get(object)?.binding?.target;
+    const target = this.joints.get(object)?.target;
     if (target) this.backend.removeImpulseJoint(target, true);
     this.joints.delete(object);
   }
@@ -123,17 +120,14 @@ export class RapierWorld implements PhysicsWorld {
     this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);
     this.flush();
-    for (const [object, { effort, binding }] of this.joints) {
-      if (
-        effort !== 0 &&
-        object instanceof AxisJoint &&
-        object.enabled &&
-        binding?.target
-      )
-        applyEffort(object, binding.target, effort);
+    for (const [object, binding] of this.joints) {
+      if (!binding || binding.effort === 0 || !(object instanceof AxisJoint))
+        continue;
+      if (object.enabled && binding.target)
+        applyEffort(object, binding.target, binding.effort);
     }
     this.backend.step();
-    for (const entry of this.joints.values()) entry.effort = 0;
+    for (const binding of this.joints.values()) if (binding) binding.effort = 0;
     this.elapsed -= this.fixedDelta;
     this.completedTime += this.fixedDelta;
     for (const [object, { body }] of this.bodies) {
@@ -141,7 +135,7 @@ export class RapierWorld implements PhysicsWorld {
       body.resetForces(false);
       body.resetTorques(false);
     }
-    for (const [object, { binding }] of this.joints) {
+    for (const [object, binding] of this.joints) {
       if (binding) sampleJoint(object, binding);
     }
     for (const callback of this.after) callback(this.fixedDelta);
@@ -160,9 +154,10 @@ export class RapierWorld implements PhysicsWorld {
     }
     this.elapsed = 0;
     this.completedTime = 0;
-    for (const [object, entry] of this.joints) {
-      entry.effort = 0;
-      if (entry.binding) sampleJoint(object, entry.binding, true);
+    for (const [object, binding] of this.joints) {
+      if (!binding) continue;
+      binding.effort = 0;
+      sampleJoint(object, binding, true);
     }
   }
   dispose(): void {
@@ -187,8 +182,8 @@ export class RapierWorld implements PhysicsWorld {
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
     this.assertObject(object);
-    const body = this.bodies.get(object)?.body;
-    if (!body) return setAuthoredVelocity(object, value);
+    if (!this.bodies.has(object)) return setAuthoredVelocity(object, value);
+    const body = this.getBody(object);
     if (value.linear) body.setLinvel(value.linear, true);
     if (value.angular) body.setAngvel(value.angular, true);
   }
@@ -200,7 +195,7 @@ export class RapierWorld implements PhysicsWorld {
     if (!body) return;
     body.setTranslation(new Vector3().setFromMatrixPosition(matrix), true);
     body.setRotation(new Quaternion().setFromRotationMatrix(matrix), true);
-    for (const [joint, { binding }] of this.joints) {
+    for (const [joint, binding] of this.joints) {
       if (
         binding &&
         (joint.options.body0 === object || joint.options.body1 === object)
@@ -236,13 +231,20 @@ export class RapierWorld implements PhysicsWorld {
   setJointEffort(object: AxisJoint, value: number): void {
     this.assertObject(object);
     if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
-    const entry = this.joints.get(object);
-    if (!entry) throw new Error("Joint is not registered in this world");
-    entry.effort = object.enabled ? value : 0;
+    const binding = this.joints.get(object);
+    if (!binding) {
+      if (value === 0) return;
+      throw new Error(
+        "Joint backend is not initialized; call world.update(0) before applying effort",
+      );
+    }
+    if (value !== 0 && object.motor?.active)
+      throw new Error("Disable the joint motor before applying effort");
+    binding.effort = object.enabled ? value : 0;
   }
   getJointState(object: Joint) {
     this.assertObject(object);
-    const binding = this.joints.get(object)?.binding;
+    const binding = this.joints.get(object);
     if (binding) return readJointState(object, binding);
     return authoredJointState(object, undefined, (body, point) => {
       const target = this.bodies.get(body)?.body;
@@ -299,6 +301,8 @@ export class RapierWorld implements PhysicsWorld {
       throw new Error(
         "Body backend is not initialized; finish assembly and call world.update(0) before simulation operations.",
       );
+    if (binding.settings !== object.settingsVersion)
+      refreshBody(this.api, this.backend, object, binding);
     return binding.body;
   }
   private flush(pendingOnly = false): void {
@@ -310,8 +314,8 @@ export class RapierWorld implements PhysicsWorld {
       if (binding) refreshBody(this.api, this.backend, object, binding);
       else this.bodies.set(object, createBody(this.api, this.backend, object));
     }
-    for (const [object, entry] of this.joints) {
-      if (pendingOnly && entry.binding) continue;
+    for (const [object, binding] of this.joints) {
+      if (pendingOnly && binding) continue;
       if (!object.options.body0 && !this.anchor)
         this.anchor = this.backend.createRigidBody(
           this.api.RigidBodyDesc.fixed(),
@@ -320,13 +324,16 @@ export class RapierWorld implements PhysicsWorld {
         ? this.getBody(object.options.body0)
         : this.anchor;
       if (!first) throw new Error("Missing world anchor");
-      entry.binding = prepareJoint(
-        this.api,
-        this.backend,
+      this.joints.set(
         object,
-        first,
-        this.getBody(object.options.body1),
-        entry.binding,
+        prepareJoint(
+          this.api,
+          this.backend,
+          object,
+          first,
+          this.getBody(object.options.body1),
+          binding,
+        ),
       );
     }
   }

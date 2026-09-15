@@ -67,7 +67,8 @@ it("clones assemblies in their original world and remaps joint references", () =
   const hinge = new RevoluteJoint({
     body0,
     body1,
-  }).setLimits([0, 1]);
+    limits: [0, 1],
+  });
   root.add(hinge, body0, body1);
   const nextWorld = setup();
   const result = clone(root);
@@ -187,7 +188,7 @@ it("registers each cloned joint once without unregistering it", () => {
 
 it("supports a static preview callback without a backend or step observers", () => {
   const world = setup();
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody().setType("kinematic");
   world.unregister(body);
   const before = vi.fn(),
     after = vi.fn();

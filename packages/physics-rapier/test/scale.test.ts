@@ -6,7 +6,7 @@ import { setupWorld } from "../src/index.js";
 it("captures scale at initialization, including bodies added and removed during simulation", async () => {
   const world = await setupWorld();
   try {
-    const floor = new RigidBody({ type: "static" });
+    const floor = new RigidBody({}).setType("static");
     floor.add(new Mesh(new BoxGeometry(30, 1, 30)));
     floor.position.y = -0.5;
     const spawn = (x: number, factor: number) => {
@@ -126,7 +126,7 @@ it("captures new collider scale while rejecting edits to an existing collider's 
 it("preserves scale authored directly in a manual body matrix", async () => {
   const world = await setupWorld();
   try {
-    const floor = new RigidBody({ type: "static" });
+    const floor = new RigidBody({}).setType("static");
     floor.add(new Mesh(new BoxGeometry(20, 1, 20)));
     floor.position.y = -0.5;
     const body = new RigidBody();

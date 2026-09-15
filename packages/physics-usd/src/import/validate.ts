@@ -48,6 +48,8 @@ export function validate(layer: Layer): void {
     "PhysicsCollisionAPI",
     "PhysicsMeshCollisionAPI",
     "PhysicsMaterialAPI",
+    "PhysicsDriveAPI:angular",
+    "PhysicsDriveAPI:linear",
   ]);
   for (const [path, spec] of Object.entries(layer.specsByPath)) {
     if (spec.specType === 6) {
@@ -74,8 +76,17 @@ export function validate(layer: Layer): void {
         )
           throw new Error(`Unsupported USD transform operation on ${path}`);
       }
+      const driveAxis =
+        spec.fields.typeName === "PhysicsRevoluteJoint"
+          ? "angular"
+          : spec.fields.typeName === "PhysicsPrismaticJoint"
+            ? "linear"
+            : undefined;
       for (const schema of schemas(layer, path))
-        if (schema.startsWith("PhysicsDriveAPI"))
+        if (
+          schema.startsWith("PhysicsDriveAPI") &&
+          schema !== `PhysicsDriveAPI:${driveAxis}`
+        )
           throw new Error(
             `Unsupported USD drive schema ${schema} on prim ${path}`,
           );
@@ -88,7 +99,15 @@ export function validate(layer: Layer): void {
     const property = path.split(".").slice(1).join(".");
     if (property.startsWith("physics:") && !properties.has(property.slice(8)))
       throw new Error(`Unsupported USD physics property ${path}`);
-    if (property.startsWith("drive:"))
+    if (
+      property.startsWith("drive:") &&
+      (!/^drive:(angular|linear):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$/.test(
+        property,
+      ) ||
+        !schemas(layer, path.split(".")[0] ?? "").includes(
+          `PhysicsDriveAPI:${property.split(":")[1]}`,
+        ))
+    )
       throw new Error(
         `Unsupported USD drive property ${property} on prim ${path.split(".")[0]}`,
       );

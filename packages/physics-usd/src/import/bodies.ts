@@ -35,7 +35,9 @@ export function wrapBody(
 ): RigidBody {
   const parent = object.parent;
   if (!parent) throw new Error("Cannot reconstruct an orphan rigid body");
-  const body = new RigidBody({ ...mass, world, type, colliders: false });
+  const body = new RigidBody({ ...mass, world, colliders: false }).setType(
+    type,
+  );
   body.name = object.name;
   body.position.copy(object.position);
   body.quaternion.copy(object.quaternion);

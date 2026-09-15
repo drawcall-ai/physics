@@ -11,6 +11,7 @@ import { setupWorld } from "../src/index.js";
 
 function body() {
   return new RigidBody({
+    centerOfMass: [0, 0, 0],
     colliders: false,
     mass: 1,
     diagonalInertia: [1, 1, 1],
@@ -26,6 +27,7 @@ describe("joint controls", () => {
       body1: moving,
       axis: "X",
     });
+    world.update(0);
     slider.setEffort(2);
     slider.setEffort(3);
     world.update(0);
@@ -53,6 +55,7 @@ describe("joint controls", () => {
     const first = body(),
       second = body();
     const hinge = new RevoluteJoint({ body0: first, body1: second, axis: "Z" });
+    world.update(0);
     hinge.setEffort(2);
     world.update(0.01);
     expect(first.getVelocity().angular.z).toBeCloseTo(-0.02, 5);
@@ -61,18 +64,22 @@ describe("joint controls", () => {
     world.dispose();
   });
 
-  it("commands a newly assembled joint from a before-step observer", async () => {
+  it("requires prepared effort control and prepares existing assemblies before observers", async () => {
     const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-    let moving: RigidBody | undefined;
+    const moving = body();
+    const slider = new PrismaticJoint({
+      body0: null,
+      body1: moving,
+      axis: "X",
+    });
+    expect(() => slider.setEffort(5)).toThrow("not initialized");
+    expect(() => slider.setEffort(0)).not.toThrow();
     const unsubscribe = world.onBeforeStep(() => {
-      moving = body();
-      new PrismaticJoint({ body0: null, body1: moving, axis: "X" }).setEffort(
-        5,
-      );
+      slider.setEffort(5);
       unsubscribe();
     });
     world.update(0.01);
-    expect(moving?.getVelocity().linear.x).toBeCloseTo(0.05, 5);
+    expect(moving.getVelocity().linear.x).toBeCloseTo(0.05, 5);
     world.dispose();
   });
 
@@ -195,16 +202,17 @@ describe("mass and queries", () => {
   it("uses complete mass properties without deriving volume from surface colliders", async () => {
     const world = await setupWorld();
     new RigidBody({
-      type: "static",
       mass: 1,
       centerOfMass: [0, 0, 0],
       diagonalInertia: [1, 1, 1],
       principalAxes: [0, 0, 0, 1],
-    }).add(
-      new MeshCollider({ approximation: "trimesh" }).setGeometry(
-        new PlaneGeometry(1, 1),
-      ),
-    );
+    })
+      .setType("static")
+      .add(
+        new MeshCollider({ approximation: "trimesh" }).setGeometry(
+          new PlaneGeometry(1, 1),
+        ),
+      );
     expect(() => world.update(0)).not.toThrow();
     world.dispose();
   });
@@ -247,7 +255,7 @@ describe("mass and queries", () => {
 
   it("queries only prepared bodies and current teleports, including inside exits and source identity", async () => {
     const world = await setupWorld();
-    const moving = new RigidBody({ type: "static" });
+    const moving = new RigidBody({}).setType("static");
     const mesh = new Mesh(new BoxGeometry(2, 2, 2));
     moving.add(mesh);
     const origin = new Vector3(-3, 0, 0),
@@ -273,7 +281,7 @@ describe("mass and queries", () => {
 
   it("filters sensors and interaction groups", async () => {
     const world = await setupWorld();
-    const sensor = new RigidBody({ type: "static", colliders: false });
+    const sensor = new RigidBody({ colliders: false }).setType("static");
     sensor.add(
       new BoxCollider()
         .setSensor(true)
@@ -332,7 +340,7 @@ it("cancels only one joint command when several joints act on a body", async () 
 
 it("changes primitive dimensions by replacing the collider on its existing body", async () => {
   const world = await setupWorld({ gravity: [0, 0, 0] });
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({}).setType("static");
   const original = new BoxCollider();
   body.add(original);
   world.update(0);

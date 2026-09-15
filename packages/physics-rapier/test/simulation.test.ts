@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BoxGeometry, Group, Matrix4, Mesh, Vector3 } from "three";
 import {
   BoxCollider,
+  JointMotor,
   DistanceJoint,
   FixedJoint,
   PrismaticJoint,
@@ -12,7 +13,7 @@ import {
 import { setupWorld, type RapierWorld } from "../src/index.js";
 
 function box(type: "dynamic" | "static" | "kinematic" = "dynamic") {
-  const body = new RigidBody({ type, mass: 1 });
+  const body = new RigidBody({ mass: 1 }).setType(type);
   body.add(new Mesh(new BoxGeometry(1, 1, 1)));
   return body;
 }
@@ -74,7 +75,7 @@ describe("RapierWorld", () => {
   it("honors collision membership and filter masks", async () => {
     const simulation = await setupWorld();
     const scene = new Group();
-    const floor = new RigidBody({ type: "static", colliders: false });
+    const floor = new RigidBody({ colliders: false }).setType("static");
     floor.add(
       new BoxCollider({ size: [10, 1, 10] }).setCollisionGroups({
         membership: 1,
@@ -95,7 +96,7 @@ describe("RapierWorld", () => {
   it("keeps the opening of a compound frame empty", async () => {
     const simulation = await setupWorld();
     const scene = new Group(),
-      frame = new RigidBody({ type: "static" }),
+      frame = new RigidBody({}).setType("static"),
       falling = box();
     for (const x of [-2, 2]) {
       const post = new Mesh(new BoxGeometry(0.2, 4, 0.2));
@@ -151,11 +152,11 @@ describe("RapierWorld", () => {
     const hinge = new RevoluteJoint({
       body0: frame,
       body1: door,
+      limits: [0, 1.5],
     });
-    hinge.setLimits([0, 1.5]);
-    simulation.onBeforeStep(() => {
-      const state = hinge.getState();
-      hinge.setEffort(50 * (1 - state.position) - 10 * state.velocity);
+
+    new JointMotor({ joint: hinge, stiffness: 50, damping: 10 }).setTarget({
+      position: 1,
     });
     hinge.position.x = 0.5;
     assembly.add(frame, door, hinge);
@@ -186,11 +187,11 @@ describe("RapierWorld", () => {
       body0: null,
       body1: body,
       axis: "X",
+      limits: [0, 2],
     });
-    slider.setLimits([0, 2]);
-    simulation.onBeforeStep(() => {
-      const state = slider.getState();
-      slider.setEffort(50 * (1 - state.position) - 10 * state.velocity);
+
+    new JointMotor({ joint: slider, stiffness: 50, damping: 10 }).setTarget({
+      position: 1,
     });
     scene.add(slider);
 
@@ -223,7 +224,8 @@ describe("RapierWorld", () => {
                 body1: body,
                 frame0: new Matrix4(),
                 frame1: new Matrix4(),
-              }).setLimits([0, 2]);
+                limits: [0, 2],
+              });
       scene.add(joint);
 
       steps(simulation);

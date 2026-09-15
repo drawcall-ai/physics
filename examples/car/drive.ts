@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { RevoluteJoint, type PhysicsWorld } from "@drawcall/physics";
-import { specification, steeringControl, type Car } from "./model";
+import { type PhysicsWorld } from "@drawcall/physics";
+import { specification, type Car } from "./model";
 
 export function driveCar(world: PhysicsWorld, car: Car) {
   const input = {
@@ -13,7 +13,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
   const wheels = car.wheels;
   let steering = 0;
   let completed = false;
-  const steeringIntegral = new Map<RevoluteJoint, number>();
   const telemetry = {
     speed: 0,
     completed: false,
@@ -51,42 +50,9 @@ export function driveCar(world: PhysicsWorld, car: Car) {
               specification.wheelbase /
                 (specification.wheelbase / Math.tan(steering) - wheel.x),
             );
-      const suspension = wheel.spring.getState();
-      wheel.spring.setEffort(
-        -specification.stiffness * suspension.position -
-          specification.damping * suspension.velocity,
-      );
-      if (wheel.steering instanceof RevoluteJoint) {
-        const state = wheel.steering.getState();
-        const integral = THREE.MathUtils.clamp(
-          (steeringIntegral.get(wheel.steering) ?? 0) +
-            (angle - state.position) * dt,
-          -steeringControl.integralLimit,
-          steeringControl.integralLimit,
-        );
-        steeringIntegral.set(wheel.steering, integral);
-        wheel.steering.setEffort(
-          THREE.MathUtils.clamp(
-            steeringControl.stiffness * (angle - state.position) +
-              steeringControl.integral * integral -
-              steeringControl.damping * state.velocity,
-            -steeringControl.maxTorque,
-            steeringControl.maxTorque,
-          ),
-        );
-      }
-      const targetVelocity = brake ? 0 : Math.sign(throttle) * 55;
-      const torque = brake
-        ? brake * 1100
-        : Math.abs(throttle) * specification.torque;
-      wheel.axle.setEffort(
-        THREE.MathUtils.clamp(
-          (targetVelocity - wheel.axle.getState().velocity) *
-            (brake ? 450 : 80),
-          -torque,
-          torque,
-        ),
-      );
+      wheel.servo?.setTarget({ position: angle });
+      wheel.motor.setEnabled(brake > 0 || throttle !== 0);
+      wheel.motor.setTarget({ velocity: brake ? 0 : throttle * 55 });
     }
     const velocity = body.getVelocity().linear;
     body.applyForce(
@@ -107,7 +73,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     reset() {
       completed = false;
       steering = 0;
-      steeringIntegral.clear();
       input.throttle = input.steer = input.brake = 0;
       world.reset();
     },

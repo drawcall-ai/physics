@@ -16,9 +16,10 @@ import type { AutoColliders, Vec3, PhysicsMaterial } from "./objects.js";
 import { getDefaultWorld } from "./world.js";
 import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
 
+export type RigidBodyType = "dynamic" | "static" | "kinematic";
+
 export interface RigidBodyOptions {
   readonly world?: PhysicsWorld;
-  readonly type?: "dynamic" | "static" | "kinematic";
   readonly colliders?: AutoColliders;
   readonly mass?: number;
   readonly canSleep?: boolean;
@@ -35,6 +36,27 @@ export class RigidBody extends Group {
   #options: RigidBodyOptions;
   get options(): RigidBodyOptions {
     return this.#options;
+  }
+  #bodyType: RigidBodyType = "dynamic";
+  get bodyType(): RigidBodyType {
+    return this.#bodyType;
+  }
+  setType(value: RigidBodyType): this {
+    this.assertLive();
+    if (!["dynamic", "static", "kinematic"].includes(value))
+      throw new Error("Unknown rigid body type");
+    if (this.#bodyType === value) return this;
+    const previous = this.#bodyType;
+    this.#bodyType = value;
+    this.#version++;
+    try {
+      this.setVelocity({ linear: new Vector3(), angular: new Vector3() });
+    } catch (error) {
+      this.#bodyType = previous;
+      this.#version++;
+      throw error;
+    }
+    return this;
   }
   #linearDamping = 0;
   #angularDamping = 0;
@@ -137,7 +159,7 @@ export class RigidBody extends Group {
     this.world.teleport(this, matrix);
   }
   setKinematicTarget(matrix: Matrix4): void {
-    if (this.options.type !== "kinematic")
+    if (this.bodyType !== "kinematic")
       throw new Error("Kinematic targets require a kinematic body");
     assertRigidTransform(matrix);
     this.world.setKinematicTarget(this, matrix);
@@ -189,6 +211,7 @@ export class RigidBody extends Group {
     if (!sameOptions(this.options, source.options))
       throw new Error("Rigid body copy requires matching immutable options");
     super.copy(source, recursive);
+    this.setType(source.bodyType);
     this.setVelocity(source.getVelocity());
     this.setLinearDamping(source.linearDamping)
       .setAngularDamping(source.angularDamping)
@@ -259,7 +282,7 @@ export class RigidBody extends Group {
       if (
         shape.kind === "mesh" &&
         shape.approximation === "trimesh" &&
-        this.options.type !== "static"
+        this.bodyType !== "static"
       )
         throw new Error("Triangle mesh colliders require static bodies");
       return collider;
@@ -281,7 +304,7 @@ export class RigidBody extends Group {
     this.updateWorldMatrix(true, true);
     splitTransform(this.matrix, this.name || this.type);
     splitTransform(this.matrixWorld, this.name || this.type);
-    if (this.parent && this.options.type !== "static") {
+    if (this.parent && this.bodyType !== "static") {
       const { scale } = splitTransform(this.parent.matrixWorld);
       if (
         Math.abs(scale.x - scale.y) > 1e-6 ||
@@ -306,17 +329,35 @@ function validateDamping(value: number): void {
     throw new Error("Damping must be finite and nonnegative");
 }
 function validateMass(options: RigidBodyOptions): void {
+  const explicit =
+    options.centerOfMass !== undefined ||
+    options.diagonalInertia !== undefined ||
+    options.principalAxes !== undefined;
+  if (
+    explicit &&
+    (options.mass === undefined ||
+      options.centerOfMass === undefined ||
+      options.diagonalInertia === undefined)
+  )
+    throw new Error(
+      "Explicit mass properties require mass, centerOfMass and diagonalInertia together",
+    );
   if (
     options.mass !== undefined &&
     (!Number.isFinite(options.mass) || options.mass <= 0)
   )
     throw new Error("Body mass must be positive");
-  if (options.centerOfMass && !options.centerOfMass.every(Number.isFinite))
+  if (
+    options.centerOfMass &&
+    (options.centerOfMass.length !== 3 ||
+      !options.centerOfMass.every(Number.isFinite))
+  )
     throw new Error("Center of mass must be finite");
   const inertia = options.diagonalInertia;
   if (
     inertia &&
-    (!inertia.every((v) => Number.isFinite(v) && v > 0) ||
+    (inertia.length !== 3 ||
+      !inertia.every((v) => Number.isFinite(v) && v > 0) ||
       inertia.some((v) => 2 * v > inertia[0] + inertia[1] + inertia[2] + 1e-10))
   )
     throw new Error(
@@ -324,7 +365,8 @@ function validateMass(options: RigidBodyOptions): void {
     );
   if (
     options.principalAxes &&
-    (!options.principalAxes.every(Number.isFinite) ||
+    (options.principalAxes.length !== 4 ||
+      !options.principalAxes.every(Number.isFinite) ||
       Math.abs(Math.hypot(...options.principalAxes) - 1) > 1e-6)
   )
     throw new Error("Principal axes must be a normalized quaternion");
@@ -340,12 +382,11 @@ function sameTuple(
 }
 function sameOptions(a: RigidBodyOptions, b: RigidBodyOptions): boolean {
   return (
-    (a.type ?? "dynamic") === (b.type ?? "dynamic") &&
     (a.colliders ?? "auto") === (b.colliders ?? "auto") &&
     a.mass === b.mass &&
     (a.canSleep ?? true) === (b.canSleep ?? true) &&
     sameTuple(a.centerOfMass, b.centerOfMass) &&
     sameTuple(a.diagonalInertia, b.diagonalInertia) &&
-    sameTuple(a.principalAxes, b.principalAxes)
+    sameTuple(a.principalAxes ?? [0, 0, 0, 1], b.principalAxes ?? [0, 0, 0, 1])
   );
 }

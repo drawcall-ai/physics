@@ -129,7 +129,7 @@ export function authoredVelocityAtPoint(
   const center = body.options.centerOfMass;
   if (!center)
     throw new Error(
-      "Prismatic velocity needs prepared mass properties: finish assembly and call world.update(0), or specify centerOfMass for authoring",
+      "Prismatic velocity needs prepared mass properties: finish assembly and call world.update(0), or supply complete explicit mass properties for authoring",
     );
   const worldCenter = new Vector3(...center).applyMatrix4(
     splitTransform(body.matrixWorld).pose,

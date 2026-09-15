@@ -113,6 +113,8 @@ export class AuthoringWorld implements PhysicsWorld {
   setJointEffort(object: AxisJoint, value: number): void {
     this.assertObject(object);
     if (!Number.isFinite(value)) throw new Error("Joint effort must be finite");
+    if (value !== 0 && object.motor?.active)
+      throw new Error("Disable the joint motor before applying effort");
   }
   readonly #objects = new Set<RigidBody | Joint>();
   #disposed = false;

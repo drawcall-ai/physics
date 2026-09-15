@@ -136,11 +136,11 @@ export class PhysicsUSDExporter {
           "Core USD Physics cannot represent damping, gravity scale, or sleep policy overrides",
         );
       prim.schemas.push("PhysicsMassAPI");
-      if (object.options.type !== "static") {
+      if (object.bodyType !== "static") {
         prim.schemas.push("PhysicsRigidBodyAPI");
         prim.properties.push(
           "bool physics:rigidBodyEnabled = true",
-          `bool physics:kinematicEnabled = ${object.options.type === "kinematic"}`,
+          `bool physics:kinematicEnabled = ${object.bodyType === "kinematic"}`,
           `vector3f physics:velocity = ${tuple(object.getVelocity().linear.toArray())}`,
           `vector3f physics:angularVelocity = ${tuple(
             object
