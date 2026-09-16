@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 
-# Generated from the root when packing or publishing.
+# Copied from the root by the publish workflow.
 packages/physics/README.md
 packages/*/LICENSE
 *.tgz

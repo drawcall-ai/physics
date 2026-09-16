@@ -17,8 +17,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "vitest run",
-    "prepack": "pnpm run build && node ../../tools/prepare-package.ts"
+    "test": "vitest run"
   },
   "peerDependencies": {
     "three": ">=0.185.0"

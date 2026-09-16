@@ -161,10 +161,6 @@ The examples demonstrate an articulated ragdoll and a powered car with suspensio
 on a bump course. See [examples](https://github.com/drawcall-ai/physics/tree/main/examples)
 for controls and source.
 
-Use [tools/simulate.py](https://github.com/drawcall-ai/physics/tree/main/tools)
-to open exported USDZ in Newton, record an MP4, or run a headless CPU check with
-an independent importer and solver.
-
 ### State access and static previews
 
 `body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint reads work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
