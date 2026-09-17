@@ -1,18 +1,13 @@
-import { Group, Mesh, Matrix4, Vector3, type Object3D } from "three";
-import {
-  Collider,
-  BoxCollider,
-  SphereCollider,
-  CapsuleCollider,
-  CylinderCollider,
-  MeshCollider,
-  validateMaterial,
-} from "./objects.js";
-import { assertRigidTransform } from "./objects.js";
+import { Group, Matrix4, Mesh, Vector3, type Object3D } from "three";
+import { Collider, validateMaterial } from "./colliders.js";
 import { constructLike } from "./construct.js";
-import { splitTransform, validateVector } from "./transforms.js";
-import { autoShape, validateShape } from "./shapes.js";
-import type { AutoColliders, Vec3, PhysicsMaterial } from "./objects.js";
+import {
+  assertRigidTransform,
+  splitTransform,
+  validateVector,
+} from "./transforms.js";
+import { colliderOf } from "./shapes.js";
+import type { AutoColliders, Vec3, PhysicsMaterial } from "./colliders.js";
 import { getDefaultWorld } from "./world.js";
 import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
 
@@ -199,6 +194,7 @@ export class RigidBody extends Group {
     return this;
   }
 
+  /** Explicit colliders take precedence; otherwise one is generated per visual mesh. */
   getColliders(): Collider[] {
     this.validate();
     const explicit: Collider[] = [];
@@ -209,63 +205,12 @@ export class RigidBody extends Group {
       if (object instanceof Collider) explicit.push(object);
       if (object instanceof Mesh) meshes.push(object);
     });
-    const sources = explicit.length
+    const sources: (Collider | Mesh)[] = explicit.length
       ? explicit
       : this.options.colliders === false
         ? []
         : meshes;
-    return sources.map((object) => {
-      let node: Object3D | null = object;
-      while (node && node !== this) {
-        if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
-          throw new Error(
-            `Collider requires positive scale: ${node.name || node.type}`,
-          );
-        node = node.parent;
-      }
-      splitTransform(object.matrixWorld, object.name || object.type);
-      let collider: Collider;
-      if (object instanceof Collider) collider = object;
-      else {
-        const shape = autoShape(object, this);
-        switch (shape.kind) {
-          case "box":
-            collider = new BoxCollider(shape);
-            break;
-          case "sphere":
-            collider = new SphereCollider(shape);
-            break;
-          case "capsule":
-            collider = new CapsuleCollider(shape);
-            break;
-          case "cylinder":
-            collider = new CylinderCollider(shape);
-            break;
-          case "mesh":
-            collider = new MeshCollider({
-              approximation: shape.approximation,
-            }).setGeometry(shape.geometry);
-            break;
-        }
-        object.matrixWorld.decompose(
-          collider.position,
-          collider.quaternion,
-          collider.scale,
-        );
-        collider.source = object;
-        collider.name = object.name;
-        collider.updateMatrixWorld(true);
-      }
-      const shape = collider.shape();
-      validateShape(shape);
-      if (
-        shape.kind === "mesh" &&
-        shape.approximation === "trimesh" &&
-        this.bodyType !== "static"
-      )
-        throw new Error("Triangle mesh colliders require static bodies");
-      return collider;
-    });
+    return sources.map((source) => colliderOf(source, this));
   }
   getMaterial(collider: Collider): Required<PhysicsMaterial> {
     const material = collider.material ?? this.material;
@@ -302,6 +247,14 @@ export class RigidBody extends Group {
     }
   }
 }
+
+/** The rigid body an object sits under, if any. */
+export function ancestorBody(object: Object3D): RigidBody | undefined {
+  let parent = object.parent;
+  while (parent && !(parent instanceof RigidBody)) parent = parent.parent;
+  return parent ?? undefined;
+}
+
 function validateDamping(value: number): void {
   if (!Number.isFinite(value) || value < 0)
     throw new Error("Damping must be finite and nonnegative");

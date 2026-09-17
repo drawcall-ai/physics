@@ -1,18 +1,63 @@
-export * from "./body.js";
-export * from "./objects.js";
+export {
+  type RigidBodyType,
+  type MassProperties,
+  type RigidBodyOptions,
+  RigidBody,
+  ancestorBody,
+} from "./body.js";
+export {
+  type Vec3,
+  type AutoColliders,
+  type PhysicsMaterial,
+  type CollisionGroups,
+  Collider,
+  type Shape,
+  BoxCollider,
+  SphereCollider,
+  CapsuleCollider,
+  CylinderCollider,
+  MeshCollider,
+} from "./colliders.js";
 export { Joint, type JointOptions } from "./joint.js";
-export * from "./joints.js";
-export * from "./generic.js";
-
-export * from "./world.js";
-export * from "./clone.js";
-export { constructLike } from "./construct.js";
-export * from "./transforms.js";
-export * from "./velocity.js";
-export * from "./reading.js";
-
+export {
+  FixedJoint,
+  ScalarJoint,
+  type AxisJointOptions,
+  AxisJoint,
+  RevoluteJoint,
+  PrismaticJoint,
+  SphericalJoint,
+  type DistanceJointOptions,
+  DistanceJoint,
+} from "./joints.js";
+export {
+  type JointDof,
+  jointDofs,
+  type DofMotion,
+  type GenericJointOptions,
+  GenericJoint,
+} from "./generic.js";
+export {
+  type PhysicsOptions,
+  type PhysicsVelocity,
+  type AxisJointState,
+  type SphericalJointState,
+  type DistanceJointState,
+  type JointReading,
+  type RaycastOptions,
+  type RaycastHit,
+  type PhysicsWorld,
+  setDefaultWorld,
+  getDefaultWorld,
+  AuthoringWorld,
+} from "./world.js";
+export { clone } from "./clone.js";
+export { splitTransform, resolveCollider } from "./transforms.js";
 export {
   JointDrive,
   type JointDriveOptions,
   type JointDriveTarget,
 } from "./drive.js";
+
+// Adapter integration; scene code needs none of these.
+export * from "./backend.js";

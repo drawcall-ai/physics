@@ -11,6 +11,12 @@ export interface Layer {
   specsByPath: Record<string, Spec>;
 }
 
+export function prims(layer: Layer): [string, Spec][] {
+  return Object.entries(layer.specsByPath).filter(
+    ([, spec]) => spec.specType === PRIM_SPEC,
+  );
+}
+
 export function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

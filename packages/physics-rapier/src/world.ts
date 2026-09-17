@@ -1,32 +1,32 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
-  clearDefaultWorld,
   RigidBody,
   type Joint,
   type PhysicsWorld,
   type PhysicsOptions,
   type PhysicsVelocity,
   type RaycastOptions,
+  clearDefaultWorld,
   authoredVelocity,
   authoredJointReading,
   setAuthoredVelocity,
   setWorldPose,
+  assertLive,
+  assertOwned,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
   synchronize,
   createBody,
   refreshBody,
+  writePose,
   type BodyBinding,
 } from "./body.js";
-import {
-  applyEfforts,
-  prepareJoint,
-  readBinding,
-  sampleJoint,
-  type JointBinding,
-} from "./joints.js";
+import { applyEfforts } from "./drives.js";
+import { prepareJoint, type JointBinding } from "./joints.js";
+import { Pending, type Command } from "./pending.js";
 import { raycast } from "./query.js";
+import { readBinding, rebaseAngle, trackAngle } from "./reading.js";
 
 export interface RapierOptions extends PhysicsOptions {
   solverIterations?: number;
@@ -37,21 +37,17 @@ export class RapierWorld implements PhysicsWorld {
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
   private readonly joints = new Map<Joint, JointBinding | undefined>();
-  private readonly pending = new Map<
-    RigidBody,
-    {
-      velocity: PhysicsVelocity;
-      changesVelocity: boolean;
-      commands: ((body: Rapier.RigidBody) => void)[];
-    }
-  >();
+  private readonly pending: Pending;
   private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
   private completedTime = 0;
   get time(): number {
     return this.completedTime;
   }
-  private disposed = false;
+  private isDisposed = false;
+  get disposed(): boolean {
+    return this.isDisposed;
+  }
   private readonly before = new Set<(delta: number) => void>();
   private readonly after = new Set<(delta: number) => void>();
   readonly fixedDelta: number;
@@ -80,21 +76,17 @@ export class RapierWorld implements PhysicsWorld {
     if (options.solverIterations !== undefined)
       this.backend.numSolverIterations = options.solverIterations;
     this.backend.timestep = this.fixedDelta;
+    this.pending = new Pending(api, this.bodies);
   }
   register(object: RigidBody | Joint): void {
-    this.assertActive();
-    if (object.disposed) throw new Error("Cannot register a disposed object.");
-    if (object.world !== this)
-      throw new Error("Object belongs to another world.");
+    assertOwned(this, object);
     if (object instanceof RigidBody) this.objects.add(object);
     else if (!this.joints.has(object)) this.joints.set(object, undefined);
   }
   unregister(object: RigidBody | Joint): void {
     if (object instanceof RigidBody) {
-      for (const joint of this.joints.keys()) {
-        if (joint.options.body0 === object || joint.options.body1 === object)
-          joint.dispose();
-      }
+      for (const joint of this.joints.keys())
+        if (joint.connects(object)) joint.dispose();
       this.objects.delete(object);
       this.pending.delete(object);
       const binding = this.bodies.get(object);
@@ -102,15 +94,15 @@ export class RapierWorld implements PhysicsWorld {
       this.bodies.delete(object);
       return;
     }
-    const target = this.joints.get(object)?.target;
-    if (target) this.backend.removeImpulseJoint(target, true);
+    const joint = this.joints.get(object)?.joint;
+    if (joint) this.backend.removeImpulseJoint(joint, true);
     this.joints.delete(object);
   }
   update(delta: number): void {
-    this.assertActive();
+    assertLive(this);
     if (!Number.isFinite(delta) || delta < 0)
       throw new Error("delta must be finite and nonnegative.");
-    this.flush(true);
+    this.prepare("pending");
     this.elapsed = Math.min(
       this.elapsed + delta,
       this.fixedDelta * this.maxSubsteps,
@@ -120,13 +112,12 @@ export class RapierWorld implements PhysicsWorld {
     }
   }
   private step(): void {
-    this.assertActive();
-    this.flush(true);
+    assertLive(this);
+    this.prepare("pending");
     for (const callback of this.before) callback(this.fixedDelta);
-    this.flush();
+    this.prepare("all");
     for (const [object, binding] of this.joints) {
-      if (binding?.target && object.enabled)
-        applyEfforts(object, binding.target);
+      if (binding?.joint && object.enabled) applyEfforts(object, binding.joint);
     }
     this.backend.step();
     this.elapsed -= this.fixedDelta;
@@ -137,19 +128,19 @@ export class RapierWorld implements PhysicsWorld {
       body.resetTorques(false);
     }
     for (const [object, binding] of this.joints) {
-      if (binding) sampleJoint(object, binding);
+      if (binding) trackAngle(object, binding);
     }
     for (const callback of this.after) callback(this.fixedDelta);
   }
   reset(): void {
-    this.assertActive();
+    assertLive(this);
     this.pending.clear();
-    for (const [object, { body, initial, velocity }] of this.bodies) {
+    for (const [object, binding] of this.bodies) {
       object.validate();
-      body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
-      body.setRotation(new Quaternion().setFromRotationMatrix(initial), true);
-      body.setLinvel(velocity.linear, true);
-      body.setAngvel(velocity.angular, true);
+      const { body } = binding;
+      writePose(body, binding.initialPose);
+      body.setLinvel(binding.initialVelocity.linear, true);
+      body.setAngvel(binding.initialVelocity.angular, true);
       if (object.bodyType === "kinematic") {
         body.setNextKinematicTranslation(body.translation());
         body.setNextKinematicRotation(body.rotation());
@@ -161,34 +152,28 @@ export class RapierWorld implements PhysicsWorld {
     this.elapsed = 0;
     this.completedTime = 0;
     for (const [object, binding] of this.joints) {
-      if (!binding) continue;
-      sampleJoint(object, binding, true);
+      if (binding) rebaseAngle(object, binding);
     }
   }
   dispose(): void {
-    if (this.disposed) return;
+    if (this.isDisposed) return;
     for (const object of [...this.joints.keys(), ...this.objects])
       object.dispose();
     this.backend.free();
     this.before.clear();
     this.after.clear();
-    this.disposed = true;
+    this.isDisposed = true;
     clearDefaultWorld(this);
   }
   getVelocity(object: RigidBody): PhysicsVelocity {
-    this.assertObject(object);
+    assertOwned(this, object);
     const body = this.bodies.get(object)?.body;
     if (body) return velocity(body);
-    if (!this.pending.get(object)?.changesVelocity)
-      return authoredVelocity(object);
-    return this.preview([object], (bodies) => {
-      const binding = bodies.get(object);
-      if (!binding) throw new Error("Missing preview body");
-      return velocity(binding.body);
-    });
+    if (!this.pending.changesVelocity(object)) return authoredVelocity(object);
+    return this.pending.previewBody(object, velocity);
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
-    this.assertObject(object);
+    assertOwned(this, object);
     const linear = value.linear?.clone(),
       angular = value.angular?.clone();
     if (!this.bodies.has(object)) {
@@ -201,19 +186,14 @@ export class RapierWorld implements PhysicsWorld {
     });
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
-    this.assertObject(object);
+    assertOwned(this, object);
     object.validate();
     setWorldPose(object, matrix);
     const body = this.bodies.get(object)?.body;
     if (!body) return;
-    body.setTranslation(new Vector3().setFromMatrixPosition(matrix), true);
-    body.setRotation(new Quaternion().setFromRotationMatrix(matrix), true);
+    writePose(body, matrix);
     for (const [joint, binding] of this.joints) {
-      if (
-        binding &&
-        (joint.options.body0 === object || joint.options.body1 === object)
-      )
-        sampleJoint(joint, binding, true);
+      if (binding && joint.connects(object)) rebaseAngle(joint, binding);
     }
   }
   setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
@@ -251,7 +231,7 @@ export class RapierWorld implements PhysicsWorld {
     this.command(object, (body) => body.sleep(), true);
   }
   readJoint(object: Joint) {
-    this.assertObject(object);
+    assertOwned(this, object);
     const binding = this.joints.get(object);
     if (binding) return readBinding(object, binding);
     return authoredJointReading(object, undefined, (body, point) => {
@@ -259,11 +239,9 @@ export class RapierWorld implements PhysicsWorld {
       if (target) return new Vector3().copy(target.velocityAtPoint(point));
       const { linear, angular } = body.getVelocity();
       if (angular.lengthSq() === 0) return linear;
-      return this.preview([body], (bodies) => {
-        const binding = bodies.get(body);
-        if (!binding) throw new Error("Missing preview body");
-        return new Vector3().copy(binding.body.velocityAtPoint(point));
-      });
+      return this.pending.previewBody(body, (preview) =>
+        new Vector3().copy(preview.velocityAtPoint(point)),
+      );
     });
   }
   raycast(
@@ -272,130 +250,84 @@ export class RapierWorld implements PhysicsWorld {
     maxDistance: number,
     options?: RaycastOptions,
   ) {
-    this.assertActive();
-    for (const body of options?.excludeBodies ?? []) this.assertObject(body);
+    assertLive(this);
+    for (const body of options?.excludeBodies ?? []) assertOwned(this, body);
     for (const [object, binding] of this.bodies) {
       object.validate();
       refreshBody(this.api, this.backend, object, binding);
     }
     this.backend.propagateModifiedBodyPositionsToColliders();
-    return this.preview(this.objects, (bodies) =>
+    return this.pending.preview(this.objects, (bodies) =>
       raycast(this.api, bodies, origin, direction, maxDistance, options),
     );
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
-    this.assertActive();
+    assertLive(this);
     this.before.add(callback);
     return () => {
       this.before.delete(callback);
     };
   }
   onAfterStep(callback: (delta: number) => void): () => void {
-    this.assertActive();
+    assertLive(this);
     this.after.add(callback);
     return () => {
       this.after.delete(callback);
     };
   }
-  private assertActive(): void {
-    if (this.disposed) throw new Error("Physics world has been disposed.");
-  }
-  private assertObject(object: RigidBody | Joint): void {
-    this.assertActive();
-    if (object.disposed) throw new Error("Physics object has been disposed.");
-    if (object.world !== this)
-      throw new Error("Object belongs to another world.");
-  }
   private command(
     object: RigidBody,
-    command: (body: Rapier.RigidBody) => void,
+    command: Command,
     changesVelocity = false,
   ): void {
-    this.assertObject(object);
+    assertOwned(this, object);
     const body = this.bodies.get(object)?.body;
-    if (body) return command(body);
-    let pending = this.pending.get(object);
-    if (!pending) {
-      pending = {
-        velocity: authoredVelocity(object),
-        changesVelocity: false,
-        commands: [],
-      };
-      this.pending.set(object, pending);
-    }
-    pending.changesVelocity ||= changesVelocity;
-    pending.commands.push(command);
+    if (body) command(body);
+    else this.pending.push(object, command, changesVelocity);
   }
-  private replay(object: RigidBody, body: Rapier.RigidBody): void {
-    const pending = this.pending.get(object);
-    if (!pending) return;
-    body.setLinvel(pending.velocity.linear, true);
-    body.setAngvel(pending.velocity.angular, true);
-    for (const command of pending.commands) command(body);
-  }
-  private preview<T>(
-    objects: Iterable<RigidBody>,
-    read: (bodies: Map<RigidBody, BodyBinding>) => T,
-  ): T {
-    const pending = [...objects].filter((object) => !this.bodies.has(object));
-    if (!pending.length) return read(this.bodies);
-    const backend = new this.api.World(new Vector3());
-    const bodies = new Map(this.bodies);
-    try {
-      for (const object of pending) {
-        object.validate();
-        const binding = createBody(this.api, backend, object);
-        this.replay(object, binding.body);
-        bodies.set(object, binding);
-      }
-      backend.propagateModifiedBodyPositionsToColliders();
-      return read(bodies);
-    } finally {
-      backend.free();
-    }
-  }
-  private getBody(object: RigidBody): Rapier.RigidBody {
-    this.assertObject(object);
-    const binding = this.bodies.get(object);
-    if (!binding) throw new Error("Missing prepared body");
-    return binding.body;
-  }
-  private flush(pendingOnly = false): void {
-    this.assertActive();
+  /** Creates backend objects for unprepared bodies and joints; `"all"` also refreshes prepared ones. */
+  private prepare(scope: "pending" | "all"): void {
+    assertLive(this);
     for (const object of this.objects) {
       const binding = this.bodies.get(object);
-      if (pendingOnly && binding) continue;
+      if (binding && scope === "pending") continue;
       object.validate();
-      if (binding) refreshBody(this.api, this.backend, object, binding);
-      else {
-        const created = createBody(this.api, this.backend, object);
-        this.bodies.set(object, created);
-        this.replay(object, created.body);
-        this.pending.delete(object);
+      if (binding) {
+        refreshBody(this.api, this.backend, object, binding);
+        continue;
       }
+      const created = createBody(this.api, this.backend, object);
+      this.bodies.set(object, created);
+      this.pending.replay(object, created.body);
+      this.pending.delete(object);
     }
     for (const [object, binding] of this.joints) {
-      if (pendingOnly && binding) continue;
-      if (!object.options.body0 && !this.anchor)
-        this.anchor = this.backend.createRigidBody(
-          this.api.RigidBodyDesc.fixed(),
-        );
-      const body0 = object.options.body0
-        ? this.getBody(object.options.body0)
-        : this.anchor;
-      if (!body0) throw new Error("Missing world anchor");
+      if (binding && scope === "pending") continue;
       this.joints.set(
         object,
         prepareJoint(
           this.api,
           this.backend,
           object,
-          body0,
-          this.getBody(object.options.body1),
+          this.jointBody(object.options.body0),
+          this.jointBody(object.options.body1),
           binding,
         ),
       );
     }
+  }
+  /** The prepared body, or the shared fixed anchor that stands in for the world. */
+  private jointBody(object: RigidBody | null): Rapier.RigidBody {
+    if (!object) {
+      this.anchor ??= this.backend.createRigidBody(
+        this.api.RigidBodyDesc.fixed(),
+      );
+      return this.anchor;
+    }
+    assertOwned(this, object);
+    const binding = this.bodies.get(object);
+    if (!binding) throw new Error("Missing prepared body");
+    return binding.body;
   }
 }
 

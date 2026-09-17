@@ -17,12 +17,16 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     speed: 0,
     completed: false,
   };
-  const unsubscribe = world.onBeforeStep((dt) => {
-    const elapsed = world.time + dt;
+  function motion() {
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
       car.chassis.quaternion,
     );
-    const speed = body.getVelocity().linear.dot(forward);
+    const velocity = body.getVelocity().linear;
+    return { forward, velocity, speed: velocity.dot(forward) };
+  }
+  const unsubscribe = world.onBeforeStep((dt) => {
+    const elapsed = world.time + dt;
+    const { forward, velocity, speed } = motion();
     const z = car.chassis.position.z;
     if (z >= 59) completed = true;
     const automaticBrake = elapsed < 1 || completed;
@@ -58,17 +62,12 @@ export function driveCar(world: PhysicsWorld, car: Car) {
           : undefined,
       );
     }
-    const velocity = body.getVelocity().linear;
     body.applyForce(
       velocity.clone().multiplyScalar(-0.45 * velocity.length() - 10),
     );
   });
   const after = world.onAfterStep(() => {
-    telemetry.speed = body
-      .getVelocity()
-      .linear.dot(
-        new THREE.Vector3(0, 0, 1).applyQuaternion(car.chassis.quaternion),
-      );
+    telemetry.speed = motion().speed;
     telemetry.completed = completed && Math.abs(telemetry.speed) < 0.2;
   });
   return {

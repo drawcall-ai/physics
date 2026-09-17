@@ -2,8 +2,7 @@ import { Object3D, Matrix4, Vector3 } from "three";
 import { JointDrive, bindDrive } from "./drive.js";
 import { RigidBody } from "./body.js";
 import { constructLike } from "./construct.js";
-import { splitTransform } from "./transforms.js";
-import { assertRigidTransform } from "./objects.js";
+import { assertRigidTransform, splitTransform } from "./transforms.js";
 import type { PhysicsWorld } from "./world.js";
 
 export type JointOptions = {
@@ -81,6 +80,10 @@ export abstract class Joint<
 
   get disposed(): boolean {
     return this.isDisposed;
+  }
+  /** Whether `body` is either side of this joint. */
+  connects(body: RigidBody): boolean {
+    return this.config.body0 === body || this.config.body1 === body;
   }
 
   dispose(): void {

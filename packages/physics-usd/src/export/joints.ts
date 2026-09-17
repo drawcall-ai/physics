@@ -12,9 +12,9 @@ import {
   jointDofs,
 } from "@drawcall/physics";
 import type { Joint, JointDrive } from "@drawcall/physics";
+import { degrees } from "../units.js";
 import { Prim } from "./prim.js";
 import { tuple } from "./shapes.js";
-const degrees = 180 / Math.PI;
 
 export function writeJoint(
   joint: Joint,

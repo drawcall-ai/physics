@@ -3,10 +3,8 @@ import { resolveCollider } from "@drawcall/physics";
 import type { RigidBody, Shape } from "@drawcall/physics";
 import { Quaternion, Vector3 } from "three";
 
-type API = typeof Rapier;
-
 export function colliderDesc(
-  api: API,
+  api: typeof Rapier,
   resolved: ReturnType<typeof resolveCollider>,
   body: RigidBody,
 ): Rapier.ColliderDesc {
@@ -30,7 +28,7 @@ export function colliderDesc(
     .setSensor(collider.sensor);
 }
 
-function descriptor(api: API, shape: Shape): Rapier.ColliderDesc {
+function descriptor(api: typeof Rapier, shape: Shape): Rapier.ColliderDesc {
   const factory = api.ColliderDesc;
   switch (shape.kind) {
     case "box":

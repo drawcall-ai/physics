@@ -2,14 +2,11 @@
   "name": "@drawcall/physics-usd",
   "version": "0.1.0",
   "type": "module",
+  "description": "USD Physics import and export for @drawcall/physics.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "sideEffects": false,
   "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
   "files": [
     "dist",
     "README.md",
@@ -34,7 +31,6 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
   },
-  "description": "USD Physics import and export for @drawcall/physics.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/drawcall-ai/physics.git",
@@ -44,7 +40,6 @@
   "bugs": {
     "url": "https://github.com/drawcall-ai/physics/issues"
   },
-  "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   }

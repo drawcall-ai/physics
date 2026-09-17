@@ -1,10 +1,10 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
-  validateVector,
-  validateGroups,
   type RigidBody,
   type RaycastOptions,
   type RaycastHit,
+  validateVector,
+  validateGroups,
 } from "@drawcall/physics";
 import { Vector3 } from "three";
 import type { BodyBinding } from "./body.js";

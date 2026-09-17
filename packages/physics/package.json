@@ -2,13 +2,10 @@
   "name": "@drawcall/physics",
   "version": "0.1.0",
   "type": "module",
+  "description": "Physics scene objects, automatic colliders, and joints for Three.js.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "sideEffects": false,
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
   "files": [
     "dist",
     "README.md",
@@ -22,7 +19,6 @@
   "peerDependencies": {
     "three": ">=0.185.0"
   },
-  "description": "Physics scene objects, automatic colliders, and joints for Three.js.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,7 +29,6 @@
   "bugs": {
     "url": "https://github.com/drawcall-ai/physics/issues"
   },
-  "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   }

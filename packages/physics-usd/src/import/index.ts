@@ -1,14 +1,21 @@
 import { Object3D, Vector3 } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
-import { Joint, type PhysicsMaterial, RigidBody } from "@drawcall/physics";
+import {
+  Joint,
+  RigidBody,
+  ancestorBody,
+  type PhysicsMaterial,
+} from "@drawcall/physics";
 import type { PhysicsWorld } from "@drawcall/physics";
 import { PhysicsUSDScene } from "../scene.js";
-import { PRIM_SPEC, attribute, boolean, numeric, schemas } from "./layer.js";
+import { radians } from "../units.js";
+import { attribute, boolean, numeric, prims, schemas } from "./layer.js";
+import type { Layer } from "./layer.js";
 import {
   vector,
   wrapBody,
-  ancestorBody,
+  bodyType,
   materialFor,
   massProperties,
 } from "./bodies.js";
@@ -64,130 +71,151 @@ export class PhysicsUSDLoader {
     const scene = new PhysicsUSDScene(this.options.world);
     try {
       scene.add(...visual.children);
-      const objects = new Map<string, Object3D>();
-      const index = (object: Object3D, parent: string) => {
-        const objectPath = `${parent}/${object.name}`;
-        objects.set(objectPath, object);
-        for (const child of object.children) index(child, objectPath);
-      };
-      for (const child of scene.children) index(child, "");
-      for (const [primPath, object] of objects) {
-        if (attribute(layer, primPath, "visibility") === "invisible")
-          object.visible = false;
-      }
-      const bodies = new Map<string, RigidBody>();
-      const materials = new Map<string, PhysicsMaterial>();
-      for (const [primPath, spec] of Object.entries(layer.specsByPath)) {
-        if (spec.specType !== PRIM_SPEC) continue;
-        const applied = schemas(layer, primPath);
-        const rigid = applied.includes("PhysicsRigidBodyAPI");
-        if (!rigid && !applied.includes("PhysicsMassAPI")) continue;
-        const object = objects.get(primPath);
-        if (!object)
-          throw new Error(
-            `Missing visual transform for rigid body ${primPath}`,
-          );
-        if (!rigid && ancestorBody(object)) continue;
-        const body = wrapBody(
-          object,
-          scene.world,
-          rigid && boolean(layer, primPath, "physics:rigidBodyEnabled", true)
-            ? boolean(layer, primPath, "physics:kinematicEnabled", false)
-              ? "kinematic"
-              : "dynamic"
-            : "static",
-          massProperties(layer, primPath, object),
-        );
-        scene.own(body);
-        const velocity = vector(
-          layer,
-          primPath,
-          "physics:angularVelocity",
-          [0, 0, 0],
-        );
-        body.setVelocity({
-          linear: new Vector3(
-            ...vector(layer, primPath, "physics:velocity", [0, 0, 0]),
-          ),
-          angular: new Vector3(...velocity).multiplyScalar(Math.PI / 180),
-        });
-        bodies.set(primPath, body);
-      }
-      for (const [primPath, spec] of Object.entries(layer.specsByPath)) {
-        if (spec.specType !== PRIM_SPEC) continue;
-        const type = spec.fields.typeName;
-        if (typeof type !== "string") continue;
-        if (type === "PhysicsScene") {
-          const direction = vector(
-            layer,
-            primPath,
-            "physics:gravityDirection",
-            [0, -1, 0],
-          );
-          const magnitude = numeric(
-            layer,
-            primPath,
-            "physics:gravityMagnitude",
-            9.81,
-          );
-          const length = Math.hypot(...direction);
-          if (!length && magnitude)
-            throw new Error("USD gravity direction cannot be zero");
-          const factor = length ? magnitude / length : 0;
-          scene.gravity = [
-            direction[0] * factor,
-            direction[1] * factor,
-            direction[2] * factor,
-          ];
-          objects.get(primPath)?.removeFromParent();
-          continue;
-        }
-        if (type.startsWith("Physics") && type.endsWith("Joint")) {
-          const joint = readJoint(layer, primPath, type, bodies);
-          scene.own(joint);
-          joint.name = primPath.slice(primPath.lastIndexOf("/") + 1);
-          const object = objects.get(primPath);
-          const parent = object?.parent ?? scene;
-          object?.removeFromParent();
-          parent.add(joint);
-          continue;
-        }
-        if (!schemas(layer, primPath).includes("PhysicsCollisionAPI")) continue;
-        if (!boolean(layer, primPath, "physics:collisionEnabled", true))
-          throw new Error(`Disabled colliders are not supported: ${primPath}`);
-        const object = objects.get(primPath);
-        if (!object) throw new Error(`Missing collision geometry ${primPath}`);
-        let body = bodies.get(primPath) ?? ancestorBody(object);
-        if (!body) {
-          body = wrapBody(object, scene.world, "static");
-          scene.own(body);
-          bodies.set(primPath, body);
-        }
-        const material = materialFor(layer, primPath, materials);
-        const collider = readShape(layer, primPath, type, object, material);
-        const parent = object.parent;
-        if (!parent) throw new Error(`Orphan collider ${primPath}`);
-        parent.add(collider);
-        // Collision-only geometry is invisible in the archive; visible geometry remains a visual child.
-        if (!object.visible) object.removeFromParent();
-      }
-      for (const [primPath, object] of objects) {
-        const name = layer.specsByPath[primPath]?.fields.displayName;
-        if (typeof name === "string") {
-          object.name = name;
-          const body = bodies.get(primPath);
-          if (body) body.name = name;
-        }
-      }
-      scene.traverse((object) => {
-        // Deriving colliders validates their geometry; the result is recreated on demand.
-        if (object instanceof RigidBody) object.getColliders();
-        if (object instanceof Joint) object.validate();
-      });
+      new LayerImport(layer, scene).run();
       return { scene, textures: composer.texturePromises };
     } catch (error) {
       scene.dispose();
       throw error;
+    }
+  }
+}
+
+/** Turns the physics prims of a validated layer into the bodies, colliders, and joints of one scene. */
+class LayerImport {
+  /** Composed visual objects by prim path. */
+  private readonly objects = new Map<string, Object3D>();
+  private readonly bodies = new Map<string, RigidBody>();
+  private readonly materials = new Map<string, PhysicsMaterial>();
+
+  constructor(
+    private readonly layer: Layer,
+    private readonly scene: PhysicsUSDScene,
+  ) {}
+
+  run(): void {
+    for (const child of this.scene.children) this.index(child, "");
+    for (const [path, object] of this.objects) {
+      if (attribute(this.layer, path, "visibility") === "invisible")
+        object.visible = false;
+    }
+    for (const [path] of prims(this.layer)) this.readBody(path);
+    for (const [path, spec] of prims(this.layer)) {
+      const type = spec.fields.typeName;
+      if (typeof type !== "string") continue;
+      if (type === "PhysicsScene") this.readScene(path);
+      else if (type.startsWith("Physics") && type.endsWith("Joint"))
+        this.placeJoint(path, type);
+      else this.readCollider(path, type);
+    }
+    this.applyDisplayNames();
+    this.scene.traverse((object) => {
+      // Deriving colliders validates their geometry; the result is recreated on demand.
+      if (object instanceof RigidBody) object.getColliders();
+      if (object instanceof Joint) object.validate();
+    });
+  }
+
+  private index(object: Object3D, parent: string): void {
+    const path = `${parent}/${object.name}`;
+    this.objects.set(path, object);
+    for (const child of object.children) this.index(child, path);
+  }
+
+  private readBody(path: string): void {
+    const applied = schemas(this.layer, path);
+    const rigid = applied.includes("PhysicsRigidBodyAPI");
+    if (!rigid && !applied.includes("PhysicsMassAPI")) return;
+    const object = this.objects.get(path);
+    if (!object)
+      throw new Error(`Missing visual transform for rigid body ${path}`);
+    if (!rigid && ancestorBody(object)) return;
+    const body = wrapBody(
+      object,
+      this.scene.world,
+      bodyType(this.layer, path, rigid),
+      massProperties(this.layer, path, object),
+    );
+    this.scene.own(body);
+    const angular = vector(
+      this.layer,
+      path,
+      "physics:angularVelocity",
+      [0, 0, 0],
+    );
+    body.setVelocity({
+      linear: new Vector3(
+        ...vector(this.layer, path, "physics:velocity", [0, 0, 0]),
+      ),
+      angular: new Vector3(...angular).multiplyScalar(radians),
+    });
+    this.bodies.set(path, body);
+  }
+
+  private readScene(path: string): void {
+    const direction = vector(
+      this.layer,
+      path,
+      "physics:gravityDirection",
+      [0, -1, 0],
+    );
+    const magnitude = numeric(
+      this.layer,
+      path,
+      "physics:gravityMagnitude",
+      9.81,
+    );
+    const length = Math.hypot(...direction);
+    if (!length && magnitude)
+      throw new Error("USD gravity direction cannot be zero");
+    const factor = length ? magnitude / length : 0;
+    this.scene.gravity = [
+      direction[0] * factor,
+      direction[1] * factor,
+      direction[2] * factor,
+    ];
+    this.objects.get(path)?.removeFromParent();
+  }
+
+  /** The joint takes the place of its visual transform, or hangs off the scene without one. */
+  private placeJoint(path: string, type: string): void {
+    const joint = readJoint(this.layer, path, type, this.bodies);
+    this.scene.own(joint);
+    joint.name = path.slice(path.lastIndexOf("/") + 1);
+    const object = this.objects.get(path);
+    const parent = object?.parent ?? this.scene;
+    object?.removeFromParent();
+    parent.add(joint);
+  }
+
+  /** Collision geometry outside any body gets a static body of its own. */
+  private readCollider(path: string, type: string): void {
+    if (!schemas(this.layer, path).includes("PhysicsCollisionAPI")) return;
+    if (!boolean(this.layer, path, "physics:collisionEnabled", true))
+      throw new Error(`Disabled colliders are not supported: ${path}`);
+    const object = this.objects.get(path);
+    if (!object) throw new Error(`Missing collision geometry ${path}`);
+    let body = this.bodies.get(path) ?? ancestorBody(object);
+    if (!body) {
+      body = wrapBody(object, this.scene.world, "static");
+      this.scene.own(body);
+      this.bodies.set(path, body);
+    }
+    const material = materialFor(this.layer, path, this.materials);
+    const collider = readShape(this.layer, path, type, object, material);
+    const parent = object.parent;
+    if (!parent) throw new Error(`Orphan collider ${path}`);
+    parent.add(collider);
+    // Collision-only geometry is invisible in the archive; visible geometry remains a visual child.
+    if (!object.visible) object.removeFromParent();
+  }
+
+  private applyDisplayNames(): void {
+    for (const [path, object] of this.objects) {
+      const name = this.layer.specsByPath[path]?.fields.displayName;
+      if (typeof name !== "string") continue;
+      object.name = name;
+      const body = this.bodies.get(path);
+      if (body) body.name = name;
     }
   }
 }

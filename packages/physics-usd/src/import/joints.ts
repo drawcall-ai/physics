@@ -28,6 +28,7 @@ import {
   token,
 } from "./layer.js";
 import type { Layer } from "./layer.js";
+import { radians } from "../units.js";
 
 function frame(layer: Layer, path: string, index: number): Matrix4 {
   const p = numbers(layer, path, `physics:localPos${index}`) ?? [0, 0, 0];
@@ -94,7 +95,7 @@ function createJoint(
         dofs[axis] = "free";
         continue;
       }
-      const scale = axis.startsWith("rot") ? Math.PI / 180 : 1;
+      const scale = axis.startsWith("rot") ? radians : 1;
       const low = numeric(layer, path, `limit:${axis}:physics:low`, -Infinity);
       const high = numeric(layer, path, `limit:${axis}:physics:high`, Infinity);
       dofs[axis] = low > high ? "locked" : [low * scale, high * scale];
@@ -107,7 +108,7 @@ function createJoint(
   if (axis !== "X" && axis !== "Y" && axis !== "Z")
     throw new Error(`Invalid joint axis ${axis}`);
   const angular = type === "PhysicsRevoluteJoint";
-  const factor = angular ? Math.PI / 180 : 1;
+  const factor = angular ? radians : 1;
   let limits: readonly [number, number] | undefined;
   const lower = attribute(layer, path, "physics:lowerLimit");
   const upper = attribute(layer, path, "physics:upperLimit");
@@ -137,7 +138,7 @@ function readDrive(
   const model = token(layer, path, `${prefix}type`, "force");
   if (model !== "force" && model !== "acceleration")
     throw new Error(`Unsupported USD drive type ${model}: ${path}`);
-  const factor = angular ? Math.PI / 180 : 1;
+  const factor = angular ? radians : 1;
   const maxForce = attribute(layer, path, `${prefix}maxForce`);
   return new JointDrive({
     model,

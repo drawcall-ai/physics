@@ -178,6 +178,11 @@ validate support and report unsupported properties instead of ignoring them.
 
 ## Adapters
 
+Worlds expose `disposed`, and `joint.connects(body)` tells whether a body is either
+side of a joint. The core also exports adapter helpers (authored velocity and joint
+readings, world-pose writeback, validation, and the shared world assertions) that
+scene code never needs.
+
 Install `@drawcall/physics-rapier` for `await setupWorld()` and
 `@drawcall/physics-usd` for `PhysicsUSDExporter` / `PhysicsUSDLoader`. Each has one
 public entry point. The core exports `PhysicsWorld` so hosts can work with different backends.

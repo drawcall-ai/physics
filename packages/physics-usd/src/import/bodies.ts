@@ -4,8 +4,20 @@ import {
   RigidBody,
   splitTransform,
 } from "@drawcall/physics";
-import type { PhysicsWorld, MassProperties, Vec3 } from "@drawcall/physics";
-import { attribute, numeric, numbers, schemas, target } from "./layer.js";
+import type {
+  PhysicsWorld,
+  MassProperties,
+  RigidBodyType,
+  Vec3,
+} from "@drawcall/physics";
+import {
+  attribute,
+  boolean,
+  numeric,
+  numbers,
+  schemas,
+  target,
+} from "./layer.js";
 import type { Layer } from "./layer.js";
 
 export function vector(
@@ -20,10 +32,24 @@ export function vector(
   return new Vector3().fromArray(values).toArray();
 }
 
+/** A prim with the mass schema alone is a static body; a disabled rigid body is static too. */
+export function bodyType(
+  layer: Layer,
+  path: string,
+  rigid: boolean,
+): RigidBodyType {
+  if (!rigid || !boolean(layer, path, "physics:rigidBodyEnabled", true))
+    return "static";
+  return boolean(layer, path, "physics:kinematicEnabled", false)
+    ? "kinematic"
+    : "dynamic";
+}
+
+/** Replaces the visual transform with a body carrying its pose, children, or mesh. */
 export function wrapBody(
   object: Object3D,
   world: PhysicsWorld,
-  type: "static" | "dynamic" | "kinematic",
+  type: RigidBodyType,
   mass: MassProperties = {},
 ): RigidBody {
   const parent = object.parent;
@@ -45,15 +71,6 @@ export function wrapBody(
     object.removeFromParent();
   }
   return body;
-}
-
-export function ancestorBody(object: Object3D): RigidBody | undefined {
-  let parent = object.parent;
-  while (parent) {
-    if (parent instanceof RigidBody) return parent;
-    parent = parent.parent;
-  }
-  return undefined;
 }
 
 export function materialFor(

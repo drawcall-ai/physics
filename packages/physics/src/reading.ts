@@ -3,7 +3,7 @@ import type { RigidBody } from "./body.js";
 import { AxisJoint, DistanceJoint, PrismaticJoint } from "./joints.js";
 import { GenericJoint } from "./generic.js";
 import type { Joint } from "./joint.js";
-import { splitTransform } from "./transforms.js";
+import { axisVector, splitTransform } from "./transforms.js";
 import { authoredVelocityAtPoint } from "./velocity.js";
 import type { JointReading } from "./world.js";
 
@@ -28,14 +28,11 @@ export function authoredJointReading(
   const a = frame(0),
     b = frame(1);
   if (object instanceof AxisJoint) {
-    const axis =
-      object.options.axis === "X"
-        ? new Vector3(1, 0, 0)
-        : object.options.axis === "Z"
-          ? new Vector3(0, 0, 1)
-          : new Vector3(0, 1, 0);
     const rotation = new Matrix4().makeRotationFromQuaternion(
-      new Quaternion().setFromUnitVectors(new Vector3(1, 0, 0), axis),
+      new Quaternion().setFromUnitVectors(
+        new Vector3(1, 0, 0),
+        axisVector(object.options.axis),
+      ),
     );
     a.multiply(rotation);
     b.multiply(rotation);
@@ -97,6 +94,11 @@ export function jointReading(
     rotation,
     linearVelocity: linear.applyQuaternion(inverse0),
     angularVelocity: angular1.clone().sub(angular0).applyQuaternion(inverse0),
-    angle: Math.atan2(Math.sin(angle), Math.cos(angle)),
+    angle: wrapAngle(angle),
   };
+}
+
+/** Wraps an angle into [-π, π]. */
+export function wrapAngle(angle: number): number {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }

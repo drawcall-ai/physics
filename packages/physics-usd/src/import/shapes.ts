@@ -4,6 +4,7 @@ import {
   CylinderCollider,
   MeshCollider,
   SphereCollider,
+  axisVector,
 } from "@drawcall/physics";
 import type { Collider, PhysicsMaterial } from "@drawcall/physics";
 import { Mesh, Object3D, Quaternion, Vector3 } from "three";
@@ -65,17 +66,13 @@ export function readShape(
   collider.quaternion.copy(object.quaternion);
   if (type === "Capsule" || type === "Cylinder") {
     const axis = token(layer, path, "axis", "Z");
-    const direction =
-      axis === "X"
-        ? new Vector3(1, 0, 0)
-        : axis === "Y"
-          ? new Vector3(0, 1, 0)
-          : axis === "Z"
-            ? new Vector3(0, 0, 1)
-            : undefined;
-    if (!direction) throw new Error(`Invalid collider axis ${axis}`);
+    if (axis !== "X" && axis !== "Y" && axis !== "Z")
+      throw new Error(`Invalid collider axis ${axis}`);
     collider.quaternion.multiply(
-      new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction),
+      new Quaternion().setFromUnitVectors(
+        new Vector3(0, 1, 0),
+        axisVector(axis),
+      ),
     );
   }
   collider.name = object.name;

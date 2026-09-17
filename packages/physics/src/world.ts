@@ -4,7 +4,7 @@ import { RigidBody } from "./body.js";
 import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
 import { authoredJointReading } from "./reading.js";
 import { setWorldPose } from "./transforms.js";
-import type { Vec3, CollisionGroups } from "./objects.js";
+import type { Vec3, CollisionGroups } from "./colliders.js";
 
 export interface PhysicsOptions {
   readonly gravity?: Vec3;
@@ -59,6 +59,7 @@ export interface RaycastHit {
 }
 
 export interface PhysicsWorld {
+  readonly disposed: boolean;
   register(object: RigidBody | Joint): void;
   unregister(object: RigidBody | Joint): void;
   readonly fixedDelta: number;
@@ -102,6 +103,20 @@ export function clearDefaultWorld(world: PhysicsWorld): void {
   if (defaultWorld === world) defaultWorld = undefined;
 }
 
+/** Backend integration: the checks every world applies before it touches anything. */
+export function assertLive(world: PhysicsWorld): void {
+  if (world.disposed) throw new Error("Physics world has been disposed");
+}
+export function assertOwned(
+  world: PhysicsWorld,
+  object: RigidBody | Joint,
+): void {
+  assertLive(world);
+  if (object.disposed) throw new Error("Physics object has been disposed");
+  if (object.world !== world)
+    throw new Error("Object belongs to another world");
+}
+
 /** Owns authoring objects without loading a simulation backend. */
 export class AuthoringWorld implements PhysicsWorld {
   readonly fixedDelta = 1 / 60;
@@ -120,27 +135,20 @@ export class AuthoringWorld implements PhysicsWorld {
   get objects(): ReadonlySet<RigidBody | Joint> {
     return this.registered;
   }
+  get disposed(): boolean {
+    return this.isDisposed;
+  }
 
   register(object: RigidBody | Joint): void {
-    if (this.isDisposed) throw new Error("Physics world has been disposed");
-    if (object.world !== this)
-      throw new Error("Object belongs to another physics world");
-    if (object.disposed)
-      throw new Error("Cannot register a disposed physics object");
+    assertOwned(this, object);
     this.registered.add(object);
   }
 
   unregister(object: RigidBody | Joint): void {
     if (!this.registered.delete(object)) return;
-    if (object instanceof RigidBody) {
-      for (const joint of this.registered) {
-        if (
-          joint instanceof Joint &&
-          (joint.options.body0 === object || joint.options.body1 === object)
-        )
-          joint.dispose();
-      }
-    }
+    if (!(object instanceof RigidBody)) return;
+    for (const joint of this.registered)
+      if (joint instanceof Joint && joint.connects(object)) joint.dispose();
   }
 
   dispose(): void {
@@ -157,50 +165,44 @@ export class AuthoringWorld implements PhysicsWorld {
     return this.unavailable();
   }
   getVelocity(object: RigidBody): PhysicsVelocity {
-    this.assertObject(object);
+    assertOwned(this, object);
     return authoredVelocity(object);
   }
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
-    this.assertObject(object);
+    assertOwned(this, object);
     setAuthoredVelocity(object, value);
   }
   teleport(object: RigidBody, matrix: Matrix4): void {
-    this.assertObject(object);
+    assertOwned(this, object);
     object.validate();
     setWorldPose(object, matrix);
   }
   // Commands are inert by contract: a static preview accepts them without simulating (see README).
   setKinematicTarget(object: RigidBody, _matrix: Matrix4): void {
-    this.assertObject(object);
+    assertOwned(this, object);
   }
   applyImpulse(object: RigidBody, _impulse: Vector3, _point?: Vector3): void {
-    this.assertObject(object);
+    assertOwned(this, object);
   }
   applyForce(object: RigidBody, _force: Vector3, _point?: Vector3): void {
-    this.assertObject(object);
+    assertOwned(this, object);
   }
   wake(object: RigidBody): void {
-    this.assertObject(object);
+    assertOwned(this, object);
   }
   sleep(object: RigidBody): void {
-    this.assertObject(object);
+    assertOwned(this, object);
   }
   readJoint(object: Joint): JointReading {
-    this.assertObject(object);
+    assertOwned(this, object);
     return authoredJointReading(object);
   }
   onBeforeStep(_callback: (delta: number) => void): () => void {
-    if (this.isDisposed) throw new Error("Physics world has been disposed");
+    assertLive(this);
     return () => {};
   }
   onAfterStep(_callback: (delta: number) => void): () => void {
     return this.onBeforeStep(_callback);
-  }
-  private assertObject(object: RigidBody | Joint): void {
-    if (this.isDisposed) throw new Error("Physics world has been disposed");
-    if (object.disposed) throw new Error("Physics object has been disposed");
-    if (object.world !== this)
-      throw new Error("Object belongs to another world");
   }
 
   private unavailable(): never {

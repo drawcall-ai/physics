@@ -1,6 +1,5 @@
-import { BufferGeometry, Object3D, type Matrix4 } from "three";
+import { BufferGeometry, Object3D } from "three";
 import { constructLike } from "./construct.js";
-import { splitTransform } from "./transforms.js";
 
 export type Vec3 = readonly [number, number, number];
 export type AutoColliders = "auto" | "box" | "convexHull" | "trimesh" | false;
@@ -192,10 +191,4 @@ export class MeshCollider extends Collider {
     super.copy(source, recursive);
     return this.setGeometry(source.geometry);
   }
-}
-
-export function assertRigidTransform(matrix: Matrix4): void {
-  const { scale } = splitTransform(matrix);
-  if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6))
-    throw new Error("Physics transforms must have unit scale and no shear");
 }

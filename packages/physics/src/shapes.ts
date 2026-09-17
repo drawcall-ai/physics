@@ -7,9 +7,74 @@ import {
   SkinnedMesh,
   SphereGeometry,
 } from "three";
-import type { BufferGeometry } from "three";
+import type { BufferGeometry, Object3D } from "three";
 import type { RigidBody } from "./body.js";
-import type { Shape } from "./objects.js";
+import {
+  BoxCollider,
+  CapsuleCollider,
+  Collider,
+  CylinderCollider,
+  MeshCollider,
+  SphereCollider,
+} from "./colliders.js";
+import type { Shape } from "./colliders.js";
+import { splitTransform } from "./transforms.js";
+
+/** The explicit collider itself, or an automatic one for a mesh, validated for this body. */
+export function colliderOf(source: Collider | Mesh, body: RigidBody): Collider {
+  for (
+    let node: Object3D | null = source;
+    node && node !== body;
+    node = node.parent
+  )
+    if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
+      throw new Error(
+        `Collider requires positive scale: ${node.name || node.type}`,
+      );
+  splitTransform(source.matrixWorld, source.name || source.type);
+  const collider =
+    source instanceof Collider ? source : autoCollider(source, body);
+  const shape = collider.shape();
+  validateShape(shape);
+  if (
+    shape.kind === "mesh" &&
+    shape.approximation === "trimesh" &&
+    body.bodyType !== "static"
+  )
+    throw new Error("Triangle mesh colliders require static bodies");
+  return collider;
+}
+
+function autoCollider(mesh: Mesh, body: RigidBody): Collider {
+  const collider = colliderFromShape(autoShape(mesh, body));
+  mesh.matrixWorld.decompose(
+    collider.position,
+    collider.quaternion,
+    collider.scale,
+  );
+  collider.source = mesh;
+  collider.name = mesh.name;
+  collider.updateMatrixWorld(true);
+  return collider;
+}
+
+function colliderFromShape(shape: Shape): Collider {
+  switch (shape.kind) {
+    case "box":
+      return new BoxCollider(shape);
+    case "sphere":
+      return new SphereCollider(shape);
+    case "capsule":
+      return new CapsuleCollider(shape);
+    case "cylinder":
+      return new CylinderCollider(shape);
+    case "mesh":
+      return new MeshCollider({
+        approximation: shape.approximation,
+      }).setGeometry(shape.geometry);
+  }
+}
+
 function unchanged(
   geometry: BufferGeometry,
   reference: BufferGeometry,
@@ -34,7 +99,9 @@ function unchanged(
     return false;
   return true;
 }
-export function autoShape(mesh: Mesh, body: RigidBody): Shape {
+
+/** The shape a visual mesh stands for: an unchanged primitive keeps its shape, other geometry becomes a mesh. */
+function autoShape(mesh: Mesh, body: RigidBody): Shape {
   if (
     mesh instanceof SkinnedMesh ||
     mesh instanceof InstancedMesh ||
@@ -167,7 +234,7 @@ function validateRange(geometry: BufferGeometry): void {
   }
 }
 
-export function validateShape(shape: Shape): void {
+function validateShape(shape: Shape): void {
   if (shape.kind === "mesh") {
     validateRange(shape.geometry);
     const position = shape.geometry.getAttribute("position");

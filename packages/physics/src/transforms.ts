@@ -1,10 +1,24 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { Collider, Shape } from "./objects.js";
+import type { Collider, Shape } from "./colliders.js";
 import type { RigidBody } from "./body.js";
 
 export function validateVector(value: Vector3): void {
   if (![value.x, value.y, value.z].every(Number.isFinite))
     throw new Error("Physics vectors must be finite");
+}
+
+/** Rejects matrices a body or joint frame cannot carry: any scale or shear. */
+export function assertRigidTransform(matrix: Matrix4): void {
+  const { scale } = splitTransform(matrix);
+  if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6))
+    throw new Error("Physics transforms must have unit scale and no shear");
+}
+
+/** The unit vector an axis token names. */
+export function axisVector(axis: "X" | "Y" | "Z"): Vector3 {
+  if (axis === "X") return new Vector3(1, 0, 0);
+  if (axis === "Y") return new Vector3(0, 1, 0);
+  return new Vector3(0, 0, 1);
 }
 
 /** Writes a world pose into the object's local transform, keeping its world scale. */
