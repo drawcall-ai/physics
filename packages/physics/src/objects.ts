@@ -1,4 +1,5 @@
 import { BufferGeometry, Object3D, type Matrix4 } from "three";
+import { constructLike } from "./construct.js";
 import { splitTransform } from "./transforms.js";
 
 export type Vec3 = readonly [number, number, number];
@@ -74,15 +75,7 @@ export abstract class Collider extends Object3D {
   }
   abstract shape(): Shape;
   override clone(recursive = true): this {
-    const target: unknown = Reflect.construct(this.constructor, [this.shape()]);
-    if (!this.isClone(target)) throw new Error("Invalid collider clone");
-    return target.copy(this, recursive);
-  }
-  private isClone(value: unknown): value is this {
-    return (
-      value instanceof Collider &&
-      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
-    );
+    return constructLike(this, [this.shape()]).copy(this, recursive);
   }
   override copy(source: this, recursive = true): this {
     super.copy(source, recursive);
@@ -94,7 +87,7 @@ export abstract class Collider extends Object3D {
 export type Shape =
   | { kind: "box"; size: Vec3 }
   | { kind: "sphere"; radius: number }
-  | { kind: "capsule"; radius: number; length: number }
+  | { kind: "capsule"; radius: number; height: number }
   | { kind: "cylinder"; radius: number; height: number }
   | {
       kind: "mesh";
@@ -134,19 +127,19 @@ export class SphereCollider extends Collider {
 }
 export class CapsuleCollider extends Collider {
   readonly radius: number;
-  readonly length: number;
+  readonly height: number;
   constructor(
-    options: { readonly radius?: number; readonly length?: number } = {},
+    options: { readonly radius?: number; readonly height?: number } = {},
   ) {
     super();
     this.radius = positive(options.radius ?? 0.5);
-    this.length = positive(options.length ?? 1);
+    this.height = positive(options.height ?? 1);
   }
   shape(): Shape {
-    return { kind: "capsule", radius: this.radius, length: this.length };
+    return { kind: "capsule", radius: this.radius, height: this.height };
   }
   override copy(source: this, recursive = true): this {
-    if (this.radius !== source.radius || this.length !== source.length)
+    if (this.radius !== source.radius || this.height !== source.height)
       throw new Error("Cannot copy different immutable collider dimensions");
     return super.copy(source, recursive);
   }

@@ -1,5 +1,11 @@
 import { afterEach } from "vitest";
-import { RigidBody, type RigidBodyOptions } from "@drawcall/physics";
+import { BoxGeometry, Mesh } from "three";
+import {
+  RigidBody,
+  type PhysicsWorld,
+  type RigidBodyOptions,
+  type RigidBodyType,
+} from "@drawcall/physics";
 import {
   setupWorld,
   type RapierOptions,
@@ -29,4 +35,16 @@ export function inertialBody(options: Partial<RigidBodyOptions> = {}) {
     colliders: false,
     ...options,
   });
+}
+
+export const earth = { gravity: [0, -9.81, 0], fixedDelta: 1 / 60 } as const;
+
+export function box(type: RigidBodyType = "dynamic") {
+  const body = new RigidBody({ mass: 1, type });
+  body.add(new Mesh(new BoxGeometry(1, 1, 1)));
+  return body;
+}
+
+export function steps(world: PhysicsWorld, count = 120) {
+  for (let i = 0; i < count; i++) world.update(world.fixedDelta);
 }

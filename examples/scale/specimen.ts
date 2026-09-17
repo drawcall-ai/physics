@@ -1,4 +1,4 @@
-import * as T from "three";
+import * as THREE from "three";
 import {
   BoxCollider,
   CapsuleCollider,
@@ -15,19 +15,19 @@ import {
 import type { Case } from "./cases";
 
 export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
-  const root = new T.Group();
-  const geometries: T.BufferGeometry[] = [];
-  const materials: T.Material[] = [];
+  const root = new THREE.Group();
+  const geometries: THREE.BufferGeometry[] = [];
+  const materials: THREE.Material[] = [];
   const bodies: RigidBody[] = [];
-  function mesh(geometry: T.BufferGeometry, color: string) {
-    const material = new T.MeshStandardMaterial({ color });
+  function mesh(geometry: THREE.BufferGeometry, color: string) {
+    const material = new THREE.MeshStandardMaterial({ color });
     geometries.push(geometry);
     materials.push(material);
-    return new T.Mesh(geometry, material);
+    return new THREE.Mesh(geometry, material);
   }
   function body(
     type: "dynamic" | "static" | "kinematic",
-    visual: T.Mesh,
+    visual: THREE.Mesh,
     colliders: AutoColliders = "auto",
   ) {
     const body = new RigidBody({
@@ -37,25 +37,28 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
       ...(type === "static" ? {} : { mass: 2 }),
     });
     if (spin && type === "dynamic")
-      body.setVelocity({ angular: new T.Vector3(1.4, 0.7, 1.1) });
+      body.setVelocity({ angular: new THREE.Vector3(1.4, 0.7, 1.1) });
     bodies.push(body);
     body.add(visual);
     return body;
   }
-  const floor = body("static", mesh(new T.BoxGeometry(10, 0.2, 10), "#526478"));
+  const floor = body(
+    "static",
+    mesh(new THREE.BoxGeometry(10, 0.2, 10), "#526478"),
+  );
   floor.position.y = -0.1;
   root.add(floor);
   const kind = spec.geometry ?? spec.kind;
   const geometry =
     kind === "sphere"
-      ? new T.SphereGeometry(0.5, 32, 24)
+      ? new THREE.SphereGeometry(0.5, 32, 24)
       : kind === "capsule"
-        ? new T.CapsuleGeometry(0.4, 1, 12, 24)
+        ? new THREE.CapsuleGeometry(0.4, 1, 12, 24)
         : kind === "cylinder"
-          ? new T.CylinderGeometry(0.5, 0.5, 1, 32)
+          ? new THREE.CylinderGeometry(0.5, 0.5, 1, 32)
           : spec.kind === "triangle mesh" || spec.compound
-            ? new T.BoxGeometry(1.4, 0.35, 1.4)
-            : new T.BoxGeometry();
+            ? new THREE.BoxGeometry(1.4, 0.35, 1.4)
+            : new THREE.BoxGeometry();
   const visual = mesh(geometry, "#eaa65a");
   const platform =
     spec.kind === "triangle mesh" ||
@@ -89,9 +92,9 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
     if (collider instanceof MeshCollider) collider.setGeometry(geometry);
     target.add(collider);
   }
-  const parent = new T.Group().add(target);
+  const parent = new THREE.Group().add(target);
   root.add(parent);
-  const scale = new T.Vector3(...spec.scale);
+  const scale = new THREE.Vector3(...spec.scale);
   if (spec.placement === "ancestor") parent.scale.copy(scale);
   if (spec.placement === "body") target.scale.copy(scale);
   if (spec.placement === "collider" || spec.placement === "combined") {
@@ -117,7 +120,7 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   const surfaces = [visual];
   if ((spec.kind === "triangle mesh" && !spec.explicit) || spec.compound) {
     for (const side of [-1, 1]) {
-      const step = mesh(new T.BoxGeometry(1.4, 0.35, 1.4), "#eaa65a");
+      const step = mesh(new THREE.BoxGeometry(1.4, 0.35, 1.4), "#eaa65a");
       step.position.set(side * 2, side * 0.45, 0);
       // Quarter turns remain shear-free beneath nonuniform body scale.
       step.rotation.y = (side * Math.PI) / 2;
@@ -130,26 +133,26 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
   root.updateMatrixWorld(true);
   const contacts = platform
     ? surfaces.map((surface) => {
-        const bounds = new T.Box3().setFromObject(surface);
-        const falling = mesh(new T.BoxGeometry(0.5, 0.5, 0.5), "#83d9cb");
+        const bounds = new THREE.Box3().setFromObject(surface);
+        const falling = mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), "#83d9cb");
         const probe = body("dynamic", falling);
         bounds.getCenter(probe.position);
         probe.position.y = bounds.max.y + 3;
         root.add(probe);
         return {
           falling,
-          top: () => new T.Box3().setFromObject(surface).max.y,
+          top: () => new THREE.Box3().setFromObject(surface).max.y,
         };
       })
     : [{ falling: target, top: () => 0 }];
   let time = 0;
-  let initial: T.Matrix4 | undefined;
+  let initial: THREE.Matrix4 | undefined;
   const stop =
     spec.type === "kinematic"
       ? world.onAfterStep((delta) => {
           initial ??= splitTransform(target.matrixWorld).pose;
           time += delta;
-          const position = new T.Vector3().setFromMatrixPosition(initial);
+          const position = new THREE.Vector3().setFromMatrixPosition(initial);
           position.y += 0.65 * Math.sin(time * 1.3);
           target.setKinematicTarget(initial.clone().setPosition(position));
         })
@@ -163,29 +166,34 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
           const { shape, matrix } = resolveCollider(target, collider);
           const geometry =
             shape.kind === "box"
-              ? new T.BoxGeometry(...shape.size)
+              ? new THREE.BoxGeometry(...shape.size)
               : shape.kind === "sphere"
-                ? new T.SphereGeometry(shape.radius, 32, 24)
+                ? new THREE.SphereGeometry(shape.radius, 32, 24)
                 : shape.kind === "capsule"
-                  ? new T.CapsuleGeometry(shape.radius, shape.length, 12, 24)
+                  ? new THREE.CapsuleGeometry(
+                      shape.radius,
+                      shape.height,
+                      12,
+                      24,
+                    )
                   : shape.kind === "cylinder"
-                    ? new T.CylinderGeometry(
+                    ? new THREE.CylinderGeometry(
                         shape.radius,
                         shape.radius,
                         shape.height,
                         32,
                       )
                     : shape.geometry;
-          const collision = new T.Mesh(geometry, visual.material);
+          const collision = new THREE.Mesh(geometry, visual.material);
           collision.matrixAutoUpdate = false;
           collision.matrix
             .copy(splitTransform(target.matrixWorld).pose)
             .multiply(matrix);
           collision.updateMatrixWorld(true);
-          const actual = new T.Box3().setFromObject(collision, true);
+          const actual = new THREE.Box3().setFromObject(collision, true);
           const source =
-            collider.source instanceof T.Mesh ? collider.source : visual;
-          const expected = new T.Box3().setFromObject(source, true);
+            collider.source instanceof THREE.Mesh ? collider.source : visual;
+          const expected = new THREE.Box3().setFromObject(source, true);
           geometry.dispose();
           return Math.max(
             actual.min.distanceTo(expected.min),
@@ -197,7 +205,7 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
     gap() {
       root.updateMatrixWorld(true);
       return contacts.reduce((worst, { falling, top }) => {
-        const gap = new T.Box3().setFromObject(falling, true).min.y - top();
+        const gap = new THREE.Box3().setFromObject(falling, true).min.y - top();
         return Math.abs(gap) > Math.abs(worst) ? gap : worst;
       }, 0);
     },

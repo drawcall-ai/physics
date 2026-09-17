@@ -38,7 +38,7 @@ export function shapePrim(name: string, shape: Shape, matrix: Matrix4): Prim {
       prim.type = "Capsule";
       prim.properties.push(
         `double radius = ${shape.radius}`,
-        `double height = ${shape.length}`,
+        `double height = ${shape.height}`,
         'uniform token axis = "Y"',
       );
       break;

@@ -82,6 +82,7 @@ export function materialFor(
     }
     current = current.slice(0, current.lastIndexOf("/"));
   }
+  // UsdPhysics: an unbound collider uses the default material, which is frictionless.
   material ??= { staticFriction: 0, dynamicFriction: 0 };
   if (density !== undefined && density !== material.density)
     material = { ...material, density };
@@ -97,6 +98,7 @@ function readMaterial(layer: Layer, path: string): PhysicsMaterial {
     restitution: numeric(layer, path, "physics:restitution", 0),
     density: numeric(layer, path, "physics:density", 1000),
   };
+  // UsdPhysics: a zero density means the scene default of 1000 kg/m³.
   if (material.density === 0) material.density = 1000;
   return material;
 }

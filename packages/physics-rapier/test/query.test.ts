@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
+import { createWorld } from "./fixtures.js";
 import { BoxGeometry, Matrix4, Mesh, Vector3 } from "three";
 import { BoxCollider, RigidBody } from "@drawcall/physics";
-import { createWorld } from "./fixtures.js";
 
 it("queries authored and simulated surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
   const world = await createWorld();

@@ -1,7 +1,6 @@
-import type { RigidBody as AuthoredBody, Collider } from "@drawcall/physics";
-import type { RigidBody } from "@dimforge/rapier3d-compat";
+import type { RigidBody, Collider } from "@drawcall/physics";
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import { collider } from "./shapes.js";
+import { colliderDesc } from "./shapes.js";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
   setWorldPose,
@@ -11,7 +10,7 @@ import {
   resolveCollider,
 } from "@drawcall/physics";
 
-export function synchronize(object: AuthoredBody, body: RigidBody): void {
+export function synchronize(object: RigidBody, body: Rapier.RigidBody): void {
   setWorldPose(
     object,
     new Matrix4().compose(
@@ -26,8 +25,8 @@ export interface BodyBinding {
   body: Rapier.RigidBody;
   initial: Matrix4;
   velocity: PhysicsVelocity;
-  shapes: string;
-  settings: number;
+  shapeKey: string;
+  settingsVersion: number;
   sources: Map<number, Object3D>;
   scale: Vector3;
   colliderScales: Map<Object3D, Vector3>;
@@ -36,7 +35,7 @@ export interface BodyBinding {
 export function createBody(
   api: typeof Rapier,
   world: Rapier.World,
-  object: AuthoredBody,
+  object: RigidBody,
 ): BodyBinding {
   const options = object.options;
   const desc =
@@ -61,8 +60,8 @@ export function createBody(
     velocity,
     scale,
     colliderScales: new Map(),
-    shapes: "",
-    settings: -1,
+    shapeKey: "",
+    settingsVersion: -1,
     sources: new Map(),
   };
   try {
@@ -77,7 +76,7 @@ export function createBody(
 export function refreshBody(
   api: typeof Rapier,
   world: Rapier.World,
-  object: AuthoredBody,
+  object: RigidBody,
   binding: BodyBinding,
 ): void {
   const options = object.options;
@@ -86,12 +85,12 @@ export function refreshBody(
       "Body scale cannot change after backend initialization; recreate the body",
     );
   const colliders = object.getColliders();
-  const shapes = JSON.stringify([
+  const shapeKey = JSON.stringify([
     object.materialVersion,
-    colliders.map((shape) => shapeKey(shape, object)),
+    colliders.map((collider) => shapeFingerprint(collider, object)),
   ]);
   const body = binding.body;
-  if (shapes !== binding.shapes) {
+  if (shapeKey !== binding.shapeKey) {
     const resolved = colliders.map((collider) =>
       resolveCollider(
         object,
@@ -108,7 +107,7 @@ export function refreshBody(
     }
     const completeMass = options.centerOfMass !== undefined;
     const descriptors = resolved.map((shape) => {
-      const desc = collider(api, shape, object);
+      const desc = colliderDesc(api, shape, object);
       return completeMass ? desc.setDensity(0) : desc;
     });
     const next: Rapier.Collider[] = [];
@@ -117,6 +116,7 @@ export function refreshBody(
         next.push(world.createCollider(desc, body));
       if (options.mass !== undefined && next.length && !completeMass) {
         let inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
+        // Zero-density shapes still have volume; unit density recovers the ratios that split the explicit mass.
         if (inferredMass === 0) {
           for (const shape of next) shape.setDensity(1);
           inferredMass = next.reduce((sum, shape) => sum + shape.mass(), 0);
@@ -159,7 +159,7 @@ export function refreshBody(
       }),
     );
     body.wakeUp();
-    binding.shapes = shapes;
+    binding.shapeKey = shapeKey;
     binding.colliderScales = new Map(
       resolved.map(({ collider, scale }) => [
         collider.source,
@@ -176,16 +176,15 @@ export function refreshBody(
     )
       throw new Error("Dynamic body requires positive finite mass and inertia");
   }
-  const settings = object.settingsVersion;
-  if (settings === binding.settings) return;
+  if (object.settingsVersion === binding.settingsVersion) return;
   body.setLinearDamping(object.linearDamping);
   body.setAngularDamping(object.angularDamping);
   body.setGravityScale(object.gravityScale, true);
-  binding.settings = settings;
+  binding.settingsVersion = object.settingsVersion;
 }
 
-function shapeKey(source: Collider, body: AuthoredBody): unknown {
-  const shape = source.shape();
+function shapeFingerprint(collider: Collider, body: RigidBody): unknown {
+  const shape = collider.shape();
 
   const shapeData =
     shape.kind === "mesh"
@@ -202,7 +201,7 @@ function shapeKey(source: Collider, body: AuthoredBody): unknown {
   const transform = body.matrixWorld
     .clone()
     .invert()
-    .multiply(source.matrixWorld)
+    .multiply(collider.matrixWorld)
     .elements.map((value) => Math.round(value * 1e10) / 1e10);
-  return [source.source.uuid, shapeData, transform, source.settingsVersion];
+  return [collider.source.uuid, shapeData, transform, collider.settingsVersion];
 }

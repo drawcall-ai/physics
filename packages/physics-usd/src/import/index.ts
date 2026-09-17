@@ -4,7 +4,7 @@ import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import { Joint, type PhysicsMaterial, RigidBody } from "@drawcall/physics";
 import type { PhysicsWorld } from "@drawcall/physics";
 import { PhysicsUSDScene } from "../scene.js";
-import { attribute, boolean, numeric, schemas } from "./layer.js";
+import { PRIM_SPEC, attribute, boolean, numeric, schemas } from "./layer.js";
 import {
   vector,
   wrapBody,
@@ -78,7 +78,7 @@ export class PhysicsUSDLoader {
       const bodies = new Map<string, RigidBody>();
       const materials = new Map<string, PhysicsMaterial>();
       for (const [primPath, spec] of Object.entries(layer.specsByPath)) {
-        if (spec.specType !== 6) continue;
+        if (spec.specType !== PRIM_SPEC) continue;
         const applied = schemas(layer, primPath);
         const rigid = applied.includes("PhysicsRigidBodyAPI");
         if (!rigid && !applied.includes("PhysicsMassAPI")) continue;
@@ -114,7 +114,7 @@ export class PhysicsUSDLoader {
         bodies.set(primPath, body);
       }
       for (const [primPath, spec] of Object.entries(layer.specsByPath)) {
-        if (spec.specType !== 6) continue;
+        if (spec.specType !== PRIM_SPEC) continue;
         const type = spec.fields.typeName;
         if (typeof type !== "string") continue;
         if (type === "PhysicsScene") {
@@ -180,6 +180,7 @@ export class PhysicsUSDLoader {
         }
       }
       scene.traverse((object) => {
+        // Deriving colliders validates their geometry; the result is recreated on demand.
         if (object instanceof RigidBody) object.getColliders();
         if (object instanceof Joint) object.validate();
       });

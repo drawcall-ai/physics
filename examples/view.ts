@@ -42,6 +42,8 @@ export function view(
   resize();
   return {
     canvas,
+    camera,
+    controls,
     signal: events.signal,
     run(update: () => string = () => "") {
       renderer.setAnimationLoop(() => {

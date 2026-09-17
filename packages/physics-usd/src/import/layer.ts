@@ -4,6 +4,9 @@ export interface Spec {
   specType: number;
   fields: Record<string, unknown>;
 }
+/** Sdf spec type of a prim, as opposed to a property or relationship. */
+export const PRIM_SPEC = 6;
+
 export interface Layer {
   specsByPath: Record<string, Spec>;
 }

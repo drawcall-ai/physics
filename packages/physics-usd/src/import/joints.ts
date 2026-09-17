@@ -1,16 +1,20 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
   DistanceJoint,
-  AxisJoint,
-  JointMotor,
+  GenericJoint,
+  JointDrive,
   FixedJoint,
   PrismaticJoint,
   RevoluteJoint,
+  ScalarJoint,
   SphericalJoint,
+  jointDofs,
 } from "@drawcall/physics";
 import type {
   AxisJointOptions,
+  DofMotion,
   Joint,
+  JointDof,
   JointOptions,
   RigidBody,
 } from "@drawcall/physics";
@@ -72,20 +76,31 @@ function createJoint(
     return new SphericalJoint(options);
   }
   if (type === "PhysicsDistanceJoint") {
+    // USD's negative defaults mean unlimited.
     const max = numeric(layer, path, "physics:maxDistance", -1);
-    if (max < 0)
-      throw new Error(
-        `Distance joints require an explicit finite maximum distance: ${path}`,
-      );
     return new DistanceJoint({
       ...options,
       limits: [
         Math.max(0, numeric(layer, path, "physics:minDistance", -1)),
-        max,
+        max < 0 ? Infinity : max,
       ],
     });
   }
 
+  if (type === "PhysicsJoint") {
+    const dofs: Partial<Record<JointDof, DofMotion>> = {};
+    for (const axis of jointDofs) {
+      if (!schemas(layer, path).includes(`PhysicsLimitAPI:${axis}`)) {
+        dofs[axis] = "free";
+        continue;
+      }
+      const scale = axis.startsWith("rot") ? Math.PI / 180 : 1;
+      const low = numeric(layer, path, `limit:${axis}:physics:low`, -Infinity);
+      const high = numeric(layer, path, `limit:${axis}:physics:high`, Infinity);
+      dofs[axis] = low > high ? "locked" : [low * scale, high * scale];
+    }
+    return new GenericJoint({ ...options, dofs });
+  }
   if (type !== "PhysicsRevoluteJoint" && type !== "PhysicsPrismaticJoint")
     throw new Error(`Unsupported USD joint ${type}`);
   const axis = token(layer, path, "physics:axis", "X");
@@ -110,18 +125,21 @@ function createJoint(
     : new PrismaticJoint(axisOptions);
 }
 
-function readMotor(layer: Layer, path: string, joint: AxisJoint): void {
-  const angular = joint instanceof RevoluteJoint;
-  const axis = angular ? "angular" : "linear";
-  if (!schemas(layer, path).includes(`PhysicsDriveAPI:${axis}`)) return;
-  const prefix = `drive:${axis}:physics:`;
+function readDrive(
+  layer: Layer,
+  path: string,
+  instance: string,
+  angular: boolean,
+): JointDrive | undefined {
+  if (!schemas(layer, path).includes(`PhysicsDriveAPI:${instance}`))
+    return undefined;
+  const prefix = `drive:${instance}:physics:`;
   const model = token(layer, path, `${prefix}type`, "force");
   if (model !== "force" && model !== "acceleration")
     throw new Error(`Unsupported USD drive type ${model}: ${path}`);
   const factor = angular ? Math.PI / 180 : 1;
   const maxForce = attribute(layer, path, `${prefix}maxForce`);
-  const motor = new JointMotor({
-    joint,
+  return new JointDrive({
     model,
     stiffness: numeric(layer, path, `${prefix}stiffness`, 0) / factor,
     damping: numeric(layer, path, `${prefix}damping`, 0) / factor,
@@ -129,8 +147,7 @@ function readMotor(layer: Layer, path: string, joint: AxisJoint): void {
       maxForce === undefined || maxForce === Infinity
         ? undefined
         : numeric(layer, path, `${prefix}maxForce`, 0),
-  });
-  motor.setTarget({
+  }).setTarget({
     position: numeric(layer, path, `${prefix}targetPosition`, 0) * factor,
     velocity: numeric(layer, path, `${prefix}targetVelocity`, 0) * factor,
   });
@@ -148,7 +165,18 @@ export function readJoint(
     joint.setCollideConnected(
       boolean(layer, path, "physics:collisionEnabled", false),
     );
-    if (joint instanceof AxisJoint) readMotor(layer, path, joint);
+    if (joint instanceof ScalarJoint) {
+      const angular = joint instanceof RevoluteJoint;
+      joint.setDrive(
+        readDrive(layer, path, angular ? "angular" : "linear", angular),
+      );
+    }
+    if (joint instanceof GenericJoint)
+      for (const axis of jointDofs)
+        joint.setDrive(
+          axis,
+          readDrive(layer, path, axis, axis.startsWith("rot")),
+        );
     return joint;
   } catch (error) {
     joint.dispose();

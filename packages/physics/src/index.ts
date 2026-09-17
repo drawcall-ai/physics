@@ -1,14 +1,18 @@
 export * from "./body.js";
 export * from "./objects.js";
+export { Joint, type JointOptions } from "./joint.js";
 export * from "./joints.js";
+export * from "./generic.js";
 
 export * from "./world.js";
 export * from "./clone.js";
+export { constructLike } from "./construct.js";
 export * from "./transforms.js";
-export * from "./state.js";
+export * from "./velocity.js";
+export * from "./reading.js";
 
 export {
-  JointMotor,
-  type JointMotorOptions,
-  type JointMotorTarget,
-} from "./motor.js";
+  JointDrive,
+  type JointDriveOptions,
+  type JointDriveTarget,
+} from "./drive.js";

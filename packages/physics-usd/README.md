@@ -25,9 +25,9 @@ Supported mapping:
 - Static, dynamic, and kinematic bodies; total or complete explicit mass/COM/inertia; linear/angular velocity.
 - Compound boxes, spheres, capsules, cylinders, convex hull meshes, and static triangle meshes.
 - Friction, restitution, and density through USD physics materials.
-- Fixed, revolute, prismatic, unrestricted spherical, and bounded distance joints.
+- Fixed, revolute, prismatic, unrestricted spherical, distance, and generic joints. USD's unlimited (negative) maximum distance is `Infinity`. A generic joint is the base `PhysicsJoint` prim with `PhysicsLimitAPI:<axis>` per axis: no limit means free, and a lower limit above the upper one means locked.
 - Both body-local joint frames, world anchoring through `body0`, enable state, connected-body collision state.
-- `JointMotor` position/velocity targets, force/acceleration model, gains, and force/torque limits through PhysicsDriveAPI.
+- `JointDrive` position/velocity targets, force/acceleration model, gains, and force/torque limits through PhysicsDriveAPI, per axis on generic joints. Distance joints use the linear drive, an extension beyond UsdPhysics, which defines drives for revolute and prismatic joints only, so other consumers ignore it. The effort term has no USD counterpart.
 - SI stage units and Y-up. Angular targets, limits, velocity, and drive coefficients convert between radians and USD's degree-based angular units.
 
 Import creates actual `RigidBody`, collider, material, and joint instances. It resolves inherited physics material bindings and density and retains shared material identity. The returned `PhysicsUSDScene` extends Three.js `Group`; its `gravity` preserves the stage's gravity. Use `clone(scene)` from `@drawcall/physics` to remap joint references to cloned bodies while retaining the same world. Native `scene.clone()` follows Three.js behavior and retains original joint references. Disposing a clone releases its own registrations. By default each imported scene owns an `AuthoringWorld`: loading works without a default world and never replaces the application's default world. `scene.dispose()` releases the imported bodies and joints. Visual geometry and materials retain normal Three.js ownership; release any owned visual resources before `scene.dispose()`, which detaches bodies. Pass `new PhysicsUSDLoader({ world })` to register imported objects in a running simulation; disposing the imported scene releases only its objects and keeps that supplied world alive. A loading manager can be supplied as `{ manager }`.
@@ -38,7 +38,7 @@ This first importer supports **ASCII USDA and USDZ archives containing ASCII lay
 
 ASCII import supports embedded sublayers and visual-only geometry references. Flatten physics-bearing references, `over`/`class` specs, variants, and other composition features before import. External reference layers must be embedded. Reset transform stacks and unsupported transform operations are rejected. `metersPerUnit=1`, `kilogramsPerUnit=1`, Y-up, and core-compatible rigid transforms are required. This is a bounded USD Physics reader, not a general OpenUSD composition engine.
 
-The package rejects unsupported semantics rather than silently dropping them: sensors, collision masks, damping/gravity/sleep overrides, D6/articulations, spherical cone limits, breaking thresholds, partial mass overrides, per-collider explicit mass, animated physics, and simulation ownership. Distance import requires a finite maximum; world anchoring must use body0. Animation export and `onlyVisible: true` are rejected: collision geometry must remain in the physical asset. Invisible objects retain their visibility opinions.
+The package rejects unsupported semantics rather than silently dropping them: sensors, collision masks, damping/gravity/sleep overrides, D6/articulations, spherical cone limits, breaking thresholds, partial mass overrides, per-collider explicit mass, animated physics, and simulation ownership. World anchoring must use body0. Animation export and `onlyVisible: true` are rejected: collision geometry must remain in the physical asset. Invisible objects retain their visibility opinions.
 
 Export rejects assemblies spanning multiple worlds because simulation ownership
 is not represented by this adapter. Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
@@ -64,9 +64,9 @@ Static bodies export as transformed collider groups with `PhysicsMassAPI` and no
 preserving compound colliders and joint targets. Dynamic and kinematic bodies
 retain the rigid-body schema.
 
-Motor export requires an enabled, targeted motor: standard PhysicsDriveAPI cannot
-represent disabled/untargeted state faithfully. Inactive motors must be disposed
-before export. Body type, mechanical limits, mass properties, and motor gains are
+Drive export requires a targeted drive without effort: standard PhysicsDriveAPI cannot
+represent a passive drive or a feed-forward term faithfully. Detach passive drives
+before export. Body type, mechanical limits, mass properties, and drive gains are
 constructor configuration; imported velocities and targets use methods. COM/inertia
 roundtrip in body-local physical units; a complete mass override takes precedence
 without adding collider mass. USD default `maxForce = inf` means unbounded.

@@ -58,7 +58,7 @@ it("scales primitive dimensions and mesh vertices", () => {
   );
   expect(shapes.slice(0, 3)).toEqual([
     { kind: "sphere", radius: 1 },
-    { kind: "capsule", radius: 1, length: 2 },
+    { kind: "capsule", radius: 1, height: 2 },
     { kind: "cylinder", radius: 1, height: 2 },
   ]);
   const mesh = shapes[3];

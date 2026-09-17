@@ -16,26 +16,24 @@ import {
 } from "@drawcall/physics";
 import { createWorld, inertialBody } from "./fixtures.js";
 
-it.each([
+for (const c of [
   { density: [1, 9], width: 1, offset: 4, mass: 10, center: 3.6 },
   { density: [0, 0], width: 2, offset: 3, mass: 3, center: 2 },
-])(
-  "normalizes collider-derived mass without changing its center: %j",
-  async ({ density, width, offset, mass, center }) => {
+])
+  it(`normalizes collider-derived mass without changing its center: ${JSON.stringify(c)}`, async () => {
     const world = await createWorld();
-    const body = new RigidBody({ mass });
-    const a = new BoxCollider().setMaterial({ density: density[0] });
-    const b = new BoxCollider({ size: [width, 1, 1] }).setMaterial({
-      density: density[1],
+    const body = new RigidBody({ mass: c.mass });
+    const a = new BoxCollider().setMaterial({ density: c.density[0] });
+    const b = new BoxCollider({ size: [c.width, 1, 1] }).setMaterial({
+      density: c.density[1],
     });
-    b.position.x = offset;
+    b.position.x = c.offset;
     body.add(a, b);
     world.update(0);
-    body.applyImpulse(new Vector3(0, mass, 0), new Vector3(center, 0, 0));
+    body.applyImpulse(new Vector3(0, c.mass, 0), new Vector3(c.center, 0, 0));
     expect(body.getVelocity().linear.y).toBeCloseTo(1, 5);
     expect(body.getVelocity().angular.length()).toBeLessThan(1e-6);
-  },
-);
+  });
 
 it("reads inferred COM immediately and honors later assembly transforms", async () => {
   const world = await createWorld();

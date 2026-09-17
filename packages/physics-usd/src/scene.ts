@@ -1,4 +1,9 @@
-import { AuthoringWorld, Joint, RigidBody } from "@drawcall/physics";
+import {
+  AuthoringWorld,
+  Joint,
+  RigidBody,
+  constructLike,
+} from "@drawcall/physics";
 import { Group } from "three";
 import type { PhysicsWorld, Vec3 } from "@drawcall/physics";
 
@@ -15,24 +20,13 @@ export class PhysicsUSDScene extends Group {
   }
 
   override clone(recursive = true): this {
-    const target: unknown = Reflect.construct(this.constructor, [this.world]);
-    if (!this.isClone(target))
-      throw new Error(
-        "USD scene clone constructor returned an incompatible object",
-      );
+    const target = constructLike(this, [this.world]);
     try {
       return target.copy(this, recursive);
     } catch (error) {
       target.dispose();
       throw error;
     }
-  }
-
-  private isClone(value: unknown): value is this {
-    return (
-      value instanceof PhysicsUSDScene &&
-      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
-    );
   }
 
   override copy(source: this, recursive = true): this {

@@ -65,7 +65,7 @@ export function autoShape(mesh: Mesh, body: RigidBody): Shape {
       ],
     };
   }
-  if ((body.options.colliders ?? "auto") === "auto") {
+  if (body.options.colliders === "auto") {
     if (
       geometry instanceof BoxGeometry &&
       unchanged(geometry, new BoxGeometry(...boxArgs(geometry)))
@@ -113,7 +113,7 @@ export function autoShape(mesh: Mesh, body: RigidBody): Shape {
           ),
         )
       )
-        return { kind: "capsule", radius: p.radius, length: p.height };
+        return { kind: "capsule", radius: p.radius, height: p.height };
     }
     if (geometry instanceof CylinderGeometry) {
       const p = geometry.parameters;
@@ -143,8 +143,7 @@ export function autoShape(mesh: Mesh, body: RigidBody): Shape {
     geometry,
     approximation:
       body.options.colliders === "trimesh" ||
-      ((body.options.colliders ?? "auto") === "auto" &&
-        body.bodyType === "static")
+      (body.options.colliders === "auto" && body.bodyType === "static")
         ? "trimesh"
         : "convexHull",
   };
@@ -207,9 +206,7 @@ export function validateShape(shape: Shape): void {
       ? shape.size
       : shape.kind === "sphere"
         ? [shape.radius]
-        : shape.kind === "capsule"
-          ? [shape.radius, shape.length]
-          : [shape.radius, shape.height];
+        : [shape.radius, shape.height];
   if (!dimensions.every((value) => Number.isFinite(value) && value > 0))
     throw new Error("Collider dimensions must be positive");
 }

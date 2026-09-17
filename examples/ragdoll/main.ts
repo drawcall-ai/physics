@@ -1,9 +1,38 @@
+import * as THREE from "three";
+import { RigidBody } from "@drawcall/physics";
 import { setupWorld } from "@drawcall/physics-rapier";
+import { forwardHtmlEvents } from "@pmndrs/pointer-events";
 import { createRagdoll, simulationOptions } from "./model";
+import { grab } from "./grab";
 import { view } from "../view";
 
 const world = await setupWorld(simulationOptions);
-const demo = view(world, createRagdoll());
+const scene = createRagdoll();
+const demo = view(world, scene);
+const pointer = forwardHtmlEvents(demo.canvas, demo.camera, scene, {
+  batchEvents: false,
+});
+const grabs = new Map<number, ReturnType<typeof grab>>();
+function bodyOf(object: THREE.Object3D | null): RigidBody | null {
+  while (object && !(object instanceof RigidBody)) object = object.parent;
+  return object;
+}
+scene.addEventListener("pointerdown", (event) => {
+  const body = bodyOf(event.object);
+  if (event.button !== 0 || body?.bodyType !== "dynamic") return;
+  event.object.setPointerCapture(event.pointerId);
+  grabs.set(event.pointerId, grab(scene, body, event.point));
+  demo.controls.enabled = false;
+});
+scene.addEventListener("pointermove", (event) => {
+  grabs.get(event.pointerId)?.move(event.point);
+});
+for (const type of ["pointerup", "pointercancel"] as const)
+  scene.addEventListener(type, (event) => {
+    grabs.get(event.pointerId)?.release();
+    grabs.delete(event.pointerId);
+    demo.controls.enabled = grabs.size === 0;
+  });
 window.addEventListener(
   "keydown",
   (event) => {
@@ -11,11 +40,17 @@ window.addEventListener(
   },
   { signal: demo.signal },
 );
-demo.run();
+demo.run(() => {
+  pointer.update();
+  const held = [...grabs.values()].map((held) => held.body.name);
+  return held.length ? `Holding ${held.join(", ")}` : "";
+});
 window.addEventListener(
   "pagehide",
   (event) => {
-    if (!event.persisted) demo.dispose();
+    if (event.persisted) return;
+    pointer.destroy();
+    demo.dispose();
   },
   { signal: demo.signal },
 );

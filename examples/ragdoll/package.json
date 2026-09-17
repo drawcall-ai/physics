@@ -12,6 +12,7 @@
   "dependencies": {
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
+    "@pmndrs/pointer-events": "^6.6.30",
     "three": "^0.185.1"
   },
   "devDependencies": {

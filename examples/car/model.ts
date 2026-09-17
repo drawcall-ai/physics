@@ -6,7 +6,7 @@ import {
   PrismaticJoint,
   RevoluteJoint,
   FixedJoint,
-  JointMotor,
+  JointDrive,
   type PhysicsWorld,
   type Vec3,
 } from "@drawcall/physics";
@@ -18,7 +18,7 @@ export const simulationOptions = {
 };
 
 // A stiff, torque-limited native servo overcomes stationary tire scrub.
-export const steeringMotor = {
+export const steeringDrive = {
   stiffness: 300000,
   damping: 1500,
   maxForce: 4000,
@@ -114,11 +114,12 @@ export function createCar(world: PhysicsWorld) {
         frame0: new THREE.Matrix4().makeTranslation(x, -0.52, z),
         frame1: new THREE.Matrix4(),
       });
-      new JointMotor({
-        joint: spring,
-        stiffness: specification.stiffness,
-        damping: specification.damping,
-      }).setTarget({ position: 0 });
+      spring.setDrive(
+        new JointDrive({
+          stiffness: specification.stiffness,
+          damping: specification.damping,
+        }).setTarget({ position: 0 }),
+      );
       spring.name = `${name}Suspension`;
       const steeringFrames = {
         body0: carrier,
@@ -133,12 +134,11 @@ export function createCar(world: PhysicsWorld) {
             limits: [-0.6, 0.6],
           })
         : new FixedJoint(steeringFrames);
-      const servo =
-        steering instanceof RevoluteJoint
-          ? new JointMotor({ joint: steering, ...steeringMotor }).setTarget({
-              position: 0,
-            })
-          : undefined;
+      let servo: JointDrive | undefined;
+      if (steering instanceof RevoluteJoint) {
+        servo = new JointDrive(steeringDrive).setTarget({ position: 0 });
+        steering.setDrive(servo);
+      }
       steering.name = `${name}${front ? "Steering" : "KnuckleMount"}`;
       const tire = new RigidBody({
         world,
@@ -180,12 +180,10 @@ export function createCar(world: PhysicsWorld) {
         frame1: new THREE.Matrix4(),
       });
       axle.name = `${name}Motor`;
-      const motor = new JointMotor({
-        joint: axle,
-        damping: 450,
-        maxForce: 1100,
+      const motor = new JointDrive({ damping: 450, maxForce: 1100 }).setTarget({
+        velocity: 0,
       });
-      motor.setTarget({ velocity: 0 });
+      axle.setDrive(motor);
       // Spring geometry is visual only; force comes from the prismatic joint.
       const points = Array.from(
         { length: 97 },

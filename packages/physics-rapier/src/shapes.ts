@@ -5,20 +5,20 @@ import { Quaternion, Vector3 } from "three";
 
 type API = typeof Rapier;
 
-export function collider(
+export function colliderDesc(
   api: API,
   resolved: ReturnType<typeof resolveCollider>,
   body: RigidBody,
 ): Rapier.ColliderDesc {
-  const { collider: source, shape, matrix } = resolved;
-  const material = body.getMaterial(source);
+  const { collider, shape, matrix } = resolved;
+  const material = body.getMaterial(collider);
   const position = new Vector3().setFromMatrixPosition(matrix);
   const quaternion = new Quaternion().setFromRotationMatrix(matrix);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction.");
   const result = descriptor(api, shape);
-  if (source.collisionGroups) {
-    const { membership, filter } = source.collisionGroups;
+  if (collider.collisionGroups) {
+    const { membership, filter } = collider.collisionGroups;
     result.setCollisionGroups(((membership << 16) | filter) >>> 0);
   }
   return result
@@ -27,7 +27,7 @@ export function collider(
     .setDensity(material.density)
     .setFriction(material.dynamicFriction)
     .setRestitution(material.restitution)
-    .setSensor(source.sensor);
+    .setSensor(collider.sensor);
 }
 
 function descriptor(api: API, shape: Shape): Rapier.ColliderDesc {
@@ -42,7 +42,7 @@ function descriptor(api: API, shape: Shape): Rapier.ColliderDesc {
     case "sphere":
       return factory.ball(shape.radius);
     case "capsule":
-      return factory.capsule(shape.length / 2, shape.radius);
+      return factory.capsule(shape.height / 2, shape.radius);
     case "cylinder":
       return factory.cylinder(shape.height / 2, shape.radius);
     case "mesh": {

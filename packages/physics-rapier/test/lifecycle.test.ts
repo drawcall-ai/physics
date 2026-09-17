@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { createWorld } from "./fixtures.js";
 import { Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
@@ -7,13 +8,10 @@ import {
   SphericalJoint,
   DistanceJoint,
   PrismaticJoint,
-  JointMotor,
+  JointDrive,
 } from "@drawcall/physics";
-import { createWorld } from "./fixtures.js";
 
-function setup() {
-  return createWorld({ fixedDelta: 1 / 60 });
-}
+const setup = () => createWorld({ fixedDelta: 1 / 60 });
 
 it("reads and queries construction state without capturing unfinished scale or replaying impulses", async () => {
   const world = await setup();
@@ -90,10 +88,12 @@ it("shares world-pose writeback before and after initialization and freezes rese
   expect(body.scale.distanceTo(new Vector3(1, 2, 3))).toBeLessThan(1e-6);
 });
 
-for (const axis of ["X", "Y", "Z"] as const) {
+for (const axis of ["X", "Y", "Z"] as const)
   it(`reads authored joint state with scaled anchors and ${axis} axis before backend sync`, async () => {
     const world = await setup();
-    const body = new RigidBody().setVelocity({ angular: new Vector3(2, 3, 4) });
+    const body = new RigidBody().setVelocity({
+      angular: new Vector3(2, 3, 4),
+    });
     body.position.set(2, 3, 4);
     body.scale.setScalar(2);
     body.add(new BoxCollider());
@@ -116,7 +116,6 @@ for (const axis of ["X", "Y", "Z"] as const) {
     world.update(world.fixedDelta);
     expect(Number.isFinite(joint.getState().position)).toBe(true);
   });
-}
 
 it("rejects disposed, foreign and invalid operations while accepting staged commands", async () => {
   const world = await setup();
@@ -133,10 +132,11 @@ it("rejects disposed, foreign and invalid operations while accepting staged comm
   body.dispose();
   expect(() => body.getVelocity()).toThrow("disposed");
   expect(() => body.teleport(new Matrix4())).toThrow("disposed");
+  world.update(0);
 });
 
-for (const kind of ["spherical", "distance"] as const) {
-  it(`keeps ${kind} state continuous when authored frame rotations are unused`, async () => {
+for (const kind of ["spherical", "distance"] as const)
+  it(`keeps ${kind} state continuous across backend sync with authored frame rotations`, async () => {
     const world = await setup();
     const body = new RigidBody();
     body.add(new BoxCollider());
@@ -154,10 +154,8 @@ for (const kind of ["spherical", "distance"] as const) {
         : new DistanceJoint({ ...options, limits: [0, 3] });
     const initial = joint.getState();
     world.update(0);
-    const ready = joint.getState();
-    expect(ready).toEqual(initial);
+    expect(joint.getState()).toEqual(initial);
   });
-}
 
 it("preserves world scale through static teleport and reset under a nonuniform parent", async () => {
   const world = await setup();
@@ -189,7 +187,7 @@ it("preserves world scale through static teleport and reset under a nonuniform p
   expect(body.matrixWorld.elements).toEqual(pose.elements);
 });
 
-it("preserves additive forces and replaces staged effort in the first before-step callback", async () => {
+it("applies staged forces once and keeps replacing the drive effort held at each step", async () => {
   const world = await setup();
   const body = new RigidBody({
     colliders: false,
@@ -198,21 +196,22 @@ it("preserves additive forces and replaces staged effort in the first before-ste
     diagonalInertia: [1, 1, 1],
   });
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
-  const motor = new JointMotor({ joint, stiffness: 10 });
-  motor.setTarget({ position: 2 }).setEnabled(false);
+  const drive = new JointDrive({});
+  joint.setDrive(drive);
   body.applyForce(new Vector3(2, 0, 0));
   body.applyForce(new Vector3(4, 0, 0));
-  joint.setEffort(100);
+  drive.setTarget({ effort: 100 });
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
   world.update(0);
   world.update(world.fixedDelta / 2);
   expect(world.time).toBe(0);
-  const unsubscribe = world.onBeforeStep(() => joint.setEffort(2));
+  const unsubscribe = world.onBeforeStep(() => drive.setTarget({ effort: 2 }));
   world.update(world.fixedDelta / 2);
   unsubscribe();
   expect(body.getVelocity().linear.x).toBeCloseTo(4 * world.fixedDelta);
+  // Staged forces last one step; the drive's effort target persists.
   world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeCloseTo(4 * world.fixedDelta);
+  expect(body.getVelocity().linear.x).toBeCloseTo(5 * world.fixedDelta);
 });
 
 it("clears staged commands on reset and disposal, and replaces kinematic targets without replay", async () => {

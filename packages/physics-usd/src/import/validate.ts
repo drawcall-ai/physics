@@ -1,4 +1,4 @@
-import { attribute, numeric, schemas } from "./layer.js";
+import { PRIM_SPEC, attribute, numeric, schemas } from "./layer.js";
 import type { Layer } from "./layer.js";
 
 export function validate(layer: Layer): void {
@@ -42,6 +42,7 @@ export function validate(layer: Layer): void {
     "gravityDirection",
     "gravityMagnitude",
   ]);
+  const dofs = ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"];
   const supported = new Set([
     "PhysicsRigidBodyAPI",
     "PhysicsMassAPI",
@@ -50,9 +51,11 @@ export function validate(layer: Layer): void {
     "PhysicsMaterialAPI",
     "PhysicsDriveAPI:angular",
     "PhysicsDriveAPI:linear",
+    ...dofs.map((dof) => `PhysicsDriveAPI:${dof}`),
+    ...dofs.map((dof) => `PhysicsLimitAPI:${dof}`),
   ]);
   for (const [path, spec] of Object.entries(layer.specsByPath)) {
-    if (spec.specType === 6) {
+    if (spec.specType === PRIM_SPEC) {
       const order = spec.fields.xformOpOrder;
       if (order !== undefined) {
         const operations = new Set([
@@ -76,20 +79,26 @@ export function validate(layer: Layer): void {
         )
           throw new Error(`Unsupported USD transform operation on ${path}`);
       }
-      const driveAxis =
-        spec.fields.typeName === "PhysicsRevoluteJoint"
-          ? "angular"
-          : spec.fields.typeName === "PhysicsPrismaticJoint"
-            ? "linear"
-            : undefined;
-      for (const schema of schemas(layer, path))
-        if (
-          schema.startsWith("PhysicsDriveAPI") &&
-          schema !== `PhysicsDriveAPI:${driveAxis}`
-        )
+      const type = spec.fields.typeName;
+      const driveAxes =
+        type === "PhysicsRevoluteJoint"
+          ? ["angular"]
+          : type === "PhysicsPrismaticJoint" || type === "PhysicsDistanceJoint"
+            ? ["linear"]
+            : type === "PhysicsJoint"
+              ? dofs
+              : [];
+      for (const schema of schemas(layer, path)) {
+        const [api, instance = ""] = schema.split(":");
+        if (api === "PhysicsDriveAPI" && !driveAxes.includes(instance))
           throw new Error(
             `Unsupported USD drive schema ${schema} on prim ${path}`,
           );
+        if (api === "PhysicsLimitAPI" && type !== "PhysicsJoint")
+          throw new Error(
+            `Unsupported USD limit schema ${schema} on prim ${path}`,
+          );
+      }
       if (spec.fields.typeName === "PhysicsScene" && ++scenes > 1)
         throw new Error("Multiple physics scenes are unsupported");
       for (const schema of schemas(layer, path))
@@ -99,20 +108,33 @@ export function validate(layer: Layer): void {
     const property = path.split(".").slice(1).join(".");
     if (property.startsWith("physics:") && !properties.has(property.slice(8)))
       throw new Error(`Unsupported USD physics property ${path}`);
+    const prim = path.split(".")[0] ?? "";
     if (
       property.startsWith("drive:") &&
-      (!/^drive:(angular|linear):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$/.test(
+      (!/^drive:(angular|linear|transX|transY|transZ|rotX|rotY|rotZ):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$/.test(
         property,
       ) ||
-        !schemas(layer, path.split(".")[0] ?? "").includes(
+        !schemas(layer, prim).includes(
           `PhysicsDriveAPI:${property.split(":")[1]}`,
         ))
     )
       throw new Error(
-        `Unsupported USD drive property ${property} on prim ${path.split(".")[0]}`,
+        `Unsupported USD drive property ${property} on prim ${prim}`,
       );
     if (
-      spec.specType === 6 &&
+      property.startsWith("limit:") &&
+      (!/^limit:(transX|transY|transZ|rotX|rotY|rotZ):physics:(low|high)$/.test(
+        property,
+      ) ||
+        !schemas(layer, prim).includes(
+          `PhysicsLimitAPI:${property.split(":")[1]}`,
+        ))
+    )
+      throw new Error(
+        `Unsupported USD limit property ${property} on prim ${prim}`,
+      );
+    if (
+      spec.specType === PRIM_SPEC &&
       schemas(layer, path).includes("PhysicsMassAPI") &&
       !schemas(layer, path).includes("PhysicsRigidBodyAPI")
     ) {

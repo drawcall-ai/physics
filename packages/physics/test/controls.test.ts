@@ -3,11 +3,11 @@ import { Matrix4, Vector3 } from "three";
 import {
   AuthoringWorld,
   DistanceJoint,
-  FixedJoint,
   MeshCollider,
   PrismaticJoint,
   RevoluteJoint,
   RigidBody,
+  SphericalJoint,
   setDefaultWorld,
   type RigidBodyOptions,
   type JointOptions,
@@ -37,7 +37,14 @@ it("copies immutable configuration, retaining resource identities and independen
   >();
   options.mass = 20;
   centerOfMass[0] = 9;
-  expect(body.options).toEqual({ ...mass, world, centerOfMass: [1, 2, 3] });
+  expect(body.options).toEqual({
+    ...mass,
+    world,
+    centerOfMass: [1, 2, 3],
+    type: "dynamic",
+    colliders: "auto",
+    canSleep: true,
+  });
   const frame0 = new Matrix4().makeTranslation(2, 0, 0);
   const limits: [number, number] = [-1, 2];
   const joint = new RevoluteJoint({
@@ -123,18 +130,17 @@ it("validates runtime controls before storing and checks the authoring world bou
     body0: null,
     body1: body,
   }).setCollideConnected(true);
-  joint.setEffort(2).setEnabled(false).setEnabled(true);
+  joint.setEnabled(false).setEnabled(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  expect(() => joint.setEffort(NaN)).toThrow("finite");
   const foreign = new AuthoringWorld();
-  expect(() => foreign.setJointEffort(joint, 2)).toThrow("another world");
+  expect(() => foreign.readJoint(joint)).toThrow("another world");
   foreign.dispose();
   expect(world.time).toBe(0);
   expect(() => world.raycast(new Vector3(), new Vector3(1, 0, 0), 10)).toThrow(
     "raycast",
   );
   body.dispose();
-  expect(() => joint.setEffort(1)).toThrow("disposed");
+  expect(() => joint.setDrive(undefined)).toThrow("disposed");
   expect(() => body.setAngularDamping(0)).toThrow("disposed");
 });
 
@@ -163,9 +169,10 @@ it("reads unfinished joints without inferring collider mass", () => {
   expect(
     new RevoluteJoint({ body0: null, body1: body }).getState().velocity,
   ).toBeCloseTo(2);
-  expect(new FixedJoint({ body0: null, body1: body }).getState().distance).toBe(
-    0,
-  );
+  expect(
+    new SphericalJoint({ body0: null, body1: body }).getState().angularVelocity
+      .y,
+  ).toBeCloseTo(2);
   const slider = new PrismaticJoint({ body0: null, body1: body });
   expect(() => slider.getState()).toThrow("requires explicit mass properties");
   body.setVelocity({ angular: new Vector3(), linear: new Vector3(0, 3, 0) });

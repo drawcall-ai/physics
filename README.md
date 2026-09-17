@@ -64,9 +64,11 @@ before stepping, after geometry and initial transforms have been configured. New
 bodies and joints can be constructed while the simulation is running.
 
 Constructor options are copied and typed readonly: body type/mass, collider dimensions,
-joint bodies/frames/limits, and motor gains. Recreate objects to change them.
+joint bodies/frames/limits/dofs, and drive gains. `options` carries the resolved
+defaults. Recreate objects to change them.
 Mutable settings use methods: `setVelocity`, `setLinearDamping`, `setAngularDamping`,
-`setGravityScale`, `setMaterial`, `setEnabled`, and `setCollideConnected`.
+`setGravityScale`, `setMaterial`, `setEnabled`, `setCollideConnected`, `setDrive`,
+and a drive's `setTarget`.
 Private state and readonly configuration use TypeScript; numeric physics and
 external-input constraints are checked at runtime.
 
@@ -85,17 +87,50 @@ and clears the default only if that world is still the default. A later
 - `BoxCollider`, `SphereCollider`, `CapsuleCollider`, `CylinderCollider`,
   `MeshCollider`: explicit `Object3D` shapes. Their presence disables automatic generation on their body.
   Their transforms locate shapes relative to the body. Capsules and cylinders
-  extend along Y; capsule `length` excludes the hemispheres.
+  extend along Y; capsule `height` excludes the hemispheres.
 - `FixedJoint`, `RevoluteJoint`, `PrismaticJoint`, `SphericalJoint`,
-  `DistanceJoint`: `Object3D` constraints. `body0: null` anchors to the world.
-  Revolute/prismatic joints have an `axis` (default Y) and optional `limits`.
-  Distance joints use minimum/maximum `limits`.
-- `JointMotor`: one actuator per revolute/prismatic joint, with immutable gains,
-  force ceiling, and model; mutable targets and enabled state.
+  `DistanceJoint`, `GenericJoint`: `Object3D` constraints. `body0: null` anchors to
+  the world. Revolute/prismatic joints have an `axis` (default Y) and optional
+  `limits`. Distance joints use minimum/maximum `limits`; an `Infinity` maximum
+  leaves the distance free. A generic joint declares each of its six `dofs`
+  (`transX` … `rotZ`, USD's tokens) as `"locked"` (the default), `"free"`, or a
+  `[min, max]` range in frame 0.
+- `JointDrive`: a plain class, not an `Object3D`. The force law on one joint
+  coordinate with immutable gains, force ceiling, and model, and a mutable target.
+  Revolute, prismatic, and distance joints hold one drive through `setDrive(drive)`;
+  a generic joint holds one per axis through `setDrive(axis, drive)`.
 
-All quantities use meters, kilograms, seconds, and radians. Joint placement defines
+Joint placement defines
 both initial local frames. Supply both `frame0` and `frame1` instead for explicit
 body-local `Matrix4` transforms. A world anchor uses a world-space `frame0`.
+
+## Conventions
+
+These hold for every backend. Adapters reject what they cannot honor instead of
+approximating. The Rapier package's tests are the executable form of this contract:
+a new backend starts from them and keeps its engine limitations in a test next to
+the rejection, as `packages/physics-rapier/test/rapier.test.ts` does.
+
+- Units are SI throughout the core: meters, kilograms, seconds, newtons, and
+  radians. Adapters convert where a format defaults to degrees, as USD and MJCF do.
+- Body damping is a rate in 1/s and independent of mass, as in PhysX, Jolt, Bullet,
+  and Rapier. Engines with force-per-velocity damping scale it by mass and inertia.
+- Linear velocity is measured at the center of mass. Angular velocity and the
+  `point` of `applyForce`/`applyImpulse` are world space.
+- `body0` is the base side of a joint and `null` is the world; `body1` is the moving
+  side. Reduced-coordinate backends derive their kinematic tree from this graph and
+  treat loop-closing joints as soft constraints, so prefer authoring a tree.
+- Friction and restitution combine rules and contact softness are backend-defined.
+  The core stores coefficients per body and collider only.
+- The `acceleration` drive model is native to PhysX-like solvers and emulated with
+  effective mass elsewhere. A backend that can do neither rejects it.
+- A drive target replaces all three terms at once, so a controller that sets one
+  term relies on the others reading as zero. Backends may cap the native
+  stiffness/damping terms and the effort term separately rather than their sum.
+- Immutable configuration uses tuples; runtime state uses Three.js vectors,
+  quaternions, and matrices.
+- Collider parameters use the physics-engine names: capsules and cylinders both
+  take a `height`, boxes take a full `size`.
 
 ## Colliders, transforms, and cloning
 
@@ -132,7 +167,7 @@ joint body references. For a complete mechanism, use `clone(root)` from
 `@drawcall/physics`, like Three.js SkeletonUtils: it clones an ordinary object
 hierarchy and reconnects internal joint references to cloned bodies. External
 body references remain external. Copy requires matching immutable configuration;
-cloning preserves motors and rebinds their joints. Geometry and materials remain shared,
+cloning recreates drives through their own constructors, so subclasses survive. Geometry and materials remain shared,
 application-owned resources. Clones register in their source world.
 
 Explicit colliders use `setSensor(true)`, `setMaterial(...)`, and
@@ -169,41 +204,80 @@ for controls and source.
 
 The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. Reads and writes need no preparation call. Temporary backend bodies evaluate pending impulses and queries without capturing final parent scale, collider geometry, mass, or joint anchors. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
 
-## Motors, measurements, and effort
+## Drives and readings
 
 ```ts
-const motor = new JointMotor({
-  joint: hinge,
-  stiffness: 100,
-  damping: 10,
-  maxForce: 20,
-});
-motor.setTarget({ position: 0.5 });
-motor.setEnabled(false);
-motor.dispose(); // preserves the joint
+const drive = new JointDrive({ stiffness: 100, damping: 10, maxForce: 20 });
+hinge.setDrive(drive);
+drive.setTarget({ position: 0.5 }); // servo
+drive.setTarget({ velocity: 2 }); // motor
+drive.setTarget({ effort: 0.5 }); // torque input
+drive.setTarget(undefined); // passive, no braking
+hinge.setDrive(undefined); // detach; drive.joint becomes undefined
 ```
 
-Import `JointMotor` from core; it replaces `JointDrive`/joint drive options.
-Motors start enabled without a target and exert no force until targeted.
-Targets persist; each call replaces both coordinates, defaulting omissions to zero.
-Zero stiffness gives velocity control; zero velocity with damping brakes.
-`model` defaults to `"force"`; `"acceleration"` is backend-dependent. `maxForce`
-is N for sliders or N·m for hinges; omission means unbounded. Joint/world disposal
-releases motors. Unsupported backend settings fail explicitly.
+A drive applies `stiffness · (position − q) + damping · (velocity − q̇) + effort`,
+capped by `maxForce`, to its joint coordinate. It exerts no force without a target.
+Each `setTarget` replaces all three terms and zeroes the omitted ones; a nonzero
+position needs stiffness and a nonzero velocity needs damping. A drive belongs to
+one joint at a time. `model` defaults to `"force"`; `"acceleration"` is
+backend-dependent. `maxForce` is N for translations or N·m for rotations; omission
+means unbounded. Subclass `JointDrive` to carry application data with the drive:
+joint copies and assembly clones reconstruct the subclass.
+
+A drive with a constant target is a spring. A distance joint with an unlimited
+maximum and a drive toward zero is a force-limited tether, and a free generic joint
+with translation drives is how to drag a dynamic body without making it kinematic:
+a kinematic hand follows the pointer or controller, and the capped drives pull the
+body after it, so walls and floors still stop the body. A controller with
+orientation adds drives on the rotation axes.
+
+```ts
+const hand = new RigidBody({ type: "kinematic", colliders: false });
+const hold = new GenericJoint({
+  body0: hand,
+  body1: sword,
+  frame0: new Matrix4(),
+  frame1: new Matrix4().makeTranslation(sword.worldToLocal(grabPoint)),
+  dofs: {
+    transX: "free",
+    transY: "free",
+    transZ: "free",
+    rotX: "free",
+    rotY: "free",
+    rotZ: "free",
+  },
+});
+for (const axis of ["transX", "transY", "transZ"] as const)
+  hold.setDrive(
+    axis,
+    new JointDrive({
+      model: "acceleration",
+      stiffness: 1000,
+      damping: 63,
+      maxForce: 600,
+    }).setTarget({ position: 0 }),
+  );
+hand.setKinematicTarget(controllerPose); // each frame; hand.dispose() releases
+```
+
+The ragdoll example wires this to `@pmndrs/pointer-events` for mouse and touch.
 
 Axis `getState()` returns `{ position, velocity }` in radians/rad·s⁻¹ or meters/m·s⁻¹.
+Spherical `getState()` returns `{ rotation, angularVelocity }`: frame 1 relative to
+frame 0 and the relative angular velocity in frame 0 coordinates. Distance joints
+return `{ distance, velocity }`. Generic joints take the axis, `getState("rotY")`,
+reading rotations as wrapped XYZ Euler angles of the relative rotation. Fixed
+joints have no state. Backends deliver one frame-0 reading per joint
+(`translation`, `rotation`, `linearVelocity`, `angularVelocity`, continuous `angle`)
+from which every typed state derives.
 Revolute position tracks turns each substep; motion must remain below π per substep.
 Teleport rebases without counting turns; reset restores the initialized coordinate.
-Rapier position-motor targets use continuous radians and must remain less than π
+Rapier position-drive targets use continuous radians and must remain less than π
 from the current position; longer trajectories need intermediate targets.
 Body linear velocity is measured at COM, with both velocity vectors world-aligned.
 Rapier reads rotating-slider velocity using native COM inference without stepping.
 AuthoringWorld requires explicit mass properties for this read and otherwise throws.
-
-`joint.setEffort(value)` accepts construction-time calls and applies one substep of torque/force
-with reaction on the connected body. Last call wins; zero cancels. Submit ongoing
-effort in `onBeforeStep`; disable an active motor first. Disable/reset/dispose clear
-pending effort. No-step updates preserve it. Motor plus feed-forward effort is unsupported.
 `world.time` counts completed substeps, advances before `onAfterStep`, and resets to
 zero. Catch-up time discarded by `maxSubsteps` is not simulated time.
 

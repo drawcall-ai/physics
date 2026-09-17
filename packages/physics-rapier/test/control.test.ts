@@ -1,42 +1,43 @@
 import { expect, it } from "vitest";
 import { Group, Matrix4, Vector3 } from "three";
-import { PrismaticJoint, RevoluteJoint } from "@drawcall/physics";
+import { JointDrive, PrismaticJoint, RevoluteJoint } from "@drawcall/physics";
 import { createWorld, inertialBody } from "./fixtures.js";
 
-it("prepares before observers and consumes only the final effort for one substep", async () => {
+it("prepares before observers and applies the effort held at step time for one substep", async () => {
   const world = await createWorld();
   const body = inertialBody();
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const other = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
-  joint.setEffort(5);
+  const effort = new JointDrive({}).setTarget({ effort: 5 });
+  joint.setDrive(effort);
+  const idle = new JointDrive({}).setTarget({ effort: 20 });
+  other.setDrive(idle);
   const stop = world.onBeforeStep(() => {
     body.applyForce(new Vector3(4, 0, 0));
-    joint.setEffort(2).setEffort(3);
-    other.setEffort(20).setEffort(0);
+    effort.setTarget({ effort: 2 }).setTarget({ effort: 3 });
+    idle.setTarget(undefined);
     stop();
   });
   world.update(0.004);
   expect(world.time).toBe(0);
   world.update(0.006);
   expect(joint.getState().velocity).toBeCloseTo(0.07, 5);
+  effort.setTarget(undefined);
   world.update(0.02);
   expect(joint.getState().velocity).toBeCloseTo(0.07, 5);
-  joint.setEffort(9).setEffort(0);
-  world.update(0);
+  effort.setTarget({ effort: 9 });
+  joint.setEnabled(false);
   world.update(0.01);
   expect(joint.getState().velocity).toBeCloseTo(0.07, 5);
-  joint.setEffort(9).setEnabled(false).setEnabled(true);
-  world.update(0.01);
-  expect(joint.getState().velocity).toBeCloseTo(0.07, 5);
-  joint.setEffort(9);
+  joint.setEnabled(true);
   world.reset();
+  effort.setTarget(undefined);
   world.update(0.01);
   expect(joint.getState().velocity).toBe(0);
 });
 
-it.each([RevoluteJoint, PrismaticJoint])(
-  "applies joint effort and reaction through transformed frames: %s",
-  async (Joint) => {
+for (const Joint of [RevoluteJoint, PrismaticJoint])
+  it(`applies joint effort and reaction through transformed frames: ${Joint.name}`, async () => {
     const world = await createWorld();
     const parent = new Group();
     parent.position.set(2, 3, 4);
@@ -54,7 +55,7 @@ it.each([RevoluteJoint, PrismaticJoint])(
       frame1: frame,
     });
     world.update(0);
-    joint.setEffort(2);
+    joint.setDrive(new JointDrive({}).setTarget({ effort: 2 }));
     world.update(0.01);
     const rotary = joint instanceof RevoluteJoint;
     const a = rotary ? first.getVelocity().angular : first.getVelocity().linear;
@@ -66,8 +67,7 @@ it.each([RevoluteJoint, PrismaticJoint])(
       b.dot(new Vector3(1, 0, 0).applyQuaternion(parent.quaternion)),
     ).toBeGreaterThan(0);
     expect(joint.getState().velocity).toBeGreaterThan(0);
-  },
-);
+  });
 
 it("measures offset COM and moving reference-axis velocity", async () => {
   const world = await createWorld({ fixedDelta: 0.0001 });
@@ -100,14 +100,17 @@ it("measures offset COM and moving reference-axis velocity", async () => {
   expect(offset.getState().velocity).toBeCloseTo(-3, 4);
 });
 
-it.each([8, -8])(
-  "tracks turns without getters at %s rad/s and rebases teleport/reset",
-  async (speed) => {
+for (const speed of [8, -8])
+  it(`tracks turns without getters at ${speed} rad/s and rebases teleport/reset`, async () => {
     const world = await createWorld();
     const body = inertialBody().setVelocity({
       angular: new Vector3(0, 0, speed),
     });
-    const hinge = new RevoluteJoint({ body0: null, body1: body, axis: "Z" });
+    const hinge = new RevoluteJoint({
+      body0: null,
+      body1: body,
+      axis: "Z",
+    });
     for (let i = 0; i < 200; i++) world.update(0.01);
     expect(hinge.getState().position).toBeCloseTo(speed * 2, 1);
     body.teleport(new Matrix4().makeRotationZ(0.25));
@@ -115,8 +118,7 @@ it.each([8, -8])(
     world.reset();
     expect(hinge.getState().position).toBeCloseTo(0, 5);
     expect(world.time).toBe(0);
-  },
-);
+  });
 
 it("applies runtime damping/gravity settings while preserving the initialized velocity baseline", async () => {
   const world = await createWorld({ gravity: [0, -10, 0] });

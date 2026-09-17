@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { Group } from "three";
 import {
   AuthoringWorld,
-  JointMotor,
+  JointDrive,
   RevoluteJoint,
   RigidBody,
 } from "@drawcall/physics";
@@ -14,20 +14,17 @@ beforeEach(() => {
 });
 afterEach(() => world.dispose());
 
-it("rejects disabled and untargeted motor export instead of changing actuation", async () => {
+it("rejects untargeted and effort-driven export instead of changing actuation", async () => {
   const body = new RigidBody({ world, type: "static" });
   const joint = new RevoluteJoint({ body0: null, body1: body });
-  const motor = new JointMotor({ joint, stiffness: 10 });
+  const drive = new JointDrive({ stiffness: 10 });
+  joint.setDrive(drive);
   const scene = new Group().add(body, joint);
   const exporter = new PhysicsUSDExporter();
-  await expect(exporter.parseAsync(scene)).rejects.toThrow(
-    "disabled or untargeted motor",
-  );
-  motor.setTarget({ position: 1 }).setEnabled(false);
-  await expect(exporter.parseAsync(scene)).rejects.toThrow(
-    "disabled or untargeted motor",
-  );
-  motor.dispose();
+  await expect(exporter.parseAsync(scene)).rejects.toThrow("untargeted drive");
+  drive.setTarget({ position: 1, effort: 2 });
+  await expect(exporter.parseAsync(scene)).rejects.toThrow("no effort term");
+  joint.setDrive(undefined);
   await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(Uint8Array);
 });
 

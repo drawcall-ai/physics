@@ -2,6 +2,24 @@ import { Matrix4, Quaternion, Vector3 } from "three";
 import type { Collider, Shape } from "./objects.js";
 import type { RigidBody } from "./body.js";
 
+export function validateVector(value: Vector3): void {
+  if (![value.x, value.y, value.z].every(Number.isFinite))
+    throw new Error("Physics vectors must be finite");
+}
+
+/** Writes a world pose into the object's local transform, keeping its world scale. */
+export function setWorldPose(object: RigidBody, pose: Matrix4): void {
+  object.updateWorldMatrix(true, false);
+  const scale = splitTransform(object.matrixWorld).scale;
+  const matrix = pose.clone().scale(scale);
+  if (object.parent)
+    matrix.premultiply(object.parent.matrixWorld.clone().invert());
+  splitTransform(matrix);
+  matrix.decompose(object.position, object.quaternion, object.scale);
+  object.updateMatrix();
+  object.updateMatrixWorld(true);
+}
+
 export function splitTransform(matrix: Matrix4, name = "Physics transform") {
   const position = new Vector3(),
     rotation = new Quaternion(),
@@ -71,7 +89,7 @@ function scaleShape(shape: Shape, scale: Vector3, name: string): Shape {
       return {
         kind: "capsule",
         radius: shape.radius * x,
-        length: shape.length * y,
+        height: shape.height * y,
       };
   }
 }

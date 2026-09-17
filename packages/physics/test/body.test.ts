@@ -163,7 +163,7 @@ describe("physics objects", () => {
     body.add(new Mesh(capsule), new Mesh(new SphereGeometry(0.75)));
     const shapes = body.getColliders().map((collider) => collider.shape());
     expect(shapes).toEqual([
-      { kind: "capsule", radius: 0.25, length: 1.5 },
+      { kind: "capsule", radius: 0.25, height: 1.5 },
       { kind: "sphere", radius: 0.75 },
     ]);
     expect(capsule.boundingBox?.min.y).toBeCloseTo(-1);

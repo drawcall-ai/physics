@@ -28,7 +28,8 @@ import {
   SphereCollider,
   SphericalJoint,
   Joint,
-  JointMotor,
+  JointDrive,
+  GenericJoint,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
 import {
@@ -70,13 +71,14 @@ function doorAssembly(model: "force" | "acceleration" = "force") {
     body1: door,
     limits: [0, Math.PI / 2],
   });
-  new JointMotor({
-    joint: hinge,
-    model,
-    stiffness: 100,
-    damping: 10,
-    maxForce: 40,
-  }).setTarget({ position: Math.PI / 4, velocity: 0.4 });
+  hinge.setDrive(
+    new JointDrive({
+      model,
+      stiffness: 100,
+      damping: 10,
+      maxForce: 40,
+    }).setTarget({ position: Math.PI / 4, velocity: 0.4 }),
+  );
   hinge.position.set(-0.49, 1.05, 0);
   assembly.add(frame, door, hinge);
   return { scene, frame, door, hinge };
@@ -195,12 +197,12 @@ def Cube "Crate" (
       expect(joint.options.body0).toBe(frame);
       expect(joint.options.body1).toBe(loadedDoor);
       expect(joint.limits).toEqual(hinge.limits);
-      expect(joint.motor?.options.model).toBe(model);
-      expect(joint.motor?.options.stiffness).toBeCloseTo(100);
-      expect(joint.motor?.options.damping).toBeCloseTo(10);
-      expect(joint.motor?.options.maxForce).toBe(40);
-      expect(joint.motor?.target?.position).toBeCloseTo(Math.PI / 4);
-      expect(joint.motor?.target?.velocity).toBeCloseTo(0.4);
+      expect(joint.drive?.options.model).toBe(model);
+      expect(joint.drive?.options.stiffness).toBeCloseTo(100);
+      expect(joint.drive?.options.damping).toBeCloseTo(10);
+      expect(joint.drive?.options.maxForce).toBe(40);
+      expect(joint.drive?.target?.position).toBeCloseTo(Math.PI / 4);
+      expect(joint.drive?.target?.velocity).toBeCloseTo(0.4);
       expect(
         new Vector3()
           .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
@@ -239,7 +241,7 @@ def Cube "Crate" (
     body.add(
       new BoxCollider({ size: [1, 2, 3] }).setMaterial(material),
       new SphereCollider({ radius: 0.4 }),
-      new CapsuleCollider({ radius: 0.2, length: 1 }),
+      new CapsuleCollider({ radius: 0.2, height: 1 }),
       new CylinderCollider({ radius: 0.3, height: 0.8 }),
       new MeshCollider({
         approximation: "convexHull",
@@ -285,7 +287,7 @@ def Cube "Crate" (
     expect(colliders?.slice(0, 4).map((collider) => collider.shape())).toEqual([
       { kind: "box", size: [1, 2, 3] },
       { kind: "sphere", radius: 0.4 },
-      { kind: "capsule", radius: 0.2, length: 1 },
+      { kind: "capsule", radius: 0.2, height: 1 },
       { kind: "cylinder", radius: 0.3, height: 0.8 },
     ]);
     expect(colliders?.[0]?.material).toMatchObject(material);
@@ -320,6 +322,99 @@ def Cube "Crate" (
       kind: "box",
       size: [2, 2, 2],
     });
+  });
+
+  it("roundtrips an unlimited distance joint driven by a linear motor", async () => {
+    const scene = new Scene();
+    const hand = new RigidBody({ type: "kinematic", colliders: false });
+    hand.name = "Hand";
+    const ball = new RigidBody({ mass: 2 });
+    ball.name = "Ball";
+    ball.position.y = -0.5;
+    ball.add(new Mesh(new BoxGeometry(0.2, 0.2, 0.2)));
+    const spring = new DistanceJoint({
+      body0: hand,
+      body1: ball,
+      limits: [0, Infinity],
+    });
+    spring.setDrive(
+      new JointDrive({
+        model: "acceleration",
+        stiffness: 1000,
+        damping: 63,
+        maxForce: 400,
+      }).setTarget({ position: 0 }),
+    );
+    scene.add(hand, ball, spring);
+    const bytes = await new PhysicsUSDExporter().parseAsync(scene);
+    const text = strFromU8(unzipSync(bytes)["model.usda"] ?? new Uint8Array());
+    expect(text).toContain("physics:maxDistance = -1");
+    expect(text).toContain("PhysicsDriveAPI:linear");
+    const result = await new PhysicsUSDLoader().parseAsync(bytes);
+    const joint = result
+      .getObjectsByProperty("isObject3D", true)
+      .find((object) => object instanceof DistanceJoint);
+    expect(joint?.limits).toEqual([0, Infinity]);
+    expect(joint?.drive?.options.model).toBe("acceleration");
+    expect(joint?.drive?.options.stiffness).toBeCloseTo(1000);
+    expect(joint?.drive?.options.damping).toBeCloseTo(63);
+    expect(joint?.drive?.options.maxForce).toBe(400);
+    expect(joint?.drive?.target).toEqual({
+      position: 0,
+      velocity: 0,
+      effort: 0,
+    });
+    result.dispose();
+  });
+
+  it("roundtrips a generic joint with locked, free, and limited axes and per-axis drives", async () => {
+    const scene = new Scene();
+    const base = new RigidBody({ type: "static" });
+    base.name = "Base";
+    const arm = new RigidBody({ mass: 1 });
+    arm.name = "Arm";
+    arm.position.x = 0.5;
+    arm.add(new Mesh(new BoxGeometry(1, 0.1, 0.1)));
+    const joint = new GenericJoint({
+      body0: base,
+      body1: arm,
+      dofs: { transX: "free", rotY: [-Math.PI / 4, Math.PI / 2] },
+    });
+    joint.setDrive(
+      "rotY",
+      new JointDrive({ stiffness: 2, maxForce: 3 }).setTarget({
+        position: 0.5,
+      }),
+    );
+    joint.setDrive(
+      "transX",
+      new JointDrive({ damping: 4 }).setTarget({ velocity: 0.25 }),
+    );
+    scene.add(base, arm, joint);
+    const bytes = await new PhysicsUSDExporter().parseAsync(scene);
+    const text = strFromU8(unzipSync(bytes)["model.usda"] ?? new Uint8Array());
+    expect(text).toContain('def PhysicsJoint "');
+    expect(text).toContain("limit:rotY:physics:low = -45");
+    expect(text).toContain("limit:transY:physics:low = 1");
+    expect(text).toContain(
+      "drive:rotY:physics:targetPosition = 28.64788975654116",
+    );
+    const result = await new PhysicsUSDLoader().parseAsync(bytes);
+    const loaded = result
+      .getObjectsByProperty("isObject3D", true)
+      .find((object) => object instanceof GenericJoint);
+    expect(loaded?.dofs.transX).toBe("free");
+    expect(loaded?.dofs.transY).toBe("locked");
+    expect(loaded?.dofs.rotY).toEqual([
+      expect.closeTo(-Math.PI / 4, 6),
+      expect.closeTo(Math.PI / 2, 6),
+    ]);
+    expect(loaded?.getDrive("rotY")?.options.stiffness).toBeCloseTo(2);
+    expect(loaded?.getDrive("rotY")?.options.maxForce).toBe(3);
+    expect(loaded?.getDrive("rotY")?.target?.position).toBeCloseTo(0.5);
+    expect(loaded?.getDrive("transX")?.target?.velocity).toBeCloseTo(0.25);
+    expect(loaded?.getDrive("rotZ")).toBeUndefined();
+    result.dispose();
   });
 
   it("writes standard schemas, degrees and layer composition rather than serialized JS state", async () => {

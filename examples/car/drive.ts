@@ -51,8 +51,12 @@ export function driveCar(world: PhysicsWorld, car: Car) {
                 (specification.wheelbase / Math.tan(steering) - wheel.x),
             );
       wheel.servo?.setTarget({ position: angle });
-      wheel.motor.setEnabled(brake > 0 || throttle !== 0);
-      wheel.motor.setTarget({ velocity: brake ? 0 : throttle * 55 });
+      // Without throttle or brake the wheel coasts: no target, no torque.
+      wheel.motor.setTarget(
+        brake > 0 || throttle !== 0
+          ? { velocity: brake ? 0 : throttle * 55 }
+          : undefined,
+      );
     }
     const velocity = body.getVelocity().linear;
     body.applyForce(

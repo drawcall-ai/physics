@@ -56,11 +56,15 @@ def PhysicsPrismaticJoint "Slider" (
       expect(joint.limits).toEqual([-2, 3]);
       expect(joint.enabled).toBe(false);
       expect(joint.collideConnected).toBe(true);
-      expect(joint.motor?.options.model).toBe("force");
-      expect(joint.motor?.options.stiffness).toBe(0);
-      expect(joint.motor?.options.damping).toBe(3);
-      expect(joint.motor?.options.maxForce).toBeUndefined();
-      expect(joint.motor?.target).toEqual({ position: 0, velocity: 0 });
+      expect(joint.drive?.options.model).toBe("force");
+      expect(joint.drive?.options.stiffness).toBe(0);
+      expect(joint.drive?.options.damping).toBe(3);
+      expect(joint.drive?.options.maxForce).toBeUndefined();
+      expect(joint.drive?.target).toEqual({
+        position: 0,
+        velocity: 0,
+        effort: 0,
+      });
     }
   } finally {
     for (const scene of scenes) scene.dispose();

@@ -14,6 +14,9 @@ Run a dev command and open its Vite URL. Each package also has its own
 `build` and `typecheck` scripts.
 
 - **Ragdoll:** a falling articulated body using spherical and limited revolute joints.
+  Drag any limb with mouse or touch: `@pmndrs/pointer-events` captures the pointer, and
+  a kinematic hand pulls the limb through a force-limited distance-joint spring, so the
+  body stays dynamic and the floor still stops it.
 - **Car:** four powered wheels, spring/damper suspension, front steering, fixed rear
   knuckles, and a bump course. Starts with an automatic run; W/S drives, A/D steers,
   Space brakes, and T restarts the automatic test.
@@ -31,7 +34,7 @@ each outcome; N selects the next case, X removes it, R recreates it, and P pause
 
 `pnpm --filter @drawcall/example-scale test` runs the same cases headlessly.
 
-Ragdoll and car support P to pause, R to reset, and mouse orbit/zoom. Each package has a small
+Ragdoll and car support P to pause, R to reset, and mouse orbit/zoom; orbiting pauses while a limb is held. Each package has a small
 `main.ts` and its physics model. Car settings live in `car/model.ts`; its controller
 and road are separate files. The car uses rigid tires and a simplified electric
 drivetrain at 120 Hz with 32 solver iterations.

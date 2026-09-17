@@ -44,7 +44,7 @@ export function readShape(
     const height = numeric(layer, path, "height", 2) * factor;
     collider =
       type === "Capsule"
-        ? new CapsuleCollider({ radius, length: height })
+        ? new CapsuleCollider({ radius, height })
         : new CylinderCollider({ radius, height });
   } else if (type === "Mesh") {
     if (!(object instanceof Mesh))

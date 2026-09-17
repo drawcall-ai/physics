@@ -1,6 +1,6 @@
 import { Object3D } from "three";
 import { RigidBody } from "./body.js";
-import { Joint } from "./joints.js";
+import { Joint } from "./joint.js";
 
 /** Copy bodies before constructing joints so immutable connections point at their copies. */
 export function clone<T extends Object3D>(root: T): T {

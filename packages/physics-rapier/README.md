@@ -24,7 +24,7 @@ New objects do not reset existing simulation state. Colliders follow child addit
 
 Body and collider scale are captured once; later scale edits throw and require disposing and recreating the affected bodies and joints. New colliders capture their scale when added. Explicit body mass stays fixed; density-derived mass and inertia follow the scaled shapes.
 
-Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Motor targets and connected-contact settings update before each step; limits are immutable. Changing joint transforms afterward does not move captured anchors. Explicit frame options are copied at construction, and the getter returns defensive matrix copies. Editing those copies does not change the anchors; dispose and create a new joint to change them. Recreate a joint to change its limits. Disable/re-enable with `joint.setEnabled(value)`.
+Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Drives, their targets, and connected-contact settings update before each step; limits are immutable. Changing joint transforms afterward does not move captured anchors. Explicit frame options are copied at construction, and the getter returns defensive matrix copies. Editing those copies does not change the anchors; dispose and create a new joint to change them. Recreate a joint to change its limits. Disable/re-enable with `joint.setEnabled(value)`.
 
 Use methods directly on the objects:
 
@@ -52,21 +52,22 @@ This is a breaking API change: release the packages together under a new minor v
 
 `body.dispose()` unregisters its physics resources and connected joints. Removing a visual from its parent does not dispose physics. `world.dispose()` disposes all registered physics objects and frees Rapier. Geometry and materials remain owned by the application.
 
-Rapier requires equal static/dynamic friction and supports distance joints only with zero minimum distance. Unsupported authored data fails visibly.
+Rapier's own limits are tested in `test/rapier.test.ts`: equal static/dynamic friction, distance joints with a zero minimum, revolute position targets within π of the current angle, and positive integer solver iterations. Distance joints are Rapier spring joints: a finite maximum becomes their rope limit, and a `JointDrive` acts on the spring's coupled linear axis. Generic joints map to Rapier generic joints with per-axis limits and motors. Unsupported authored data fails visibly.
 
 `update(delta)` accumulates elapsed seconds and runs fixed simulation steps, up to the configured `maxSubsteps` catch-up limit. `update(0)` prepares without advancing time. For explicit simulation, call `update(world.fixedDelta)` repeatedly; one large delta is subject to the catch-up limit.
 
-`JointMotor` maps directly to Rapier's force/acceleration solver motors, including
-native force/torque limits. Untargeted, disabled, and disposed motors exert no force.
-Revolute position targets use the same continuous radians as `getState().position`.
-With nonzero stiffness, a target must remain less than π radians from the current
-position at every preparation/step boundary. Longer moves require intermediate
-targets; unsupported goals throw before the solver advances. The adapter wraps
-accepted goals for Rapier’s native shortest-arc motor, so holding a measured
-multi-turn position and trajectories crossing ±π work without losing turn count.
-Velocity-only motors (zero stiffness) have no position-target restriction.
-`setEffort` works during construction and rejects an active motor. Last call wins
-for the next solver substep, including replacement by a before-step callback.
+`JointDrive` stiffness and damping map directly to Rapier's force/acceleration
+solver motors, including native force/torque limits. A drive without a target, or
+without stiffness and damping, configures no native motor. The effort term is
+applied as a force pair for one substep and clamped to `maxForce` on its own, so
+the cap does not bound the sum of both terms. Revolute position targets use the
+same continuous radians as `getState().position`. With nonzero stiffness, a target
+must remain less than π radians from the current position at every
+preparation/step boundary. Longer moves require intermediate targets; unsupported
+goals throw before the solver advances. The adapter wraps accepted goals for
+Rapier’s native shortest-arc motor, so holding a measured multi-turn position and
+trajectories crossing ±π work without losing turn count. Velocity-only drives have
+no position-target restriction, and generic joints do not track turns.
 Independent body forces remain additive.
-See the [core contracts](../../README.md#motors-measurements-and-effort) for
+See the [core contracts](../../README.md#drives-and-readings) for
 command lifetime, continuous angles, simulation time, mass properties, and raycasts.

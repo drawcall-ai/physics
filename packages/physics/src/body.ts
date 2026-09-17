@@ -9,8 +9,8 @@ import {
   validateMaterial,
 } from "./objects.js";
 import { assertRigidTransform } from "./objects.js";
-import { validateVector } from "./state.js";
-import { splitTransform } from "./transforms.js";
+import { constructLike } from "./construct.js";
+import { splitTransform, validateVector } from "./transforms.js";
 import { autoShape, validateShape } from "./shapes.js";
 import type { AutoColliders, Vec3, PhysicsMaterial } from "./objects.js";
 import { getDefaultWorld } from "./world.js";
@@ -37,33 +37,44 @@ export type RigidBodyOptions = MassProperties & {
   readonly colliders?: AutoColliders;
   readonly canSleep?: boolean;
 };
+type NormalizedOptions = RigidBodyOptions & {
+  readonly type: RigidBodyType;
+  readonly colliders: AutoColliders;
+  readonly canSleep: boolean;
+};
 export class RigidBody extends Group {
   private isDisposed = false;
   readonly world: PhysicsWorld;
-  readonly options: RigidBodyOptions;
+  readonly options: NormalizedOptions;
   readonly bodyType: RigidBodyType;
   private currentLinearDamping = 0;
   private currentAngularDamping = 0;
   private currentGravityScale = 1;
   private currentMaterial?: PhysicsMaterial;
   private version = 0;
-  private materialRevision = 0;
+  private materialEdits = 0;
   get materialVersion(): number {
-    return this.materialRevision;
+    return this.materialEdits;
   }
 
   constructor(options: RigidBodyOptions = {}) {
     super();
     this.world = options.world ?? getDefaultWorld();
     this.bodyType = options.type ?? "dynamic";
+    const defaults = {
+      type: this.bodyType,
+      colliders: options.colliders ?? "auto",
+      canSleep: options.canSleep ?? true,
+    };
     this.options = options.centerOfMass
       ? {
           ...options,
+          ...defaults,
           centerOfMass: [...options.centerOfMass],
           diagonalInertia: [...options.diagonalInertia],
           principalAxes: options.principalAxes && [...options.principalAxes],
         }
-      : { ...options };
+      : { ...options, ...defaults };
     validateMass(this.options);
     this.world.register(this);
   }
@@ -111,7 +122,7 @@ export class RigidBody extends Group {
     this.assertLive();
     if (value) validateMaterial(value);
     this.currentMaterial = value && { ...value };
-    this.materialRevision++;
+    this.materialEdits++;
     return this;
   }
   get disposed(): boolean {
@@ -163,26 +174,15 @@ export class RigidBody extends Group {
 
   override clone(recursive = true): this {
     if (this.disposed) throw new Error("Cannot clone a disposed rigid body");
-    const target: unknown = Reflect.construct(this.constructor, [
+    const target = constructLike(this, [
       { ...this.options, world: this.world },
     ]);
-    if (!this.isClone(target))
-      throw new Error(
-        "Rigid body clone constructor returned an incompatible object",
-      );
     try {
       return target.copy(this, recursive);
     } catch (error) {
       target.dispose();
       throw error;
     }
-  }
-
-  private isClone(value: unknown): value is this {
-    return (
-      value instanceof RigidBody &&
-      Object.getPrototypeOf(value) === Object.getPrototypeOf(this)
-    );
   }
 
   override copy(source: this, recursive = true): this {
@@ -339,12 +339,12 @@ function sameTuple(
     ? b === undefined
     : b !== undefined && a.every((v, i) => v === b[i]);
 }
-function sameOptions(a: RigidBodyOptions, b: RigidBodyOptions): boolean {
+function sameOptions(a: NormalizedOptions, b: NormalizedOptions): boolean {
   return (
-    (a.type ?? "dynamic") === (b.type ?? "dynamic") &&
-    (a.colliders ?? "auto") === (b.colliders ?? "auto") &&
+    a.type === b.type &&
+    a.colliders === b.colliders &&
     a.mass === b.mass &&
-    (a.canSleep ?? true) === (b.canSleep ?? true) &&
+    a.canSleep === b.canSleep &&
     sameTuple(a.centerOfMass, b.centerOfMass) &&
     sameTuple(a.diagonalInertia, b.diagonalInertia) &&
     sameTuple(a.principalAxes ?? [0, 0, 0, 1], b.principalAxes ?? [0, 0, 0, 1])

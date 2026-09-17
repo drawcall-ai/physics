@@ -1,12 +1,9 @@
-import type { Matrix4, Vector3, Object3D } from "three";
-import { Joint, AxisJoint } from "./joints.js";
+import type { Matrix4, Quaternion, Vector3, Object3D } from "three";
+import { Joint } from "./joint.js";
 import { RigidBody } from "./body.js";
-import {
-  authoredVelocity,
-  setAuthoredVelocity,
-  setWorldPose,
-  authoredJointState,
-} from "./state.js";
+import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
+import { authoredJointReading } from "./reading.js";
+import { setWorldPose } from "./transforms.js";
 import type { Vec3, CollisionGroups } from "./objects.js";
 
 export interface PhysicsOptions {
@@ -24,14 +21,29 @@ export interface AxisJointState {
   position: number;
   velocity: number;
 }
-export interface PhysicsJointState {
-  angle: number;
-  angularVelocity: number;
-  position: number;
-  distance: number;
+export interface SphericalJointState {
+  /** Frame 1 relative to frame 0. */
+  rotation: Quaternion;
+  /** Body 1 relative to body 0, in frame 0 coordinates. */
+  angularVelocity: Vector3;
 }
-export interface JointMeasurements extends PhysicsJointState {
+export interface DistanceJointState {
+  distance: number;
   velocity: number;
+}
+/**
+ * Backend integration: frame 1 relative to frame 0, in frame 0 coordinates. Velocities are relative
+ * to frame 0 as a moving frame. Typed joint states derive from this one reading.
+ */
+export interface JointReading {
+  translation: Vector3;
+  rotation: Quaternion;
+  /** Anchor 1 relative to anchor 0. */
+  linearVelocity: Vector3;
+  /** Body 1 relative to body 0. */
+  angularVelocity: Vector3;
+  /** Rotation about the frame X axis; backends report it continuously across turns. */
+  angle: number;
 }
 export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
@@ -61,7 +73,6 @@ export interface PhysicsWorld {
   reset(): void;
   dispose(): void;
   /** Backend integration; validated scene commands arrive through body and joint methods. */
-  setJointEffort(object: AxisJoint, value: number): void;
   getVelocity(object: RigidBody): PhysicsVelocity;
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void;
   teleport(object: RigidBody, matrix: Matrix4): void;
@@ -70,7 +81,7 @@ export interface PhysicsWorld {
   applyForce(object: RigidBody, force: Vector3, point?: Vector3): void;
   wake(object: RigidBody): void;
   sleep(object: RigidBody): void;
-  getJointState(object: Joint): JointMeasurements;
+  readJoint(object: Joint): JointReading;
   onBeforeStep(callback: (delta: number) => void): () => void;
   onAfterStep(callback: (delta: number) => void): () => void;
 }
@@ -102,9 +113,6 @@ export class AuthoringWorld implements PhysicsWorld {
     _options?: RaycastOptions,
   ): never {
     throw new Error("AuthoringWorld does not support raycast queries");
-  }
-  setJointEffort(object: AxisJoint, _value: number): void {
-    this.assertObject(object);
   }
   private readonly registered = new Set<RigidBody | Joint>();
   private isDisposed = false;
@@ -161,6 +169,7 @@ export class AuthoringWorld implements PhysicsWorld {
     object.validate();
     setWorldPose(object, matrix);
   }
+  // Commands are inert by contract: a static preview accepts them without simulating (see README).
   setKinematicTarget(object: RigidBody, _matrix: Matrix4): void {
     this.assertObject(object);
   }
@@ -176,9 +185,9 @@ export class AuthoringWorld implements PhysicsWorld {
   sleep(object: RigidBody): void {
     this.assertObject(object);
   }
-  getJointState(object: Joint): JointMeasurements {
+  readJoint(object: Joint): JointReading {
     this.assertObject(object);
-    return authoredJointState(object);
+    return authoredJointReading(object);
   }
   onBeforeStep(_callback: (delta: number) => void): () => void {
     if (this.isDisposed) throw new Error("Physics world has been disposed");

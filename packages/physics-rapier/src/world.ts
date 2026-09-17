@@ -2,14 +2,13 @@ import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   clearDefaultWorld,
   RigidBody,
-  AxisJoint,
   type Joint,
   type PhysicsWorld,
   type PhysicsOptions,
   type PhysicsVelocity,
   type RaycastOptions,
   authoredVelocity,
-  authoredJointState,
+  authoredJointReading,
   setAuthoredVelocity,
   setWorldPose,
 } from "@drawcall/physics";
@@ -21,9 +20,9 @@ import {
   type BodyBinding,
 } from "./body.js";
 import {
-  applyEffort,
+  applyEfforts,
   prepareJoint,
-  readJointState,
+  readBinding,
   sampleJoint,
   type JointBinding,
 } from "./joints.js";
@@ -46,7 +45,6 @@ export class RapierWorld implements PhysicsWorld {
       commands: ((body: Rapier.RigidBody) => void)[];
     }
   >();
-  private readonly efforts = new Map<AxisJoint, number>();
   private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
   private completedTime = 0;
@@ -107,7 +105,6 @@ export class RapierWorld implements PhysicsWorld {
     const target = this.joints.get(object)?.target;
     if (target) this.backend.removeImpulseJoint(target, true);
     this.joints.delete(object);
-    if (object instanceof AxisJoint) this.efforts.delete(object);
   }
   update(delta: number): void {
     this.assertActive();
@@ -127,16 +124,11 @@ export class RapierWorld implements PhysicsWorld {
     this.flush(true);
     for (const callback of this.before) callback(this.fixedDelta);
     this.flush();
-    for (const object of this.efforts.keys()) {
-      if (object.motor?.active)
-        throw new Error("Disable the joint motor before applying effort");
-    }
-    for (const [object, effort] of this.efforts) {
-      const target = this.joints.get(object)?.target;
-      if (object.enabled && target) applyEffort(object, target, effort);
+    for (const [object, binding] of this.joints) {
+      if (binding?.target && object.enabled)
+        applyEfforts(object, binding.target);
     }
     this.backend.step();
-    this.efforts.clear();
     this.elapsed -= this.fixedDelta;
     this.completedTime += this.fixedDelta;
     for (const [object, { body }] of this.bodies) {
@@ -152,7 +144,6 @@ export class RapierWorld implements PhysicsWorld {
   reset(): void {
     this.assertActive();
     this.pending.clear();
-    this.efforts.clear();
     for (const [object, { body, initial, velocity }] of this.bodies) {
       object.validate();
       body.setTranslation(new Vector3().setFromMatrixPosition(initial), true);
@@ -259,16 +250,11 @@ export class RapierWorld implements PhysicsWorld {
   sleep(object: RigidBody): void {
     this.command(object, (body) => body.sleep(), true);
   }
-  setJointEffort(object: AxisJoint, value: number): void {
-    this.assertObject(object);
-    if (object.enabled && value !== 0) this.efforts.set(object, value);
-    else this.efforts.delete(object);
-  }
-  getJointState(object: Joint) {
+  readJoint(object: Joint) {
     this.assertObject(object);
     const binding = this.joints.get(object);
-    if (binding) return readJointState(object, binding);
-    return authoredJointState(object, undefined, (body, point) => {
+    if (binding) return readBinding(object, binding);
+    return authoredJointReading(object, undefined, (body, point) => {
       const target = this.bodies.get(body)?.body;
       if (target) return new Vector3().copy(target.velocityAtPoint(point));
       const { linear, angular } = body.getVelocity();
@@ -394,17 +380,17 @@ export class RapierWorld implements PhysicsWorld {
         this.anchor = this.backend.createRigidBody(
           this.api.RigidBodyDesc.fixed(),
         );
-      const first = object.options.body0
+      const body0 = object.options.body0
         ? this.getBody(object.options.body0)
         : this.anchor;
-      if (!first) throw new Error("Missing world anchor");
+      if (!body0) throw new Error("Missing world anchor");
       this.joints.set(
         object,
         prepareJoint(
           this.api,
           this.backend,
           object,
-          first,
+          body0,
           this.getBody(object.options.body1),
           binding,
         ),

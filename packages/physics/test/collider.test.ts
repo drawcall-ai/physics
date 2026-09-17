@@ -38,7 +38,7 @@ it("captures immutable dimensions and independent material/group settings", () =
 it("clones configured primitive dimensions and rejects mismatched copies", () => {
   for (const collider of [
     new SphereCollider({ radius: 2 }),
-    new CapsuleCollider({ radius: 2, length: 3 }),
+    new CapsuleCollider({ radius: 2, height: 3 }),
     new CylinderCollider({ radius: 2, height: 4 }),
   ]) {
     expect(collider.clone().shape()).toEqual(collider.shape());
@@ -50,7 +50,7 @@ it("clones configured primitive dimensions and rejects mismatched copies", () =>
     new SphereCollider().copy(new SphereCollider({ radius: 2 })),
   ).toThrow("immutable");
   expect(() =>
-    new CapsuleCollider().copy(new CapsuleCollider({ length: 2 })),
+    new CapsuleCollider().copy(new CapsuleCollider({ height: 2 })),
   ).toThrow("immutable");
   expect(() =>
     new CylinderCollider().copy(new CylinderCollider({ height: 2 })),
@@ -64,7 +64,7 @@ it("rejects invalid dimensions at construction", () => {
   expect(() => new SphereCollider({ radius: NaN })).toThrow(
     "positive and finite",
   );
-  expect(() => new CapsuleCollider({ length: -1 })).toThrow(
+  expect(() => new CapsuleCollider({ height: -1 })).toThrow(
     "positive and finite",
   );
   expect(() => new CylinderCollider({ height: Infinity })).toThrow(
