@@ -4,6 +4,7 @@ import { setupWorld } from "@drawcall/physics-rapier";
 import { createCar, simulationOptions } from "../model";
 import { driveCar } from "../drive";
 import { createRoad } from "../road";
+import { createGoal } from "../goal";
 
 test.each([1 / 120, 1 / 240])(
   "powered car crosses the bump course and brakes with independent suspension at dt=%s",
@@ -11,6 +12,15 @@ test.each([1 / 120, 1 / 240])(
     const world = await setupWorld({ ...simulationOptions, fixedDelta });
     const car = createCar(world);
     createRoad(world);
+    const goal = createGoal(car.chassis);
+    let entries = 0;
+    let exits = 0;
+    goal.trigger.addEventListener("enter", ({ body }) => {
+      if (body === car.chassis) entries++;
+    });
+    goal.trigger.addEventListener("exit", ({ body }) => {
+      if (body === car.chassis) exits++;
+    });
     const driver = driveCar(world, car);
     const suspensions = car.wheels.map((wheel) => wheel.spring);
     let peakCompression = 0;
@@ -48,6 +58,9 @@ test.each([1 / 120, 1 / 240])(
     }
     expect(maxRearYaw).toBeLessThan(1);
     expect(driver.telemetry.completed).toBe(true);
+    expect(goal.trigger.overlaps(car.chassis)).toBe(true);
+    expect(entries).toBe(1);
+    expect(exits).toBe(0);
     expect(car.chassis.position.z).toBeGreaterThan(59);
     expect(car.chassis.position.z).toBeLessThan(65);
     expect(Math.abs(driver.telemetry.speed)).toBeLessThan(0.2);
@@ -59,6 +72,9 @@ test.each([1 / 120, 1 / 240])(
     expect(peakCompression).toBeGreaterThan(0.08);
     expect(peakCompression).toBeLessThan(0.24);
     driver.reset();
+    goal.reset();
+    expect(goal.trigger.overlaps(car.chassis)).toBe(false);
+    expect(exits).toBe(0);
     expect(car.chassis.position.z).toBeCloseTo(0);
     driver.input.automatic = false;
     driver.input.throttle = -0.6;

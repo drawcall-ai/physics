@@ -4,7 +4,7 @@ import {
   type Collider,
   type RigidBody,
 } from "@drawcall/physics";
-import { Quaternion, Vector3 } from "three";
+import { Quaternion, Vector3, type Object3D } from "three";
 import type { BodyBinding } from "./body.js";
 import { colliderDesc } from "./shapes.js";
 
@@ -18,6 +18,7 @@ export function refreshColliders(
   const colliders = object.getColliders();
   const shapeKey = JSON.stringify([
     object.materialVersion,
+    object.collisionGroups,
     colliders.map((collider) => shapeFingerprint(collider, object)),
   ]);
   if (shapeKey === binding.shapeKey) return;
@@ -43,9 +44,10 @@ export function refreshColliders(
     descriptors,
     completeMass,
   );
-  const stale = body.numColliders() - created.length;
-  for (let i = 0; i < stale; i++)
-    backend.removeCollider(body.collider(0), true);
+  for (const handle of binding.sources.keys()) {
+    const collider = backend.getCollider(handle);
+    if (collider) backend.removeCollider(collider, true);
+  }
   if (completeMass) {
     body.setAdditionalMassProperties(
       options.mass,
@@ -135,7 +137,7 @@ function totalMass(colliders: Rapier.Collider[]): number {
   return colliders.reduce((sum, collider) => sum + collider.mass(), 0);
 }
 
-function shapeFingerprint(collider: Collider, body: RigidBody): unknown {
+export function shapeFingerprint(collider: Collider, owner: Object3D): unknown {
   const shape = collider.shape();
 
   const shapeData =
@@ -150,7 +152,7 @@ function shapeFingerprint(collider: Collider, body: RigidBody): unknown {
         }
       : shape;
   // Relative transforms accumulate tiny roundoff as bodies move under parents.
-  const transform = body.matrixWorld
+  const transform = owner.matrixWorld
     .clone()
     .invert()
     .multiply(collider.matrixWorld)

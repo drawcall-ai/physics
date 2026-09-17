@@ -1,5 +1,6 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { Collider, Shape } from "./colliders.js";
+import type { Trigger } from "./trigger.js";
 import type { RigidBody } from "./body.js";
 
 export function validateVector(value: Vector3): void {
@@ -56,7 +57,7 @@ export function splitTransform(matrix: Matrix4, name = "Physics transform") {
 }
 
 export function resolveCollider(
-  body: RigidBody,
+  body: RigidBody | Trigger,
   collider: Collider,
   capturedScale?: Vector3,
 ) {

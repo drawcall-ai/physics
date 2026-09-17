@@ -1,6 +1,8 @@
 import type { Matrix4, Quaternion, Vector3, Object3D } from "three";
 import { Joint } from "./joint.js";
+import { Trigger } from "./trigger.js";
 import { RigidBody } from "./body.js";
+import { cleanup } from "./cleanup.js";
 import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
 import { authoredJointReading } from "./reading.js";
 import { setWorldPose } from "./transforms.js";
@@ -47,21 +49,22 @@ export interface JointReading {
 }
 export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
-  readonly includeSensors?: boolean;
+  readonly includeTriggers?: boolean;
   readonly excludeBodies?: readonly RigidBody[];
 }
-export interface RaycastHit {
+interface RaycastGeometry {
   distance: number;
   point: Vector3;
   normal: Vector3;
-  body: RigidBody;
   collider: Object3D;
 }
+export type RaycastHit = RaycastGeometry &
+  ({ kind: "body"; body: RigidBody } | { kind: "trigger"; trigger: Trigger });
 
 export interface PhysicsWorld {
   readonly disposed: boolean;
-  register(object: RigidBody | Joint): void;
-  unregister(object: RigidBody | Joint): void;
+  register(object: RigidBody | Joint | Trigger): void;
+  unregister(object: RigidBody | Joint | Trigger): void;
   readonly fixedDelta: number;
   readonly time: number;
   raycast(
@@ -70,6 +73,7 @@ export interface PhysicsWorld {
     maxDistance: number,
     options?: RaycastOptions,
   ): RaycastHit | null;
+  getOverlappingBodies(trigger: Trigger): RigidBody[];
   update(delta: number): void;
   reset(): void;
   dispose(): void;
@@ -109,7 +113,7 @@ export function assertLive(world: PhysicsWorld): void {
 }
 export function assertOwned(
   world: PhysicsWorld,
-  object: RigidBody | Joint,
+  object: RigidBody | Joint | Trigger,
 ): void {
   assertLive(world);
   if (object.disposed) throw new Error("Physics object has been disposed");
@@ -129,33 +133,47 @@ export class AuthoringWorld implements PhysicsWorld {
   ): never {
     throw new Error("AuthoringWorld does not support raycast queries");
   }
-  private readonly registered = new Set<RigidBody | Joint>();
+  getOverlappingBodies(trigger: Trigger): never {
+    assertOwned(this, trigger);
+    throw new Error("AuthoringWorld does not support overlap queries");
+  }
+  private readonly registered = new Set<RigidBody | Joint | Trigger>();
   private isDisposed = false;
 
-  get objects(): ReadonlySet<RigidBody | Joint> {
+  get objects(): ReadonlySet<RigidBody | Joint | Trigger> {
     return this.registered;
   }
   get disposed(): boolean {
     return this.isDisposed;
   }
 
-  register(object: RigidBody | Joint): void {
+  register(object: RigidBody | Joint | Trigger): void {
     assertOwned(this, object);
     this.registered.add(object);
   }
 
-  unregister(object: RigidBody | Joint): void {
+  unregister(object: RigidBody | Joint | Trigger): void {
     if (!this.registered.delete(object)) return;
     if (!(object instanceof RigidBody)) return;
-    for (const joint of this.registered)
-      if (joint instanceof Joint && joint.connects(object)) joint.dispose();
+    const joints = [...this.registered].filter(
+      (joint) => joint instanceof Joint && joint.connects(object),
+    );
+    cleanup(
+      joints.map((joint) => () => joint.dispose()),
+      "Joint disposal failed",
+    );
   }
 
   dispose(): void {
     if (this.isDisposed) return;
-    for (const object of this.registered) object.dispose();
     this.isDisposed = true;
-    clearDefaultWorld(this);
+    cleanup(
+      [
+        ...[...this.registered].map((object) => () => object.dispose()),
+        () => clearDefaultWorld(this),
+      ],
+      "Authoring world disposal failed",
+    );
   }
 
   update(_delta: number): never {

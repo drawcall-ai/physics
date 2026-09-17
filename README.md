@@ -170,8 +170,12 @@ body references remain external. Copy requires matching immutable configuration;
 cloning recreates drives through their own constructors, so subclasses survive. Geometry and materials remain shared,
 application-owned resources. Clones register in their source world.
 
-Explicit colliders use `setSensor(true)`, `setMaterial(...)`, and
+Explicit colliders use `setMaterial(...)` and
 `setCollisionGroups({ membership, filter })` with unsigned 16-bit masks.
+RigidBody and Trigger also provide `setCollisionGroups(...)` defaults. A collider
+override replaces the complete owner default; passing `undefined` clears an override.
+Both sides must allow a pair: `(a.membership & b.filter) !== 0 &&
+(b.membership & a.filter) !== 0`. Trigger defaults do not inherit from an ancestor body.
 Dimensions use constructor options, e.g. `new BoxCollider({ size: [1, 2, 3] })`.
 Mesh geometry uses `setGeometry`; its approximation remains immutable. Adapters
 validate support and report unsupported properties instead of ignoring them.
@@ -296,8 +300,104 @@ and are not scaled by visual transforms. Dynamic colliderless bodies need comple
 positive mass/inertia; static and kinematic bodies can be colliderless.
 
 `world.raycast(origin, direction, maxDistance, options)` returns the closest hit or
-null: distance, world point/normal, body, and source collider/mesh. Directions are
-normalized; distances are meters. Options include `collisionGroups`, `excludeBodies`,
-and `includeSensors` (default false). Inside-origin rays return the exit surface.
+null. Hits contain `distance`, world `point`/`normal`, and source `collider`/mesh.
+Narrow on `hit.kind`: `"body"` hits contain `body`, and `"trigger"` hits contain
+`trigger`. Directions are normalized; distances are meters. Options include
+`collisionGroups`, `excludeBodies`, and `includeTriggers` (default false).
+`excludeBodies` excludes solid body hits, not attached Trigger hits. Query masks
+use the same mutual rule as simulation. Inside-origin rays return the exit surface.
 Queries include the current authored scene before the first update, without advancing time.
 AuthoringWorld has no raycasts. Release all three packages together for this breaking API.
+
+## Triggers and contact events
+
+`Trigger extends Group` owns an explicit compound detection region. Add ordinary
+colliders beneath it, optionally through Groups. Its shapes detect overlap without
+mass, inertia, forces, or collision response. Triggers have no automatic mesh
+colliders and reject physical materials, triangle mesh regions, nested Triggers,
+and rigid bodies beneath them. Supported convex shapes depend on the adapter.
+
+```ts
+import { BoxCollider, Trigger } from "@drawcall/physics";
+
+const goal = new Trigger(); // captures the default world
+// Pass { world } when selecting a world explicitly.
+goal.position.set(0.5, 0.8, 0);
+goal.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
+scene.add(goal);
+
+goal.addEventListener("enter", ({ body }) => {
+  if (body === gripper) console.log("Gripper entered the target");
+});
+goal.addEventListener("exit", ({ body }) => {
+  if (body === gripper) console.log("Gripper left the target");
+});
+
+gripper.addEventListener("contactbegin", ({ otherBody }) => {
+  console.log("Contact started", otherBody);
+});
+gripper.addEventListener("contactend", ({ otherBody }) => {
+  console.log("Contact ended", otherBody);
+});
+```
+
+Events use typed Three.js event maps, preserving `added`/`removed` and typed
+`target`/`type`. Trigger events belong only to the Trigger. They aggregate by
+other rigid body: enter when its first shape pair overlaps, exit when the last
+pair ends. Body contact events aggregate by body pair and reach both bodies.
+Moving between compound shapes within a step does not create an extra exit/enter.
+Contact lifecycle is simulation contact state, not a force measurement or a
+promise to report every geometric intersection between immovable bodies.
+
+A Trigger can be placed beneath a RigidBody and follows that body during the
+same simulation step. It excludes its ancestor body; other bodies, including
+joint neighbors, remain eligible under collision masks. Joint contact suppression
+does not disable Trigger sensing. Triggers detect static, kinematic, dynamic,
+and initially sleeping bodies; they do not detect other Triggers.
+
+`goal.overlaps(gripper)` and `goal.getOverlappingBodies()` read the latest
+completed-step observations. Returned arrays are snapshots. Reads do not run
+fresh geometry tests or guarantee sampling at final integrated poses. Before the
+first step the set is empty; `update(0)` does not populate it. Events dispatch
+after transforms and overlap state synchronize, before `onAfterStep`. Late listeners
+receive no replay. AuthoringWorld accepts Triggers but throws on overlap reads.
+
+For a robot evaluation, require the gripper to occupy the region and remain
+nearly stationary for half a simulated second, within ten simulated seconds:
+
+```ts
+let elapsed = 0;
+let settledFor = 0;
+let result: "pending" | "passed" | "failed" = "pending";
+const stopEvaluation = world.onAfterStep((dt) => {
+  if (result !== "pending") return;
+  elapsed += dt;
+  const velocity = gripper.getVelocity();
+  const settled =
+    goal.overlaps(gripper) &&
+    velocity.linear.length() < 0.02 &&
+    velocity.angular.length() < 0.1;
+  settledFor = settled ? settledFor + dt : 0;
+  if (elapsed <= 10 && settledFor >= 0.5) result = "passed";
+  else if (elapsed >= 10) result = "failed";
+});
+// At episode teardown: stopEvaluation(); goal.dispose();
+```
+
+Reset the evaluator's own state for each episode. `gripper` is one RigidBody,
+not the whole articulated robot. Overlap does not prove complete containment or
+correct orientation; precision tasks also need world pose tolerances. Discrete
+sampling can miss fast crossings.
+
+Sleep and backend collider rebuilds do not create false exits. Disposal removes
+active relationships and notifies surviving owners; scene detachment alone does
+not dispose physics. Disposing a body also disposes attached Triggers. Reset clears
+overlap state silently; the next step establishes fresh pairs. World disposal is
+silent. Clone/copy preserve authored settings, not listeners or runtime overlaps.
+
+Scene edits inside listeners remain synchronous; backend reconciliation waits
+until the event batch ends. Disposed recipients are skipped. Listener exceptions
+propagate and abort remaining delivery and `onAfterStep`, without replay or sample
+rollback. Reentrant update/reset fails. Trigger export is rejected because core
+USD Physics has no standard trigger-volume representation; authored collision
+mask conversion is also unsupported by the USD adapter.

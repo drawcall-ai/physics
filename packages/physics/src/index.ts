@@ -1,4 +1,5 @@
 export {
+  type RigidBodyEventMap,
   type RigidBodyType,
   type MassProperties,
   type RigidBodyOptions,
@@ -61,3 +62,9 @@ export {
 
 // Adapter integration; scene code needs none of these.
 export * from "./backend.js";
+
+export {
+  Trigger,
+  type TriggerOptions,
+  type TriggerEventMap,
+} from "./trigger.js";

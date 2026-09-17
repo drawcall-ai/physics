@@ -6,6 +6,7 @@ import {
   Collider,
   Joint,
   RigidBody,
+  Trigger,
   ancestorBody,
   splitTransform,
 } from "@drawcall/physics";
@@ -99,6 +100,8 @@ function collect(scene: Object3D): { bodies: RigidBody[]; joints: Joint[] } {
   const joints: Joint[] = [];
   scene.updateWorldMatrix(true, true);
   scene.traverse((object) => {
+    if (object instanceof Trigger)
+      throw new Error("Core USD Physics cannot represent Trigger volumes");
     if (object instanceof RigidBody) bodies.push(object);
     if (object instanceof Joint) joints.push(object);
     if (!(object instanceof Collider)) return;

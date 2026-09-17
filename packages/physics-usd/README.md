@@ -38,7 +38,7 @@ This first importer supports **ASCII USDA and USDZ archives containing ASCII lay
 
 ASCII import supports embedded sublayers and visual-only geometry references. Flatten physics-bearing references, `over`/`class` specs, variants, and other composition features before import. External reference layers must be embedded. Reset transform stacks and unsupported transform operations are rejected. `metersPerUnit=1`, `kilogramsPerUnit=1`, Y-up, and core-compatible rigid transforms are required. This is a bounded USD Physics reader, not a general OpenUSD composition engine.
 
-The package rejects unsupported semantics rather than silently dropping them: sensors, collision masks, damping/gravity/sleep overrides, D6/articulations, spherical cone limits, breaking thresholds, partial mass overrides, per-collider explicit mass, animated physics, and simulation ownership. World anchoring must use body0. Animation export and `onlyVisible: true` are rejected: collision geometry must remain in the physical asset. Invisible objects retain their visibility opinions.
+The package rejects unsupported semantics rather than silently dropping them: Trigger volumes, authored collision masks, damping/gravity/sleep overrides, D6/articulations, spherical cone limits, breaking thresholds, partial mass overrides, per-collider explicit mass, animated physics, and simulation ownership. World anchoring must use body0. Animation export and `onlyVisible: true` are rejected: collision geometry must remain in the physical asset. Invisible objects retain their visibility opinions.
 
 Export rejects assemblies spanning multiple worlds because simulation ownership
 is not represented by this adapter. Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
@@ -70,3 +70,8 @@ before export. Body type, mechanical limits, mass properties, and drive gains ar
 constructor configuration; imported velocities and targets use methods. COM/inertia
 roundtrip in body-local physical units; a complete mass override takes precedence
 without adding collider mass. USD default `maxForce = inf` means unbounded.
+
+Trigger export is rejected anywhere in the exported hierarchy, including standalone
+regions and body-attached regions. Core USD Physics has no standard trigger-volume
+representation. Collision-mask conversion is unimplemented: collider overrides and
+body defaults are both checked; unconfigured default masks do not prevent export.

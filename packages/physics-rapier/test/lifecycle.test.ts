@@ -26,8 +26,8 @@ it("reads and queries construction state without capturing unfinished scale or r
   body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(3);
   expect(
-    world.raycast(new Vector3(-4, 0, 0), new Vector3(1, 0, 0), 8)?.body,
-  ).toBe(body);
+    world.raycast(new Vector3(-4, 0, 0), new Vector3(1, 0, 0), 8),
+  ).toMatchObject({ kind: "body", body });
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   body.applyImpulse(new Vector3(2, 0, 0));
   body.position.set(1, 3, 0);

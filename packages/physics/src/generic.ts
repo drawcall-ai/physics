@@ -64,8 +64,9 @@ export class GenericJoint extends Joint<
     return this.currentDrives;
   }
   protected override releaseDrives(): void {
-    for (const axis of [...this.currentDrives.keys()])
-      this.setDrive(axis, undefined);
+    for (const drive of this.currentDrives.values())
+      attach(this, drive, undefined);
+    this.currentDrives.clear();
   }
   protected override copyDrives(source: this): void {
     for (const axis of jointDofs)

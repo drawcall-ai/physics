@@ -1,13 +1,27 @@
-import { Group, Matrix4, Mesh, Vector3, type Object3D } from "three";
-import { Collider, validateMaterial } from "./colliders.js";
+import {
+  Group,
+  Matrix4,
+  Mesh,
+  Vector3,
+  type Object3D,
+  type Object3DEventMap,
+} from "three";
+import { Collider, validateMaterial, validateGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
+import { cleanup } from "./cleanup.js";
 import {
   assertRigidTransform,
   splitTransform,
   validateVector,
 } from "./transforms.js";
+import { Trigger } from "./trigger.js";
 import { colliderOf } from "./shapes.js";
-import type { AutoColliders, Vec3, PhysicsMaterial } from "./colliders.js";
+import type {
+  AutoColliders,
+  Vec3,
+  PhysicsMaterial,
+  CollisionGroups,
+} from "./colliders.js";
 import { getDefaultWorld } from "./world.js";
 import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
 
@@ -37,7 +51,11 @@ type NormalizedOptions = RigidBodyOptions & {
   readonly colliders: AutoColliders;
   readonly canSleep: boolean;
 };
-export class RigidBody extends Group {
+export interface RigidBodyEventMap extends Object3DEventMap {
+  contactbegin: { readonly otherBody: RigidBody };
+  contactend: { readonly otherBody: RigidBody };
+}
+export class RigidBody extends Group<RigidBodyEventMap> {
   private isDisposed = false;
   readonly world: PhysicsWorld;
   readonly options: NormalizedOptions;
@@ -46,6 +64,7 @@ export class RigidBody extends Group {
   private currentAngularDamping = 0;
   private currentGravityScale = 1;
   private currentMaterial?: PhysicsMaterial;
+  private currentGroups?: CollisionGroups;
   private version = 0;
   private materialEdits = 0;
   get materialVersion(): number {
@@ -120,15 +139,35 @@ export class RigidBody extends Group {
     this.materialEdits++;
     return this;
   }
+  get collisionGroups(): CollisionGroups | undefined {
+    return this.currentGroups;
+  }
+  setCollisionGroups(value: CollisionGroups | undefined): this {
+    this.assertLive();
+    if (value) validateGroups(value);
+    this.currentGroups = value && { ...value };
+    this.version++;
+    return this;
+  }
   get disposed(): boolean {
     return this.isDisposed;
   }
 
   dispose(): void {
     if (this.isDisposed) return;
-    this.world.unregister(this);
-    this.removeFromParent();
     this.isDisposed = true;
+    const triggers: Trigger[] = [];
+    this.traverse((object) => {
+      if (object instanceof Trigger) triggers.push(object);
+    });
+    cleanup(
+      [
+        ...triggers.map((trigger) => () => trigger.dispose()),
+        () => this.world.unregister(this),
+        () => this.removeFromParent(),
+      ],
+      "Rigid body disposal failed",
+    );
   }
 
   getVelocity(): PhysicsVelocity {
@@ -190,7 +229,8 @@ export class RigidBody extends Group {
     this.setLinearDamping(source.linearDamping)
       .setAngularDamping(source.angularDamping)
       .setGravityScale(source.gravityScale)
-      .setMaterial(source.material);
+      .setMaterial(source.material)
+      .setCollisionGroups(source.collisionGroups);
     return this;
   }
 
@@ -199,12 +239,15 @@ export class RigidBody extends Group {
     this.validate();
     const explicit: Collider[] = [];
     const meshes: Mesh[] = [];
-    this.traverse((object) => {
+    const collect = (object: Object3D): void => {
+      if (object instanceof Trigger) return;
       if (object !== this && object instanceof RigidBody)
         throw new Error("Nested rigid bodies are not supported");
       if (object instanceof Collider) explicit.push(object);
       if (object instanceof Mesh) meshes.push(object);
-    });
+      for (const child of object.children) collect(child);
+    };
+    collect(this);
     const sources: (Collider | Mesh)[] = explicit.length
       ? explicit
       : this.options.colliders === false

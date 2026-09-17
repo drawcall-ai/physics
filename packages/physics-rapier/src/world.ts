@@ -1,6 +1,7 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   RigidBody,
+  Trigger,
   type Joint,
   type PhysicsWorld,
   type PhysicsOptions,
@@ -13,6 +14,8 @@ import {
   setWorldPose,
   assertLive,
   assertOwned,
+  ancestorBody,
+  cleanup,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
@@ -27,6 +30,12 @@ import { prepareJoint, type JointBinding } from "./joints.js";
 import { Pending, type Command } from "./pending.js";
 import { raycast } from "./query.js";
 import { readBinding, rebaseAngle, trackAngle } from "./reading.js";
+import { Interactions } from "./interactions.js";
+import {
+  refreshTrigger,
+  removeTrigger,
+  type TriggerBinding,
+} from "./triggers.js";
 
 export interface RapierOptions extends PhysicsOptions {
   solverIterations?: number;
@@ -37,6 +46,11 @@ export class RapierWorld implements PhysicsWorld {
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
   private readonly joints = new Map<Joint, JointBinding | undefined>();
+  private readonly triggers = new Map<Trigger, TriggerBinding | undefined>();
+  private readonly interactions = new Interactions();
+  private readonly removals = new Set<RigidBody | Joint | Trigger>();
+  private updating = false;
+  private freed = false;
   private readonly pending: Pending;
   private anchor: Rapier.RigidBody | undefined;
   private elapsed = 0;
@@ -78,20 +92,63 @@ export class RapierWorld implements PhysicsWorld {
     this.backend.timestep = this.fixedDelta;
     this.pending = new Pending(api, this.bodies);
   }
-  register(object: RigidBody | Joint): void {
+  register(object: RigidBody | Joint | Trigger): void {
     assertOwned(this, object);
     if (object instanceof RigidBody) this.objects.add(object);
-    else if (!this.joints.has(object)) this.joints.set(object, undefined);
+    else if (object instanceof Trigger) {
+      if (!this.triggers.has(object)) this.triggers.set(object, undefined);
+    } else if (!this.joints.has(object)) this.joints.set(object, undefined);
   }
-  unregister(object: RigidBody | Joint): void {
+  unregister(object: RigidBody | Joint | Trigger): void {
+    if (object instanceof RigidBody)
+      for (const trigger of this.triggers.keys())
+        if (ancestorBody(trigger) === object) this.interactions.remove(trigger);
+    if (object instanceof RigidBody || object instanceof Trigger)
+      this.interactions.remove(object);
+    if (this.interactions.dispatching) {
+      this.removals.add(object);
+      return;
+    }
+    cleanup(
+      [
+        () => this.remove(object),
+        () => {
+          if (!this.isDisposed) this.dispatch();
+        },
+      ],
+      "Physics object removal failed",
+    );
+  }
+  private remove(object: RigidBody | Joint | Trigger): void {
+    if (object instanceof Trigger) {
+      const binding = this.triggers.get(object);
+      if (binding) removeTrigger(this.backend, binding);
+      this.triggers.delete(object);
+      return;
+    }
     if (object instanceof RigidBody) {
-      for (const joint of this.joints.keys())
-        if (joint.connects(object)) joint.dispose();
-      this.objects.delete(object);
-      this.pending.delete(object);
-      const binding = this.bodies.get(object);
-      if (binding) this.backend.removeRigidBody(binding.body);
-      this.bodies.delete(object);
+      cleanup(
+        [
+          ...[...this.joints.keys()]
+            .filter((joint) => joint.connects(object))
+            .map((joint) => () => joint.dispose()),
+          ...[...this.triggers]
+            .filter(([trigger]) => ancestorBody(trigger) === object)
+            .map(([trigger, binding]) => () => {
+              this.interactions.remove(trigger);
+              if (binding) removeTrigger(this.backend, binding);
+              this.triggers.set(trigger, undefined);
+            }),
+          () => {
+            this.objects.delete(object);
+            this.pending.delete(object);
+            const binding = this.bodies.get(object);
+            if (binding) this.backend.removeRigidBody(binding.body);
+            this.bodies.delete(object);
+          },
+        ],
+        "Rigid body removal failed",
+      );
       return;
     }
     const joint = this.joints.get(object)?.joint;
@@ -100,21 +157,29 @@ export class RapierWorld implements PhysicsWorld {
   }
   update(delta: number): void {
     assertLive(this);
+    this.assertIdle();
     if (!Number.isFinite(delta) || delta < 0)
       throw new Error("delta must be finite and nonnegative.");
-    this.prepare("pending");
-    this.elapsed = Math.min(
-      this.elapsed + delta,
-      this.fixedDelta * this.maxSubsteps,
-    );
-    while (this.elapsed >= this.fixedDelta) {
-      this.step();
+    this.updating = true;
+    try {
+      this.prepare("pending");
+      this.elapsed = Math.min(
+        this.elapsed + delta,
+        this.fixedDelta * this.maxSubsteps,
+      );
+      while (!this.isDisposed && this.elapsed >= this.fixedDelta) this.step();
+    } finally {
+      this.updating = false;
+      if (this.isDisposed) this.free();
     }
   }
   private step(): void {
     assertLive(this);
     this.prepare("pending");
-    for (const callback of this.before) callback(this.fixedDelta);
+    for (const callback of this.before) {
+      callback(this.fixedDelta);
+      if (this.isDisposed) return;
+    }
     this.prepare("all");
     for (const [object, binding] of this.joints) {
       if (binding?.joint && object.enabled) applyEfforts(object, binding.joint);
@@ -130,10 +195,22 @@ export class RapierWorld implements PhysicsWorld {
     for (const [object, binding] of this.joints) {
       if (binding) trackAngle(object, binding);
     }
-    for (const callback of this.after) callback(this.fixedDelta);
+    const triggers = new Map<Trigger, TriggerBinding>();
+    for (const [trigger, binding] of this.triggers) {
+      if (!binding) throw new Error("Missing prepared trigger");
+      triggers.set(trigger, binding);
+    }
+    this.interactions.sample(this.backend, this.bodies, triggers);
+    this.dispatch();
+    for (const callback of this.after) {
+      if (this.isDisposed) return;
+      callback(this.fixedDelta);
+    }
   }
   reset(): void {
     assertLive(this);
+    this.assertIdle();
+    this.interactions.clear();
     this.pending.clear();
     for (const [object, binding] of this.bodies) {
       object.validate();
@@ -157,13 +234,28 @@ export class RapierWorld implements PhysicsWorld {
   }
   dispose(): void {
     if (this.isDisposed) return;
-    for (const object of [...this.joints.keys(), ...this.objects])
-      object.dispose();
-    this.backend.free();
-    this.before.clear();
-    this.after.clear();
     this.isDisposed = true;
-    clearDefaultWorld(this);
+    this.interactions.clear();
+    cleanup(
+      [
+        ...[
+          ...this.triggers.keys(),
+          ...this.joints.keys(),
+          ...this.objects,
+        ].map((object) => () => object.dispose()),
+        () => {
+          this.before.clear();
+          this.after.clear();
+          clearDefaultWorld(this);
+          if (!this.updating && !this.interactions.dispatching) this.free();
+        },
+      ],
+      "Physics world disposal failed",
+    );
+  }
+  getOverlappingBodies(trigger: Trigger): RigidBody[] {
+    assertOwned(this, trigger);
+    return this.interactions.bodies(trigger);
   }
   getVelocity(object: RigidBody): PhysicsVelocity {
     assertOwned(this, object);
@@ -253,12 +345,21 @@ export class RapierWorld implements PhysicsWorld {
     assertLive(this);
     for (const body of options?.excludeBodies ?? []) assertOwned(this, body);
     for (const [object, binding] of this.bodies) {
+      if (object.disposed) continue;
       object.validate();
       refreshBody(this.api, this.backend, object, binding);
     }
     this.backend.propagateModifiedBodyPositionsToColliders();
     return this.pending.preview(this.objects, (bodies) =>
-      raycast(this.api, bodies, origin, direction, maxDistance, options),
+      raycast(
+        this.api,
+        bodies,
+        origin,
+        direction,
+        maxDistance,
+        options,
+        [...this.triggers.keys()].filter((trigger) => !trigger.disposed),
+      ),
     );
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
@@ -301,6 +402,13 @@ export class RapierWorld implements PhysicsWorld {
       this.pending.replay(object, created.body);
       this.pending.delete(object);
     }
+    for (const [object, binding] of this.triggers) {
+      if (binding && scope === "pending") continue;
+      this.triggers.set(
+        object,
+        refreshTrigger(this.api, this.backend, object, this.bodies, binding),
+      );
+    }
     for (const [object, binding] of this.joints) {
       if (binding && scope === "pending") continue;
       this.joints.set(
@@ -328,6 +436,39 @@ export class RapierWorld implements PhysicsWorld {
     const binding = this.bodies.get(object);
     if (!binding) throw new Error("Missing prepared body");
     return binding.body;
+  }
+  private assertIdle(): void {
+    if (this.updating || this.interactions.dispatching)
+      throw new Error(
+        "Cannot update or reset during a physics step or event dispatch",
+      );
+  }
+  private dispatch(): void {
+    if (this.interactions.dispatching) return;
+    cleanup(
+      [
+        () => this.interactions.dispatch(),
+        () => {
+          const removals = [...this.removals];
+          this.removals.clear();
+          cleanup(
+            [
+              ...removals.map((object) => () => this.remove(object)),
+              () => {
+                if (this.isDisposed && !this.updating) this.free();
+              },
+            ],
+            "Deferred physics cleanup failed",
+          );
+        },
+      ],
+      "Physics event dispatch failed",
+    );
+  }
+  private free(): void {
+    if (this.freed) return;
+    this.backend.free();
+    this.freed = true;
   }
 }
 

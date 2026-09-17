@@ -1,5 +1,6 @@
 import { Object3D } from "three";
 import { RigidBody } from "./body.js";
+import { Trigger } from "./trigger.js";
 import { Joint } from "./joint.js";
 
 /** Copy bodies before constructing joints so immutable connections point at their copies. */
@@ -41,7 +42,11 @@ export function clone<T extends Object3D>(root: T): T {
     return result;
   } catch (error) {
     for (const object of [...copies.values()].reverse())
-      if (object instanceof RigidBody || object instanceof Joint)
+      if (
+        object instanceof RigidBody ||
+        object instanceof Joint ||
+        object instanceof Trigger
+      )
         object.dispose();
     throw error;
   }

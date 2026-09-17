@@ -25,6 +25,7 @@ import {
   PrismaticJoint,
   RevoluteJoint,
   RigidBody,
+  Trigger,
   SphereCollider,
   SphericalJoint,
   Joint,
@@ -85,6 +86,54 @@ function doorAssembly(model: "force" | "acceleration" = "force") {
 }
 
 describe("USD Physics interchange", () => {
+  it.each(["root", "group", "body"] as const)(
+    "rejects Trigger volumes at a %s boundary",
+    async (parent) => {
+      const trigger = new Trigger();
+      trigger.add(new BoxCollider());
+      const scene = parent === "root" ? trigger : new Scene();
+      if (parent === "group") scene.add(new Group().add(trigger));
+      if (parent === "body")
+        scene.add(new RigidBody({ type: "static" }).add(trigger));
+      await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
+        "Core USD Physics cannot represent Trigger volumes",
+      );
+    },
+  );
+
+  it("rejects an empty hidden Trigger rather than silently dropping it", async () => {
+    const trigger = new Trigger();
+    trigger.visible = false;
+    await expect(
+      new PhysicsUSDExporter().parseAsync(new Scene().add(trigger)),
+    ).rejects.toThrow("Core USD Physics cannot represent Trigger volumes");
+  });
+
+  it("rejects body filter defaults on automatic colliders and permits clearing them", async () => {
+    const { scene, door } = doorAssembly();
+    door.setCollisionGroups({ membership: 1, filter: 2 });
+    const exporter = new PhysicsUSDExporter();
+    await expect(exporter.parseAsync(scene)).rejects.toThrow(
+      "collision filter",
+    );
+    door.setCollisionGroups(undefined);
+    await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(
+      Uint8Array,
+    );
+  });
+
+  it("rejects authored collider masks even with unrestricted body defaults", async () => {
+    const scene = new Scene();
+    const body = new RigidBody({ type: "static" });
+    body.add(
+      new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
+    );
+    scene.add(body);
+    await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
+      "collision filter",
+    );
+  });
+
   it("owns imported registrations without replacing the application world", async () => {
     const { scene } = doorAssembly();
     const imported = new PhysicsUSDLoader().parse(

@@ -71,3 +71,24 @@ no position-target restriction, and generic joints do not track turns.
 Independent body forces remain additive.
 See the [core contracts](../../README.md#drives-and-readings) for
 command lifetime, continuous angles, simulation time, mass properties, and raycasts.
+
+## Triggers and contacts
+
+Use `Trigger` from `@drawcall/physics` for compound overlap regions, with typed
+`enter`/`exit` events and cached `overlaps(body)` / `getOverlappingBodies()` reads.
+Rigid bodies emit `contactbegin`/`contactend` with `otherBody`; both APIs aggregate
+shape pairs so compound shape handoffs do not create extra transitions. See the
+[core example and lifecycle contract](../../README.md#triggers-and-contact-events).
+
+Triggers detect static, kinematic, dynamic, and sleeping targets without mass or
+collision response. Attached Triggers exclude their ancestor body; joint contact
+suppression does not disable their detection of other links. Body and Trigger
+collision-group defaults are overridden by explicit collider groups. Both masks
+must permit an interaction. Raycasts exclude Trigger shapes unless
+`includeTriggers: true`; narrow the hit's `kind` before reading `body` or `trigger`.
+
+Overlap observations update only on completed fixed steps, before events and
+`onAfterStep`. `update(0)` and raycasts do not populate this cached state. Reads
+are sampled observations, not fresh overlap tests at final integrated transforms.
+Sleeping alone does not end relationships. Trigger shapes use backend sensors as
+an implementation detail; the public collider sensor flag has been removed.

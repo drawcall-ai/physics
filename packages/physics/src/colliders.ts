@@ -41,7 +41,6 @@ export abstract class Collider extends Object3D {
   source: Object3D = this;
   private currentMaterial?: PhysicsMaterial;
   private currentGroups?: CollisionGroups;
-  private currentSensor = false;
   private version = 0;
   get settingsVersion(): number {
     return this.version;
@@ -51,9 +50,6 @@ export abstract class Collider extends Object3D {
   }
   get collisionGroups(): CollisionGroups | undefined {
     return this.currentGroups;
-  }
-  get sensor(): boolean {
-    return this.currentSensor;
   }
   setMaterial(value: PhysicsMaterial | undefined): this {
     if (value) validateMaterial(value);
@@ -67,20 +63,15 @@ export abstract class Collider extends Object3D {
     this.version++;
     return this;
   }
-  setSensor(value: boolean): this {
-    this.currentSensor = value;
-    this.version++;
-    return this;
-  }
   abstract shape(): Shape;
   override clone(recursive = true): this {
     return constructLike(this, [this.shape()]).copy(this, recursive);
   }
   override copy(source: this, recursive = true): this {
     super.copy(source, recursive);
-    return this.setMaterial(source.material)
-      .setSensor(source.sensor)
-      .setCollisionGroups(source.collisionGroups);
+    return this.setMaterial(source.material).setCollisionGroups(
+      source.collisionGroups,
+    );
   }
 }
 export type Shape =
@@ -191,4 +182,17 @@ export class MeshCollider extends Collider {
     super.copy(source, recursive);
     return this.setGeometry(source.geometry);
   }
+}
+
+export function resolveCollisionGroups(
+  collider: Collider,
+  owner: { readonly collisionGroups?: CollisionGroups },
+): CollisionGroups {
+  return (
+    collider.collisionGroups ??
+    owner.collisionGroups ?? {
+      membership: 0xffff,
+      filter: 0xffff,
+    }
+  );
 }

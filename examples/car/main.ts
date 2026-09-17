@@ -2,12 +2,14 @@ import { setupWorld } from "@drawcall/physics-rapier";
 import { createCar, simulationOptions } from "./model";
 import { createRoad } from "./road";
 import { driveCar } from "./drive";
+import { createGoal } from "./goal";
 import { view } from "../view";
 
 const world = await setupWorld(simulationOptions);
 const car = createCar(world);
 const road = createRoad(world);
-road.add(car.root);
+const goal = createGoal(car.chassis);
+road.add(car.root, goal.trigger);
 const driver = driveCar(world, car);
 const demo = view(world, road, car.chassis.position);
 const keys = new Set<string>();
@@ -18,6 +20,7 @@ window.addEventListener(
       keys.clear();
       if (event.code === "KeyT") driver.input.automatic = true;
       driver.reset();
+      goal.reset();
     }
     if (!["KeyW", "KeyS", "KeyA", "KeyD", "Space"].includes(event.code)) return;
     event.preventDefault();
@@ -52,7 +55,8 @@ function input() {
 demo.run(() => {
   driver.updateVisuals();
   const { speed, completed } = driver.telemetry;
-  return `${(speed * 3.6).toFixed(1)} km/h · ${driver.input.automatic ? (completed ? "Test complete" : "Automatic test") : "Manual"}`;
+  const inside = goal.trigger.overlaps(car.chassis);
+  return `${(speed * 3.6).toFixed(1)} km/h · ${driver.input.automatic ? (completed ? "Test complete" : "Automatic test") : "Manual"} · Finish zone: ${inside ? "inside" : "outside"}`;
 });
 window.addEventListener(
   "pagehide",

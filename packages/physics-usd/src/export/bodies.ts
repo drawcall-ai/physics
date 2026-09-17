@@ -84,12 +84,10 @@ function colliderPrim(
   index: number,
   materials: Materials,
 ): Prim {
-  if (collider.collisionGroups)
+  if (collider.collisionGroups ?? body.collisionGroups)
     throw new Error(
       "USD collision filter conversion is not implemented; remove collisionGroups or export without physics",
     );
-  if (collider.sensor)
-    throw new Error("Core USD Physics cannot represent sensors");
   const materialPath = materials.path(body, collider);
   const resolved = resolveCollider(body, collider);
   const prim = shapePrim(`Collider${index}`, resolved.shape, resolved.matrix);

@@ -5,9 +5,14 @@ import {
   type RaycastHit,
   validateVector,
   validateGroups,
+  resolveCollider,
+  resolveCollisionGroups,
+  splitTransform,
+  type Trigger,
 } from "@drawcall/physics";
-import { Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
 import type { BodyBinding } from "./body.js";
+import { descriptor } from "./shapes.js";
 
 export function raycast(
   api: typeof Rapier,
@@ -16,6 +21,7 @@ export function raycast(
   direction: Vector3,
   maxDistance: number,
   options: RaycastOptions = {},
+  triggers: Iterable<Trigger> = [],
 ): RaycastHit | null {
   validateVector(origin);
   validateVector(direction);
@@ -44,7 +50,9 @@ export function raycast(
     if (options.excludeBodies?.includes(body)) continue;
     for (let i = 0; i < binding.body.numColliders(); i++) {
       const collider = binding.body.collider(i);
-      if (collider.isSensor() && !options.includeSensors) continue;
+      if (collider.isSensor()) continue;
+      const source = binding.sources.get(collider.handle);
+      if (!source) throw new Error("Missing body collider source");
       const mask = collider.collisionGroups();
       if (
         groups &&
@@ -58,9 +66,8 @@ export function raycast(
         false,
       );
       if (!hit) continue;
-      const source = binding.sources.get(collider.handle);
-      if (!source) throw new Error("Missing source for physics collider");
       closest = {
+        kind: "body",
         distance: hit.timeOfImpact,
         point: new Vector3()
           .copy(ray.dir)
@@ -69,6 +76,40 @@ export function raycast(
         normal: new Vector3().copy(hit.normal),
         body,
         collider: source,
+      };
+    }
+  }
+  if (!options.includeTriggers) return closest;
+  for (const trigger of triggers) {
+    for (const collider of trigger.getColliders()) {
+      const mask = resolveCollisionGroups(collider, trigger);
+      if (
+        groups &&
+        (!(mask.membership & groups.filter) ||
+          !(mask.filter & groups.membership))
+      )
+        continue;
+      const resolved = resolveCollider(trigger, collider);
+      resolved.matrix.premultiply(splitTransform(trigger.matrixWorld).pose);
+      const shape = descriptor(api, resolved.shape).shape;
+      const hit = shape.castRayAndGetNormal(
+        ray,
+        new Vector3().setFromMatrixPosition(resolved.matrix),
+        new Quaternion().setFromRotationMatrix(resolved.matrix),
+        closest?.distance ?? maxDistance,
+        false,
+      );
+      if (!hit) continue;
+      closest = {
+        kind: "trigger",
+        trigger,
+        collider,
+        distance: hit.timeOfImpact,
+        point: new Vector3()
+          .copy(ray.dir)
+          .multiplyScalar(hit.timeOfImpact)
+          .add(origin),
+        normal: new Vector3().copy(hit.normal),
       };
     }
   }

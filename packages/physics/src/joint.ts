@@ -2,6 +2,7 @@ import { Object3D, Matrix4, Vector3 } from "three";
 import { JointDrive, bindDrive } from "./drive.js";
 import { RigidBody } from "./body.js";
 import { constructLike } from "./construct.js";
+import { cleanup } from "./cleanup.js";
 import { assertRigidTransform, splitTransform } from "./transforms.js";
 import type { PhysicsWorld } from "./world.js";
 
@@ -88,10 +89,15 @@ export abstract class Joint<
 
   dispose(): void {
     if (this.isDisposed) return;
-    this.releaseDrives();
-    this.world.unregister(this);
-    this.removeFromParent();
     this.isDisposed = true;
+    cleanup(
+      [
+        () => this.releaseDrives(),
+        () => this.world.unregister(this),
+        () => this.removeFromParent(),
+      ],
+      "Joint disposal failed",
+    );
   }
   /** Detaches every drive; joints with drive slots override. */
   protected releaseDrives(): void {}

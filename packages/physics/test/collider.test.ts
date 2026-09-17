@@ -12,8 +12,7 @@ it("captures immutable dimensions and independent material/group settings", () =
   const groups = { membership: 1, filter: 2 };
   const box = new BoxCollider({ size })
     .setMaterial(material)
-    .setCollisionGroups(groups)
-    .setSensor(true);
+    .setCollisionGroups(groups);
   size[0] = 9;
   material.density = 99;
   groups.filter = 0;
@@ -24,15 +23,12 @@ it("captures immutable dimensions and independent material/group settings", () =
   const copy = box
     .clone()
     .setMaterial({ density: 20 })
-    .setSensor(false)
     .setCollisionGroups(undefined);
   expect(copy.size).not.toBe(box.size);
   expect(box.material?.density).toBe(12);
-  expect(box.sensor).toBe(true);
   expect(box.collisionGroups).toEqual({ membership: 1, filter: 2 });
   expect(() => box.setMaterial({ restitution: 2 })).toThrow("material");
   expect(() => box.copy(new BoxCollider())).toThrow("immutable");
-  expect(box.sensor).toBe(true);
 });
 
 it("clones configured primitive dimensions and rejects mismatched copies", () => {

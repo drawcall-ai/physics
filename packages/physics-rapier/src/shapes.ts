@@ -1,5 +1,5 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import { resolveCollider } from "@drawcall/physics";
+import { resolveCollider, resolveCollisionGroups } from "@drawcall/physics";
 import type { RigidBody, Shape } from "@drawcall/physics";
 import { Quaternion, Vector3 } from "three";
 
@@ -15,20 +15,20 @@ export function colliderDesc(
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction.");
   const result = descriptor(api, shape);
-  if (collider.collisionGroups) {
-    const { membership, filter } = collider.collisionGroups;
-    result.setCollisionGroups(((membership << 16) | filter) >>> 0);
-  }
+  const { membership, filter } = resolveCollisionGroups(collider, body);
+  result.setCollisionGroups(((membership << 16) | filter) >>> 0);
   return result
     .setTranslation(position.x, position.y, position.z)
     .setRotation(quaternion)
     .setDensity(material.density)
     .setFriction(material.dynamicFriction)
-    .setRestitution(material.restitution)
-    .setSensor(collider.sensor);
+    .setRestitution(material.restitution);
 }
 
-function descriptor(api: typeof Rapier, shape: Shape): Rapier.ColliderDesc {
+export function descriptor(
+  api: typeof Rapier,
+  shape: Shape,
+): Rapier.ColliderDesc {
   const factory = api.ColliderDesc;
   switch (shape.kind) {
     case "box":

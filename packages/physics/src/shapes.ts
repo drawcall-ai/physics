@@ -234,7 +234,7 @@ function validateRange(geometry: BufferGeometry): void {
   }
 }
 
-function validateShape(shape: Shape): void {
+export function validateShape(shape: Shape): void {
   if (shape.kind === "mesh") {
     validateRange(shape.geometry);
     const position = shape.geometry.getAttribute("position");
