@@ -59,10 +59,13 @@ The native `discrete` integrator treats servo stiffness and damping implicitly
 alongside contacts. Saturated actuators lose these implicit derivatives, so
 force-limited servos still need gains and target rates appropriate to the timestep.
 Hinge and slider drives use native actuators with force limits. Completely
-free generic joints, including the ragdoll hand, use forces at their anchors;
-these springs use a discrete implicit force estimate. Acceleration drives use the
-native coordinate's effective inertia; free anchor drives use the driven body's
-mass. Distance limits use spatial tendons. Revolute readings track full turns.
+free generic joints, including the ragdoll hand, and distance drives use scalar
+implicit springs projected through the native mass matrix. Their effective inertia
+includes both connected bodies, angular inertia, and anchor lever arms.
+Frame-relative translation applies equal opposite forces at the driven anchor,
+including the reaction torque from frame rotation. Acceleration drives scale gains
+by the coordinate's effective inertia. Contacts remain the native solver's
+responsibility. Distance limits use spatial tendons. Revolute readings track full turns.
 
 ## Engine differences
 

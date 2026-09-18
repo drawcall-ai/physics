@@ -5,7 +5,7 @@ import {
   type RigidBody,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { Compiled } from "./model.js";
+import type { Compiled } from "./model/compile.js";
 import { array, at, pose, quaternion, rotation, vector } from "./values.js";
 
 export function bodyId(compiled: Compiled, body: RigidBody): number {
@@ -52,22 +52,23 @@ export function writeVelocity(
   const { model, data } = compiled;
   const joint = freeJoint(compiled, id);
   const address = at(model.jnt_dofadr, joint);
-  const angular = value.angular
-    ?.clone()
-    .applyQuaternion(quaternion(data.xquat, id * 4).invert());
-  if (angular) array(data.qvel).set(angular.toArray(), address + 3);
-  if (value.linear) {
-    const omega =
-      value.angular ??
-      vector(data.qvel, address + 3).applyQuaternion(
-        quaternion(data.xquat, id * 4),
-      );
-    const offset = vector(data.xipos, id * 3).sub(vector(data.xpos, id * 3));
-    array(data.qvel).set(
-      value.linear.clone().sub(omega.cross(offset)).toArray(),
-      address,
-    );
-  }
+  const orientation = quaternion(data.xquat, id * 4);
+  const offset = vector(data.xipos, id * 3).sub(vector(data.xpos, id * 3));
+  const previousAngular = vector(data.qvel, address + 3).applyQuaternion(
+    orientation,
+  );
+  const linear =
+    value.linear?.clone() ??
+    vector(data.qvel, address).add(previousAngular.clone().cross(offset));
+  const angular = value.angular?.clone() ?? previousAngular;
+  array(data.qvel).set(
+    linear.sub(angular.clone().cross(offset)).toArray(),
+    address,
+  );
+  array(data.qvel).set(
+    angular.applyQuaternion(orientation.invert()).toArray(),
+    address + 3,
+  );
 }
 export function writePose(
   compiled: Compiled,
@@ -90,43 +91,6 @@ export function writePose(
   } else {
     const address = at(model.jnt_qposadr, freeJoint(compiled, id));
     array(data.qpos).set([...position, ...q], address);
-  }
-}
-export function wrench(
-  api: MainModule,
-  compiled: Compiled,
-  id: number,
-  force: Vector3,
-  torque: Vector3,
-  point: Vector3,
-  impulse = false,
-): void {
-  const { model, data } = compiled;
-  const buffer = new api.DoubleBuffer(model.nv);
-  try {
-    api.mj_applyFT(
-      model,
-      data,
-      force.toArray(),
-      torque.toArray(),
-      point.toArray(),
-      id,
-      buffer,
-    );
-    const values = Array.from(array(buffer.GetView()));
-    if (impulse) {
-      api.mj_solveM(model, data, buffer, values);
-      const delta = array(buffer.GetView());
-      for (let i = 0; i < model.nv; i++)
-        array(data.qvel)[i] = at(data.qvel, i) + at(delta, i);
-      api.mj_forward(model, data);
-    } else {
-      for (let i = 0; i < model.nv; i++)
-        array(data.qfrc_applied)[i] =
-          at(data.qfrc_applied, i) + (values[i] ?? 0);
-    }
-  } finally {
-    buffer.delete();
   }
 }
 export function synchronize(

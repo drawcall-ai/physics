@@ -11,19 +11,20 @@ import {
   type JointReading,
 } from "@drawcall/physics";
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
-import { name } from "./values.js";
+import { name } from "../values.js";
 
 export interface JointRecord {
   frames: [Matrix4, Matrix4];
   angle: number;
   sampled: number;
 }
-export interface Coordinate {
+export type Coordinate = {
   name: string;
   position: number;
-  joint: Joint;
-  axis?: (typeof jointDofs)[number];
-}
+} & (
+  | { kind: "axis"; joint: AxisJoint }
+  | { kind: "generic"; joint: GenericJoint; axis: (typeof jointDofs)[number] }
+);
 export function unconstrained(joint: Joint): boolean {
   return (
     joint instanceof GenericJoint &&
@@ -52,12 +53,10 @@ export function jointXml(
     type: "slide" | "hinge",
     axis: Vector3,
     limits: readonly [number, number] | undefined,
-    initial: number,
-    suffix = "",
-    dof?: (typeof jointDofs)[number],
+    coordinate: Coordinate,
   ) => {
-    const key = name(joint) + suffix;
-    coordinates.push({ name: key, joint, position: initial, axis: dof });
+    coordinates.push(coordinate);
+    const key = coordinate.name;
     if (limits && limits[0] === limits[1])
       throw new Error(
         "MuJoCo scalar limits must have a nonzero range; use a locked dof instead",
@@ -72,7 +71,12 @@ export function jointXml(
       joint.dof === "rotX" ? "hinge" : "slide",
       axisVector(joint.options.axis),
       joint.limits,
-      joint.dof === "rotX" ? reading.angle : reading.translation.x,
+      {
+        kind: "axis",
+        joint,
+        name: name(joint),
+        position: joint.dof === "rotX" ? reading.angle : reading.translation.x,
+      },
     );
   if (joint instanceof GenericJoint)
     return jointDofs
@@ -85,20 +89,22 @@ export function jointXml(
           i < 3 ? "slide" : "hinge",
           direction,
           motion === "free" ? undefined : motion,
-          state.position,
-          axis,
-          axis,
+          {
+            kind: "generic",
+            joint,
+            axis,
+            name: name(joint) + axis,
+            position: state.position,
+          },
         );
       })
       .join("");
   throw new Error(`Unsupported MuJoCo joint: ${joint.constructor.name}`);
 }
 export function driveOf(coordinate: Coordinate): JointDrive | undefined {
-  const joint = coordinate.joint;
-  if (joint instanceof AxisJoint) return joint.drive;
-  if (joint instanceof GenericJoint && coordinate.axis)
-    return joint.getDrive(coordinate.axis);
-  return undefined;
+  return coordinate.kind === "axis"
+    ? coordinate.joint.drive
+    : coordinate.joint.getDrive(coordinate.axis);
 }
 
 function validateAlignment(joint: Joint, reading: JointReading): void {

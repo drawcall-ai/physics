@@ -1,4 +1,4 @@
-import type { MainModule } from "@mujoco/mujoco";
+import type { DoubleBuffer, MainModule } from "@mujoco/mujoco";
 import {
   RigidBody,
   Trigger,
@@ -8,9 +8,9 @@ import {
   type RaycastOptions,
 } from "@drawcall/physics";
 import { Vector3 } from "three";
-import type { Compiled } from "./model.js";
+import type { Compiled } from "./model/compile.js";
 import { array, at } from "./values.js";
-import { matches } from "./shapes.js";
+import { matches } from "./model/shapes.js";
 import type { Interactions } from "@drawcall/physics";
 
 export function sample(
@@ -56,15 +56,18 @@ export function sample(
       if (!contact) throw new Error("Missing MuJoCo contact");
       try {
         if (contact.dist > 0) continue;
-        const a = compiled.geometries.get(contact.geom1)?.owner,
-          b = compiled.geometries.get(contact.geom2)?.owner;
+        const first = compiled.geometries.get(contact.geom1),
+          second = compiled.geometries.get(contact.geom2);
+        if (!first || !second)
+          throw new Error("Contact references an unknown MuJoCo geometry");
+        const a = first.owner,
+          b = second.owner;
         if (!(a instanceof RigidBody) || !(b instanceof RigidBody) || a === b)
           continue;
         for (const [body, other] of [
           [a, b],
           [b, a],
-        ]) {
-          if (!body || !other) throw new Error("Missing contact body");
+        ] as const) {
           const set = contacts.get(body) ?? new Set<RigidBody>();
           set.add(other);
           contacts.set(body, set);
@@ -100,7 +103,6 @@ export function raycast(
   const normal = new api.DoubleBuffer(3);
   let result: RaycastHit | null = null;
   try {
-    const { model, data } = compiled;
     for (const [id, geom] of compiled.geometries) {
       if (geom.owner instanceof Trigger && !options.includeTriggers) continue;
       if (
@@ -113,35 +115,7 @@ export function raycast(
         !matches(options.collisionGroups, geom.groups)
       )
         continue;
-      const type = at(model.geom_type, id);
-      const distance =
-        type === api.mjtGeom.mjGEOM_MESH.value
-          ? api.mj_rayMesh(
-              model,
-              data,
-              id,
-              origin.toArray(),
-              unit.toArray(),
-              normal,
-            )
-          : type === api.mjtGeom.mjGEOM_HFIELD.value
-            ? api.mj_rayHfield(
-                model,
-                data,
-                id,
-                origin.toArray(),
-                unit.toArray(),
-                normal,
-              )
-            : api.mju_rayGeom(
-                Array.from(array(data.geom_xpos).slice(id * 3, id * 3 + 3)),
-                Array.from(array(data.geom_xmat).slice(id * 9, id * 9 + 9)),
-                Array.from(array(model.geom_size).slice(id * 3, id * 3 + 3)),
-                origin.toArray(),
-                unit.toArray(),
-                type,
-                normal,
-              );
+      const distance = rayDistance(api, compiled, id, origin, unit, normal);
       if (
         distance < 0 ||
         distance > maxDistance ||
@@ -163,4 +137,30 @@ export function raycast(
   } finally {
     normal.delete();
   }
+}
+
+function rayDistance(
+  api: MainModule,
+  { model, data }: Compiled,
+  id: number,
+  origin: Vector3,
+  direction: Vector3,
+  normal: DoubleBuffer,
+): number {
+  const type = at(model.geom_type, id);
+  const point = origin.toArray(),
+    ray = direction.toArray();
+  if (type === api.mjtGeom.mjGEOM_MESH.value)
+    return api.mj_rayMesh(model, data, id, point, ray, normal);
+  if (type === api.mjtGeom.mjGEOM_HFIELD.value)
+    return api.mj_rayHfield(model, data, id, point, ray, normal);
+  return api.mju_rayGeom(
+    Array.from(array(data.geom_xpos).slice(id * 3, id * 3 + 3)),
+    Array.from(array(data.geom_xmat).slice(id * 9, id * 9 + 9)),
+    Array.from(array(model.geom_size).slice(id * 3, id * 3 + 3)),
+    point,
+    ray,
+    type,
+    normal,
+  );
 }

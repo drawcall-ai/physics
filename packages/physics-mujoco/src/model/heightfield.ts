@@ -1,7 +1,7 @@
 import { BufferGeometry, Matrix4, Vector3 } from "three";
 
 /** A regular, complete height grid can use MuJoCo's native terrain collision instead of triangle seams. */
-export function terrain(geometry: BufferGeometry, name: string) {
+export function heightfield(geometry: BufferGeometry, name: string) {
   const positions = geometry.getAttribute("position");
   const points = Array.from({ length: positions.count }, (_, i) =>
     new Vector3().fromBufferAttribute(positions, i),
@@ -18,36 +18,35 @@ export function terrain(geometry: BufferGeometry, name: string) {
     heights.set(key, p.y);
   }
   if (heights.size !== xs.length * zs.length) return undefined;
-  const cells = new Map<string, Set<string>>();
+  const cells = new Map<string, { diagonal: string; triangles: Set<string> }>();
   const indices = geometry.index;
   for (let i = 0; i < (indices?.count ?? points.length); i += 3) {
     const vertices = [0, 1, 2].map(
       (j) => points[indices ? indices.getX(i + j) : i + j],
     );
     if (vertices.some((p) => !p)) return undefined;
-    const coordinates = vertices.flatMap((p) =>
+    const coordinates: [number, number][] = vertices.flatMap((p) =>
       p ? [[xs.indexOf(p.x), zs.indexOf(p.z)]] : [],
     );
-    const x = Math.min(...coordinates.map((p) => p[0] ?? Infinity));
-    const z = Math.min(...coordinates.map((p) => p[1] ?? Infinity));
+    const x = Math.min(...coordinates.map((p) => p[0]));
+    const z = Math.min(...coordinates.map((p) => p[1]));
     if (
-      Math.max(...coordinates.map((p) => p[0] ?? -Infinity)) !== x + 1 ||
-      Math.max(...coordinates.map((p) => p[1] ?? -Infinity)) !== z + 1
+      Math.max(...coordinates.map((p) => p[0])) !== x + 1 ||
+      Math.max(...coordinates.map((p) => p[1])) !== z + 1
     )
       return undefined;
+    const corners = coordinates.map(([cx, cz]) => cx - x + 2 * (cz - z));
+    if (new Set(corners).size !== 3) return undefined;
+    const diagonal = corners.includes(0) && corners.includes(3) ? "03" : "12";
     const key = `${x},${z}`;
-    const cell = cells.get(key) ?? new Set<string>();
-    cell.add(
-      coordinates
-        .map((p) => p.join(","))
-        .sort()
-        .join(";"),
-    );
+    const cell = cells.get(key) ?? { diagonal, triangles: new Set<string>() };
+    if (cell.diagonal !== diagonal) return undefined;
+    cell.triangles.add(corners.sort().join(""));
     cells.set(key, cell);
   }
   if (
     cells.size !== (xs.length - 1) * (zs.length - 1) ||
-    [...cells.values()].some((c) => c.size !== 2)
+    [...cells.values()].some((cell) => cell.triangles.size !== 2)
   )
     return undefined;
   const values = zs.flatMap((z) =>

@@ -11,14 +11,13 @@ import {
   setWorldPose,
   clearDefaultWorld,
   cleanup,
-  wrapAngle,
   type PhysicsWorld,
   type PhysicsOptions,
   type PhysicsVelocity,
   type RaycastOptions,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
-import { type Compiled } from "./model.js";
+import { type Compiled } from "./model/compile.js";
 import { array, vector } from "./values.js";
 import {
   bodyId,
@@ -26,11 +25,11 @@ import {
   velocity,
   writeVelocity,
   writePose,
-  wrench,
   synchronize,
   refreshPoses,
   validateState,
 } from "./motion.js";
+import { applyBodyForces, wrench } from "./forces.js";
 import { Scene } from "./scene.js";
 import { applyDrives } from "./drives.js";
 import { sample, raycast } from "./queries.js";
@@ -87,32 +86,15 @@ export class MujocoWorld implements PhysicsWorld {
   }
   register(object: RigidBody | Joint | Trigger): void {
     assertOwned(this, object);
-    if (object instanceof RigidBody) this.scene.objects.add(object);
-    else if (object instanceof Joint) this.scene.jointObjects.add(object);
-    else this.scene.triggers.add(object);
+    this.scene.register(object);
   }
   unregister(object: RigidBody | Joint | Trigger): void {
-    this.scene.key = "";
-    if (object instanceof Joint) {
-      this.scene.jointObjects.delete(object);
-      this.scene.joints.delete(object);
-      return;
-    }
-    this.interactions.remove(object);
-    if (object instanceof Trigger) this.scene.triggers.delete(object);
-    else {
-      this.scene.objects.delete(object);
-      this.scene.bodies.delete(object);
-      this.targets.delete(object);
-      cleanup(
-        [...this.scene.jointObjects]
-          .filter((j) => j.connects(object))
-          .map((j) => () => j.dispose()),
-        "Joint disposal failed",
-      );
-    }
-    object.traverse((child) => this.scene.scales.delete(child));
-    this.interactions.dispatch();
+    if (!(object instanceof Joint)) this.interactions.remove(object);
+    if (object instanceof RigidBody) this.targets.delete(object);
+    cleanup(
+      [() => this.scene.unregister(object), () => this.interactions.dispatch()],
+      "Physics object removal failed",
+    );
   }
   private prepare(): Compiled {
     assertLive(this);
@@ -142,6 +124,7 @@ export class MujocoWorld implements PhysicsWorld {
           writePose(compiled, bodyId(compiled, body), matrix);
         this.targets.clear();
         refreshPoses(this.api, compiled);
+        applyBodyForces(this.api, compiled, this.fixedDelta);
         applyDrives(
           this.api,
           compiled,
@@ -156,15 +139,7 @@ export class MujocoWorld implements PhysicsWorld {
         synchronize(compiled, setWorldPose);
         this.elapsed -= this.fixedDelta;
         this.completed += this.fixedDelta;
-        for (const [joint, record] of this.scene.joints) {
-          const sampled = authoredJointReading(
-            joint,
-            record.frames,
-            () => new Vector3(),
-          ).angle;
-          record.angle += wrapAngle(sampled - record.sampled);
-          record.sampled = sampled;
-        }
+        this.scene.trackAngles();
         refreshPoses(this.api, compiled);
         sample(this.api, compiled, this.interactions);
         this.interactions.dispatch();
@@ -319,19 +294,7 @@ export class MujocoWorld implements PhysicsWorld {
     this.interactions.clear();
     this.pending.length = 0;
     this.targets.clear();
-    this.free();
-    for (const [body, record] of this.scene.bodies) {
-      setWorldPose(body, record.initialPose);
-      setAuthoredVelocity(body, record.initialVelocity);
-    }
-    for (const [joint, record] of this.scene.joints) {
-      record.angle = authoredJointReading(
-        joint,
-        record.frames,
-        () => new Vector3(),
-      ).angle;
-      record.sampled = record.angle;
-    }
+    this.scene.reset();
     this.elapsed = 0;
     this.completed = 0;
   }
@@ -341,20 +304,16 @@ export class MujocoWorld implements PhysicsWorld {
     this.interactions.clear();
     cleanup(
       [
-        ...this.scene.triggers,
-        ...this.scene.jointObjects,
-        ...this.scene.objects,
-      ]
-        .map((object) => () => object.dispose())
-        .concat(() => {
+        () => this.scene.dispose(),
+        () => {
           this.before.clear();
           this.after.clear();
           this.pending.length = 0;
           this.targets.clear();
-          this.scene.scales.clear();
           clearDefaultWorld(this);
           if (!this.updating) this.free();
-        }),
+        },
+      ],
       "MuJoCo world disposal failed",
     );
   }
