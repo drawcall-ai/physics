@@ -17,10 +17,10 @@ export const simulationOptions = {
   solverIterations: 32,
 };
 
-// A stiff, torque-limited native servo overcomes stationary tire scrub.
+// Overcome tire scrub without saturating the servo during steering reversals.
 export const steeringDrive = {
-  stiffness: 300000,
-  damping: 1500,
+  stiffness: 40000,
+  damping: 100,
   maxForce: 4000,
 };
 

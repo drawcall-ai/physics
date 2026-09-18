@@ -19,3 +19,4 @@ export {
 export { authoredJointReading, jointReading, wrapAngle } from "./reading.js";
 export { constructLike } from "./construct.js";
 export { cleanup } from "./cleanup.js";
+export { Interactions } from "./interactions.js";

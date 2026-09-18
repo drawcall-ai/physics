@@ -1,6 +1,6 @@
 # Physics examples
 
-Three independent Vite packages, sharing only `view.ts`, CSS, and TypeScript defaults.
+Three independent Vite packages, sharing `view.ts`, backend selection, CSS, and TypeScript defaults.
 
 ```sh
 pnpm install
@@ -11,11 +11,14 @@ pnpm --filter @drawcall/example-scale dev
 ```
 
 Run a dev command and open its Vite URL. Each package also has its own
-`build` and `typecheck` scripts.
+`build` and `typecheck` scripts. Select **Rapier** or **MuJoCo WASM** in the
+backend dropdown. Changing it reloads the example and starts a fresh simulation;
+the selection is preserved in the URL (`?backend=mujoco`). Browser builds emit
+the official WASM asset locally. The headless tests also exercise MuJoCo in Node.js.
 
 - **Ragdoll:** a falling articulated body using spherical and limited revolute joints.
   Drag any limb with mouse or touch: `@pmndrs/pointer-events` captures the pointer, and
-  a kinematic hand pulls the limb through a force-limited distance-joint spring, so the
+  a kinematic hand pulls the limb through a force-limited generic-joint spring, so the
   body stays dynamic and the floor still stops it.
 - **Car:** four powered wheels, spring/damper suspension, front steering, fixed rear
   knuckles, and a bump course. Starts with an automatic run; W/S drives, A/D steers,

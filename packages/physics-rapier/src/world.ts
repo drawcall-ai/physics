@@ -30,7 +30,8 @@ import { prepareJoint, type JointBinding } from "./joints.js";
 import { Pending, type Command } from "./pending.js";
 import { raycast } from "./query.js";
 import { readBinding, rebaseAngle, trackAngle } from "./reading.js";
-import { Interactions } from "./interactions.js";
+import { Interactions } from "@drawcall/physics";
+import { sampleInteractions } from "./interactions.js";
 import {
   refreshTrigger,
   removeTrigger,
@@ -200,7 +201,7 @@ export class RapierWorld implements PhysicsWorld {
       if (!binding) throw new Error("Missing prepared trigger");
       triggers.set(trigger, binding);
     }
-    this.interactions.sample(this.backend, this.bodies, triggers);
+    sampleInteractions(this.interactions, this.backend, this.bodies, triggers);
     this.dispatch();
     for (const callback of this.after) {
       if (this.isDisposed) return;

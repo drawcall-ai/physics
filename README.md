@@ -1,12 +1,13 @@
 # @drawcall/physics
 
-Physics scene objects for Three.js, with Rapier simulation and USD interchange.
+Physics scene objects for Three.js, with Rapier and MuJoCo WASM simulation and USD interchange.
 Bodies extend `Group`; colliders and joints extend `Object3D`.
 
 | Package                    | Purpose                                                          |
 | -------------------------- | ---------------------------------------------------------------- |
 | `@drawcall/physics`        | Scene objects, validation, automatic colliders, assembly cloning |
 | `@drawcall/physics-rapier` | Rapier simulation                                                |
+| `@drawcall/physics-mujoco` | MuJoCo WASM simulation in browsers and Node.js                   |
 | `@drawcall/physics-usd`    | USD Physics import and export                                    |
 
 ## Quick start
@@ -44,6 +45,11 @@ world.update(1 / 60);
 // When the scene is no longer needed:
 world.dispose();
 ```
+
+For MuJoCo, install `@drawcall/physics-mujoco` and import its `setupWorld` instead.
+See the [MuJoCo adapter](packages/physics-mujoco/README.md) for browser WASM asset
+loading and engine-specific constraints. All examples offer a backend dropdown;
+changing it restarts the simulation.
 
 ## World ownership
 
@@ -307,7 +313,7 @@ Narrow on `hit.kind`: `"body"` hits contain `body`, and `"trigger"` hits contain
 `excludeBodies` excludes solid body hits, not attached Trigger hits. Query masks
 use the same mutual rule as simulation. Inside-origin rays return the exit surface.
 Queries include the current authored scene before the first update, without advancing time.
-AuthoringWorld has no raycasts. Release all three packages together for this breaking API.
+AuthoringWorld has no raycasts. Release the packages together for this breaking API.
 
 ## Triggers and contact events
 

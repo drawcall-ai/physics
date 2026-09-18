@@ -28,9 +28,15 @@ importers:
       "@drawcall/physics":
         specifier: workspace:*
         version: link:../../packages/physics
+      "@drawcall/physics-mujoco":
+        specifier: workspace:*
+        version: link:../../packages/physics-mujoco
       "@drawcall/physics-rapier":
         specifier: workspace:*
         version: link:../../packages/physics-rapier
+      "@mujoco/mujoco":
+        specifier: 3.13.0
+        version: 3.13.0
       three:
         specifier: ^0.185.1
         version: 0.185.1
@@ -50,9 +56,15 @@ importers:
       "@drawcall/physics":
         specifier: workspace:*
         version: link:../../packages/physics
+      "@drawcall/physics-mujoco":
+        specifier: workspace:*
+        version: link:../../packages/physics-mujoco
       "@drawcall/physics-rapier":
         specifier: workspace:*
         version: link:../../packages/physics-rapier
+      "@mujoco/mujoco":
+        specifier: 3.13.0
+        version: 3.13.0
       "@pmndrs/pointer-events":
         specifier: ^6.6.30
         version: 6.6.30
@@ -75,9 +87,15 @@ importers:
       "@drawcall/physics":
         specifier: workspace:*
         version: link:../../packages/physics
+      "@drawcall/physics-mujoco":
+        specifier: workspace:*
+        version: link:../../packages/physics-mujoco
       "@drawcall/physics-rapier":
         specifier: workspace:*
         version: link:../../packages/physics-rapier
+      "@mujoco/mujoco":
+        specifier: 3.13.0
+        version: 3.13.0
       three:
         specifier: ^0.185.1
         version: 0.185.1
@@ -97,6 +115,19 @@ importers:
       three:
         specifier: ">=0.185.0"
         version: 0.185.1
+
+  packages/physics-mujoco:
+    dependencies:
+      "@mujoco/mujoco":
+        specifier: 3.13.0
+        version: 3.13.0
+      three:
+        specifier: ">=0.180.0"
+        version: 0.185.1
+    devDependencies:
+      "@drawcall/physics":
+        specifier: workspace:*
+        version: link:../physics
 
   packages/physics-rapier:
     dependencies:
@@ -150,6 +181,12 @@ packages:
     resolution:
       {
         integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==,
+      }
+
+  "@mujoco/mujoco@3.13.0":
+    resolution:
+      {
+        integrity: sha512-9OAp3i2pR9U8SnJfr+/UcmxpbIOcUUSBjNGY79XS4NYcyYjztqHmx1kl/83yoEpxDd40WBcDOKZqNhEmhN1+Sg==,
       }
 
   "@oxc-project/types@0.149.0":
@@ -820,6 +857,8 @@ snapshots:
   "@dimforge/rapier3d-compat@0.20.0": {}
 
   "@jridgewell/sourcemap-codec@1.6.0": {}
+
+  "@mujoco/mujoco@3.13.0": {}
 
   "@oxc-project/types@0.149.0": {}
 

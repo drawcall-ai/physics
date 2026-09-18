@@ -32,16 +32,16 @@ jobs:
             echo "Expected a stable release tag such as v0.1.0" >&2
             exit 1
           fi
-          for package in physics physics-rapier physics-usd; do
+          for package in physics physics-rapier physics-mujoco physics-usd; do
             npm --prefix "packages/$package" pkg set version="$version"
           done
-          for package in physics-rapier physics-usd; do
+          for package in physics-rapier physics-mujoco physics-usd; do
             npm --prefix "packages/$package" pkg set "peerDependencies.@drawcall/physics=^$version"
           done
       - name: Copy package documentation
         run: |
           cp README.md packages/physics/README.md
-          for package in physics physics-rapier physics-usd; do
+          for package in physics physics-rapier physics-mujoco physics-usd; do
             cp LICENSE "packages/$package/LICENSE"
           done
       - name: Pack packages
@@ -52,6 +52,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
       - name: Publish Rapier adapter
         run: npm publish "$RUNNER_TEMP/packages/drawcall-physics-rapier-${RELEASE_TAG#v}.tgz" --access public --provenance --tag latest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: Publish MuJoCo adapter
+        run: npm publish "$RUNNER_TEMP/packages/drawcall-physics-mujoco-${RELEASE_TAG#v}.tgz" --access public --provenance --tag latest
         env:
           RELEASE_TAG: ${{ github.ref_name }}
       - name: Publish USD adapter

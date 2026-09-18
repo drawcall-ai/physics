@@ -1,13 +1,20 @@
 import * as THREE from "three";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { setupWorld as setupRapier } from "@drawcall/physics-rapier";
+import { setupWorld as setupMujoco } from "@drawcall/physics-mujoco";
+import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
+import { backend } from "../backend";
 import { view } from "../view";
 import { cases } from "./cases";
 import { specimen, verify } from "./specimen";
 
-const world = await setupWorld();
+const world = await (backend === "mujoco"
+  ? setupMujoco({ wasmUrl })
+  : setupRapier());
 const root = new THREE.Group();
 function controls() {
-  const select = document.querySelector("select");
+  const select = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="Scale case"]',
+  );
   const results = document.querySelector("#results");
   if (!select || !results) throw new Error("Missing example controls");
   return { select, results };

@@ -1,11 +1,16 @@
-import { setupWorld } from "@drawcall/physics-rapier";
+import { setupWorld as setupRapier } from "@drawcall/physics-rapier";
+import { setupWorld as setupMujoco } from "@drawcall/physics-mujoco";
+import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
+import { backend } from "../backend";
 import { createCar, simulationOptions } from "./model";
 import { createRoad } from "./road";
 import { driveCar } from "./drive";
 import { createGoal } from "./goal";
 import { view } from "../view";
 
-const world = await setupWorld(simulationOptions);
+const world = await (backend === "mujoco"
+  ? setupMujoco({ ...simulationOptions, wasmUrl })
+  : setupRapier(simulationOptions));
 const car = createCar(world);
 const road = createRoad(world);
 const goal = createGoal(car.chassis);

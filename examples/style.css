@@ -22,3 +22,20 @@ p {
 output {
   display: block;
 }
+nav select,
+nav button,
+nav details {
+  pointer-events: auto;
+}
+nav label {
+  display: block;
+  margin-top: 10px;
+}
+nav select,
+nav button {
+  color: inherit;
+  background: #263748;
+  border: 1px solid #718398;
+  border-radius: 4px;
+  padding: 5px 8px;
+}
