@@ -30,10 +30,7 @@ it("decomposes from a standalone JavaScript file in Node and a worker without fe
   const directory = await mkdtemp(join(tmpdir(), "coacd-embedded-"));
   try {
     const file = join(directory, "coacd.mjs");
-    await copyFile(
-      new URL("../dist/model/coacd.js", import.meta.url),
-      file,
-    );
+    await copyFile(new URL("../dist/model/coacd.js", import.meta.url), file);
     const moduleUrl = pathToFileURL(file).href;
     const output = execFileSync(
       process.execPath,

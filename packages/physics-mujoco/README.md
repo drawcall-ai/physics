@@ -39,8 +39,11 @@ relative to normal ones. At the default `1` a resting or grasped object still cr
 because soft friction trades slip for force. Raising it converges on Coulomb friction
 without changing the limit at which contacts start to slide; grasping needs around `50`.
 
-A drive's `maxVelocity` is honoured here: the actuator's force range follows the motor's
-speed, falling to zero at the rated speed and braking past it, so a joint cannot run away.
+A drive's `maxVelocity` is honoured here as the motor's back-EMF: the joint is damped by
+`maxForce / maxVelocity`, so a saturated drive settles at its rated speed. The damping sits on
+the joint rather than the actuator, both because back-EMF resists motion whenever the motor is
+connected and because MuJoCo integrates joint damping implicitly, which a force limit that
+chased the measured speed did not survive.
 
 Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 The examples demonstrate both development and production asset loading.

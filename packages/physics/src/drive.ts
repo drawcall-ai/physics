@@ -8,9 +8,9 @@ export interface JointDriveOptions {
   /** Cap on the drive force; unbounded when omitted. */
   readonly maxForce?: number;
   /**
-   * The motor's no-load speed. Its available force then falls linearly from `maxForce` at rest to
-   * zero here and brakes beyond, so the coordinate cannot run away past its rating. Needs
-   * `maxForce`; unlimited when omitted.
+   * The motor's no-load speed, where its `maxForce` is spent on its own back-EMF. It damps the
+   * coordinate by `maxForce / maxVelocity`, so a saturated drive settles at this speed instead of
+   * accelerating without limit. Needs `maxForce`; unlimited when omitted.
    */
   readonly maxVelocity?: number;
   /** `acceleration` scales gains by the driven mass; backends without it reject the drive. */
@@ -54,17 +54,6 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
     this.options = { ...options };
   }
 
-  /** The force this motor can still exert at `velocity`, as a `[lower, upper]` pair. */
-  envelope(velocity: number): [number, number] {
-    const max = this.options.maxForce ?? Infinity;
-    const speed = this.options.maxVelocity;
-    if (speed === undefined) return [-max, max];
-    const clamp = (value: number) => Math.max(-max, Math.min(max, value));
-    return [
-      clamp(-max * (1 + velocity / speed)),
-      clamp(max * (1 - velocity / speed)),
-    ];
-  }
   /** The joint this drive is attached to through its `setDrive`. */
   get joint(): Joint | undefined {
     return attachments.get(this);
