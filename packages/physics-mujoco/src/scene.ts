@@ -12,6 +12,7 @@ import {
   setAuthoredVelocity,
   wrapAngle,
   cleanup,
+  rollback,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
 import { compile, type Compiled, type ModelOptions } from "./model/compile.js";
@@ -151,8 +152,7 @@ export class Scene {
       next.data.time = time;
       this.api.mj_forward(next.model, next.data);
     } catch (error) {
-      next.free();
-      throw error;
+      rollback(error, [() => next.free()], "MuJoCo model replacement failed");
     }
     for (const [body, record] of bodies) this.bodies.set(body, record);
     for (const [joint, record] of joints) this.records.set(joint, record);
@@ -169,6 +169,19 @@ export class Scene {
     for (const [joint, record] of this.joints) scene.records.set(joint, record);
     for (const trigger of this.triggers) scene.triggers.add(trigger);
     return scene.prepare(time, read);
+  }
+  previewBody(body: RigidBody): Compiled {
+    body.validate();
+    return compile(
+      this.api,
+      new Set([body]),
+      new Map(),
+      new Set(),
+      this.options,
+      () => {
+        throw new Error("A body preview cannot contain joints");
+      },
+    );
   }
   free(): void {
     this.compiled?.free();

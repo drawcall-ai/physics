@@ -1,6 +1,7 @@
 import { Object3D } from "three";
 import { RigidBody } from "./body.js";
 import { Trigger } from "./trigger.js";
+import { cleanup, rollback } from "./cleanup.js";
 import { Joint } from "./joint.js";
 
 /** Copy bodies before constructing joints so immutable connections point at their copies. */
@@ -41,13 +42,34 @@ export function clone<T extends Object3D>(root: T): T {
     if (!result) throw new Error("Missing cloned root");
     return result;
   } catch (error) {
-    for (const object of [...copies.values()].reverse())
-      if (
-        object instanceof RigidBody ||
-        object instanceof Joint ||
-        object instanceof Trigger
-      )
-        object.dispose();
-    throw error;
+    rollback(
+      error,
+      [...copies.values()].reverse().map((object) => () => {
+        if (
+          object instanceof RigidBody ||
+          object instanceof Joint ||
+          object instanceof Trigger
+        )
+          object.dispose();
+      }),
+      "Assembly clone failed",
+    );
   }
+}
+
+/** Release every physics object in a partial clone, including unfinished hierarchies. */
+export function disposeClonedPhysics(root: Object3D): void {
+  const objects: (RigidBody | Joint | Trigger)[] = [];
+  root.traverse((object) => {
+    if (
+      object instanceof RigidBody ||
+      object instanceof Joint ||
+      object instanceof Trigger
+    )
+      objects.push(object);
+  });
+  cleanup(
+    objects.reverse().map((object) => () => object.dispose()),
+    "Cloned hierarchy disposal failed",
+  );
 }

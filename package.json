@@ -15,6 +15,10 @@
     "prettier": "^3.9.6",
     "three": "0.185.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "@drawcall/physics": "workspace:*",
+    "@drawcall/physics-rapier": "workspace:*",
+    "@drawcall/physics-mujoco": "workspace:*",
+    "@mujoco/mujoco": "3.13.0"
   }
 }

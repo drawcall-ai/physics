@@ -6,6 +6,7 @@ import {
   assertLive,
   assertOwned,
   authoredVelocity,
+  authoredVelocityAtPoint,
   setAuthoredVelocity,
   authoredJointReading,
   setWorldPose,
@@ -41,7 +42,6 @@ export interface MujocoOptions extends PhysicsOptions {
   solverIterations?: number;
   /** Browser bundlers can pass an emitted asset URL; Node resolves the packaged WASM automatically. */
   wasmUrl?: string;
-  coacdWasmUrl?: string;
 }
 export class MujocoWorld implements PhysicsWorld {
   readonly fixedDelta: number;
@@ -250,13 +250,30 @@ export class MujocoWorld implements PhysicsWorld {
       joint,
       record?.frames,
       (body, point) => {
-        const value = this.getVelocity(body);
-        const id = this.scene.compiled?.bodies.get(body);
-        const center =
-          this.scene.compiled && id !== undefined
-            ? vector(this.scene.compiled.data.xipos, id * 3)
-            : new Vector3().setFromMatrixPosition(body.matrixWorld);
-        return value.linear.add(value.angular.cross(point.clone().sub(center)));
+        const compiled = this.scene.compiled;
+        const id = compiled?.bodies.get(body);
+        if (compiled && id !== undefined) {
+          const value = velocity(this.api, compiled, id);
+          const center = vector(compiled.data.xipos, id * 3);
+          return value.linear.add(
+            value.angular.cross(point.clone().sub(center)),
+          );
+        }
+        if (
+          body.options.centerOfMass ||
+          this.getVelocity(body).angular.lengthSq() === 0
+        )
+          return authoredVelocityAtPoint(body, point);
+        const preview = this.scene.previewBody(body);
+        try {
+          const center = vector(preview.data.xipos, bodyId(preview, body) * 3);
+          const value = this.getVelocity(body);
+          return value.linear.add(
+            value.angular.cross(point.clone().sub(center)),
+          );
+        } finally {
+          preview.free();
+        }
       },
     );
     if (record) reading.angle = record.angle;

@@ -40,8 +40,7 @@ ASCII import supports embedded sublayers and visual-only geometry references. Fl
 
 The package rejects unsupported semantics rather than silently dropping them: Trigger volumes, authored collision masks, damping/gravity/sleep overrides, D6/articulations, spherical cone limits, breaking thresholds, partial mass overrides, per-collider explicit mass, animated physics, and simulation ownership. World anchoring must use body0. Animation export and `onlyVisible: true` are rejected: collision geometry must remain in the physical asset. Invisible objects retain their visibility opinions.
 
-Export rejects assemblies spanning multiple worlds because simulation ownership
-is not represented by this adapter. Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
+Export captures the supplied transforms. Reset a running simulation to its authored pose before exporting an authored asset.
 
 ## Verification
 

@@ -1,5 +1,7 @@
 import type { MainModule, MjModel, MjData } from "@mujoco/mujoco";
 import {
+  cleanup,
+  rollback,
   RigidBody,
   Trigger,
   DistanceJoint,
@@ -45,8 +47,7 @@ export function compile(
   try {
     data = new api.MjData(model);
   } catch (error) {
-    model.delete();
-    throw error;
+    rollback(error, [() => model.delete()], "MuJoCo data creation failed");
   }
   try {
     const id = (kind: number, key: string) => {
@@ -146,13 +147,17 @@ export function compile(
         ]),
       ),
       free() {
-        data.delete();
-        model.delete();
+        cleanup(
+          [() => data.delete(), () => model.delete()],
+          "MuJoCo model disposal failed",
+        );
       },
     };
   } catch (error) {
-    data.delete();
-    model.delete();
-    throw error;
+    rollback(
+      error,
+      [() => data.delete(), () => model.delete()],
+      "MuJoCo model compilation failed",
+    );
   }
 }

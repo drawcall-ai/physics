@@ -19,5 +19,10 @@ export {
 } from "./velocity.js";
 export { authoredJointReading, jointReading, wrapAngle } from "./reading.js";
 export { constructLike } from "./construct.js";
-export { cleanup } from "./cleanup.js";
+export { cleanup, rollback } from "./cleanup.js";
 export { Interactions } from "./interactions.js";
+export {
+  snapshotGeometry,
+  matchesGeometry,
+  type GeometrySnapshot,
+} from "./geometry.js";

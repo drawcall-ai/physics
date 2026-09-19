@@ -1,18 +1,17 @@
 import {
   RigidBody,
+  snapshotGeometry,
+  matchesGeometry,
+  type GeometrySnapshot,
   type Collider,
   type Joint,
   type Trigger,
 } from "@drawcall/physics";
 import type { BufferGeometry, Object3D } from "three";
-import createCoACD, { type CoACD } from "../../coacd/coacd.js";
+import createCoACD, { type MainModule } from "./coacd.js";
 import { heightfield } from "./heightfield.js";
 
-interface MeshData {
-  positions: number[];
-  indices: number[];
-}
-interface Prepared extends MeshData {
+interface Prepared extends GeometrySnapshot {
   shape: { kind: "heightfield" } | { kind: "compound"; hulls: number[][] };
 }
 
@@ -22,10 +21,9 @@ export class Meshes {
 
   async prepare(
     initial: readonly (RigidBody | Joint | Trigger)[],
-    wasmUrl?: string,
   ): Promise<void> {
     const shared = new Map<BufferGeometry, Prepared>();
-    let api: CoACD | undefined;
+    let api: MainModule | undefined;
     for (const owner of initial) {
       if (!(owner instanceof RigidBody) || owner.disposed) continue;
       const sources = new Map<Object3D, Prepared>();
@@ -35,13 +33,11 @@ export class Meshes {
           continue;
         let prepared = shared.get(shape.geometry);
         if (!prepared) {
-          const data = snapshot(shape.geometry);
+          const data = snapshotGeometry(shape.geometry);
           if (!heightfield(shape.geometry, "grid")) {
             const mesh = manifold(data);
-            api ??= await createCoACD(
-              wasmUrl ? { locateFile: () => wasmUrl } : undefined,
-            );
-            const hulls = api.decompose(mesh.positions, mesh.indices);
+            api ??= await createCoACD();
+            const hulls = decompose(api, mesh.positions, mesh.indices);
             if (
               !hulls.length ||
               hulls.some(
@@ -70,32 +66,46 @@ export class Meshes {
     if (!prepared) return;
     const shape = collider.shape();
     if (shape.kind !== "mesh" || shape.approximation !== "trimesh") return;
-    const current = snapshot(shape.geometry);
-    if (
-      !equal(current.positions, prepared.positions) ||
-      !equal(current.indices, prepared.indices)
-    )
-      return;
-    return prepared;
+    return matchesGeometry(prepared, shape.geometry) ? prepared : undefined;
   }
 }
 
-function equal(a: number[], b: number[]): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
-}
-function snapshot(geometry: BufferGeometry): MeshData {
-  const attribute = geometry.getAttribute("position");
-  const positions: number[] = [],
-    indices: number[] = [];
-  for (let i = 0; i < attribute.count; i++)
-    positions.push(attribute.getX(i), attribute.getY(i), attribute.getZ(i));
-  for (let i = 0; i < (geometry.index?.count ?? attribute.count); i++)
-    indices.push(geometry.index?.getX(i) ?? i);
-  return { positions, indices };
+function decompose(
+  api: MainModule,
+  positions: Float64Array,
+  indices: Int32Array,
+): number[][] {
+  const result = api.decompose(
+    positions,
+    indices,
+    0.05,
+    -1,
+    50,
+    2000,
+    20,
+    150,
+    3,
+    256,
+    true,
+  );
+  try {
+    const hulls: number[][] = [];
+    for (const hull of result.hulls) {
+      try {
+        hulls.push(Array.from(hull.vertices));
+      } finally {
+        hull.vertices.delete();
+        hull.indices.delete();
+      }
+    }
+    return hulls;
+  } finally {
+    result.hulls.delete();
+  }
 }
 
 /** Weld render seams before checking the closed surface required by CoACD without mesh repair. */
-function manifold(mesh: MeshData) {
+function manifold(mesh: GeometrySnapshot) {
   const points = new Map<string, number>();
   const positions: number[] = [],
     remap: number[] = [];

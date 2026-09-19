@@ -5,6 +5,7 @@ import {
   GenericJoint,
   JointDrive,
   jointDofs,
+  PrismaticJoint,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
 import { buildWorld, type MujocoWorld } from "../src/index.js";
@@ -204,3 +205,33 @@ test("colliderless kinematic targets remain valid moving anchors", async () => {
   for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
   expect(body.position.distanceTo(new Vector3(1, 2, 3))).toBeLessThan(1e-5);
 });
+
+test.each([false, true])(
+  "reads rotating anchor velocity about the %s explicit center before and after preparation",
+  async (explicit) => {
+    const value = await world();
+    const body = new RigidBody(
+      explicit
+        ? {
+            mass: 1,
+            centerOfMass: [1, 0, 0],
+            diagonalInertia: [1, 1, 1],
+          }
+        : { mass: 1 },
+    );
+    const collider = new BoxCollider();
+    collider.position.x = 1;
+    body.add(collider);
+    body.setVelocity({ angular: new Vector3(0, 0, 2) });
+    const joint = new PrismaticJoint({
+      body0: null,
+      body1: body,
+      axis: "Y",
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+    }).setEnabled(false);
+    expect(joint.getState().velocity).toBeCloseTo(-2);
+    value.update(0);
+    expect(joint.getState().velocity).toBeCloseTo(-2);
+  },
+);

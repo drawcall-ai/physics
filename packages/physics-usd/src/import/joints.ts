@@ -1,5 +1,6 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
+  rollback,
   DistanceJoint,
   GenericJoint,
   JointDrive,
@@ -180,7 +181,10 @@ export function readJoint(
         );
     return joint;
   } catch (error) {
-    joint.dispose();
-    throw error;
+    rollback(
+      error,
+      [() => joint.dispose()],
+      "Physics operation and cleanup failed",
+    );
   }
 }

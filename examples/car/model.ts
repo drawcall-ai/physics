@@ -17,7 +17,7 @@ export const simulationOptions = {
 };
 
 // Overcome tire scrub without saturating the servo during steering reversals.
-export const steeringDrive = {
+const steeringDrive = {
   stiffness: 40000,
   damping: 100,
   maxForce: 4000,

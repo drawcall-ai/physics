@@ -4,7 +4,7 @@ import {
   registry,
   RigidBody,
   RevoluteJoint,
-  JointMotor,
+  JointDrive,
 } from "@drawcall/physics";
 import { PhysicsUSDExporter } from "../dist/index.js";
 const scene = new Scene();
@@ -25,12 +25,13 @@ const hinge = new RevoluteJoint({
   body1: door,
   limits: [0, Math.PI / 2],
 });
-new JointMotor({
-  joint: hinge,
-  stiffness: 100,
-  damping: 10,
-  maxForce: 40,
-}).setTarget({ position: Math.PI / 4, velocity: 0 });
+hinge.setDrive(
+  new JointDrive({
+    stiffness: 100,
+    damping: 10,
+    maxForce: 40,
+  }).setTarget({ position: Math.PI / 4, velocity: 0 }),
+);
 hinge.position.set(0, 1, 0);
 assembly.add(frame, door, hinge);
 scene.add(assembly);

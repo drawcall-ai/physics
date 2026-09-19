@@ -19,6 +19,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build CoACD WASM
+        run: pnpm --filter @drawcall/physics-mujoco build:coacd
       - run: pnpm check
       - name: Verify package artifacts
         run: pnpm --filter "./packages/*" -r pack --pack-destination "$RUNNER_TEMP/packages"

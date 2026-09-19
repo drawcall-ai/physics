@@ -4,6 +4,7 @@ import {
   registry,
   JointDrive,
   RigidBody,
+  Trigger,
   RevoluteJoint,
   clone,
 } from "../src/index.js";
@@ -186,3 +187,60 @@ it("remaps bodies beneath a joint used as the hierarchy root", () => {
   expect(copy.options.body1).toBe(copy.children[0]);
   expect(copy.options.body1).not.toBe(body);
 });
+
+it("finishes assembly rollback and preserves copy and disposal failures", () => {
+  const copyError = new Error("final copy failed");
+  const disposeError = new Error("clone removal failed");
+  class Assembly extends Group {
+    override copy(source: this, recursive = true): this {
+      super.copy(source, recursive);
+      if (this.children.length) throw copyError;
+      return this;
+    }
+  }
+  class Body extends RigidBody {
+    constructor() {
+      super();
+      this.addEventListener("removed", () => {
+        throw disposeError;
+      });
+    }
+  }
+  const first = new Body(),
+    second = new Body();
+  const root = new Assembly().add(first, second);
+  let failure: unknown;
+  try {
+    clone(root);
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toBeInstanceOf(AggregateError);
+  if (!(failure instanceof AggregateError))
+    throw new Error("Expected rollback errors");
+  expect(failure.errors).toEqual([copyError, disposeError, disposeError]);
+  expect([...registry.objects]).toEqual([first, second]);
+  // Source listeners are intentionally still installed; release their registrations completely.
+  expect(() => registry.clear()).toThrow(AggregateError);
+});
+
+it.each(["body", "trigger", "joint"])(
+  "releases all descendants of a failed native %s clone",
+  (kind) => {
+    const endpoint = new RigidBody();
+    const root =
+      kind === "body"
+        ? new RigidBody()
+        : kind === "trigger"
+          ? new Trigger()
+          : new RevoluteJoint({ body0: null, body1: endpoint });
+    const nested = new RigidBody();
+    const region = new Trigger();
+    const invalid = new Group();
+    invalid.userData.self = invalid.userData;
+    root.add(nested, region, invalid);
+    const original = [...registry.objects];
+    expect(() => root.clone()).toThrow();
+    expect([...registry.objects]).toEqual(original);
+  },
+);

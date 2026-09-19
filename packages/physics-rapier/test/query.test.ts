@@ -1,7 +1,20 @@
 import { expect, it } from "vitest";
 import { createWorld } from "./fixtures.js";
-import { BoxGeometry, Matrix4, Mesh, Vector3 } from "three";
-import { BoxCollider, RigidBody, Trigger } from "@drawcall/physics";
+import {
+  BoxGeometry,
+  BufferGeometry,
+  InterleavedBuffer,
+  InterleavedBufferAttribute,
+  Matrix4,
+  Mesh,
+  Vector3,
+} from "three";
+import {
+  BoxCollider,
+  MeshCollider,
+  RigidBody,
+  Trigger,
+} from "@drawcall/physics";
 
 it("queries authored and simulated surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
   const world = await createWorld();
@@ -136,4 +149,28 @@ it("excludes disposed owners from raycasts inside event dispatch", async () => {
     ).toBeNull();
   });
   world.update(world.fixedDelta);
+});
+
+it("refreshes mesh collision when an interleaved position attribute changes its interpretation", async () => {
+  const world = await createWorld();
+  const data = new InterleavedBuffer(
+    new Float32Array([
+      0, -1, -1, 2, -1, -1, 0, 1, -1, 2, 1, -1, 0, 0, 1, 2, 0, 1,
+    ]),
+    6,
+  );
+  const geometry = new BufferGeometry().setAttribute(
+    "position",
+    new InterleavedBufferAttribute(data, 3, 0),
+  );
+  new RigidBody({ type: "static" }).add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+  );
+  world.update(0);
+  const ray = () =>
+    world.raycast(new Vector3(-1, 0, 0), new Vector3(1, 0, 0), 5);
+  expect(ray()?.distance).toBeCloseTo(1);
+  geometry.setAttribute("position", new InterleavedBufferAttribute(data, 3, 3));
+  world.update(0);
+  expect(ray()?.distance).toBeCloseTo(3);
 });

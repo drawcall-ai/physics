@@ -1,8 +1,9 @@
+import { disposeClonedPhysics } from "./clone.js";
 import { Object3D, Matrix4, Vector3 } from "three";
 import { JointDrive, bindDrive } from "./drive.js";
 import { RigidBody } from "./body.js";
 import { constructLike } from "./construct.js";
-import { cleanup } from "./cleanup.js";
+import { cleanup, rollback } from "./cleanup.js";
 import { assertRigidTransform, splitTransform } from "./transforms.js";
 import { registry } from "./registry.js";
 
@@ -127,13 +128,11 @@ export abstract class Joint<
         ? target.copyState(this, recursive)
         : target.copy(this, recursive);
     } catch (error) {
-      const created: (RigidBody | Joint)[] = [];
-      target.traverse((object) => {
-        if (object instanceof RigidBody || object instanceof Joint)
-          created.push(object);
-      });
-      for (const object of created.reverse()) object.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => disposeClonedPhysics(target)],
+        "Joint clone failed",
+      );
     }
   }
 

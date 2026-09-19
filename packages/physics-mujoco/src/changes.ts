@@ -1,20 +1,20 @@
 import {
   RigidBody,
   splitTransform,
+  snapshotGeometry,
+  matchesGeometry,
+  type GeometrySnapshot,
   type Joint,
   type Trigger,
 } from "@drawcall/physics";
 import { type BufferGeometry, type Object3D, Vector3 } from "three";
 
-interface MeshSnapshot {
-  positions: number[];
-  indices: number[];
-  version: number;
-}
-
 /** Compare authored data without constructing scaled collision geometry. */
 export class Changes {
-  private readonly meshes = new WeakMap<BufferGeometry, MeshSnapshot>();
+  private readonly meshes = new WeakMap<
+    BufferGeometry,
+    GeometrySnapshot & { version: number }
+  >();
   private scales = new Map<Object3D, Vector3>();
   private version = 0;
 
@@ -85,37 +85,10 @@ export class Changes {
     this.scales.clear();
   }
   private meshVersion(geometry: BufferGeometry): number {
-    const position = geometry.getAttribute("position");
-    const index = geometry.index;
     const previous = this.meshes.get(geometry);
-    const positions = position.count * 3;
-    const indices = index?.count ?? 0;
-    let equal =
-      previous?.positions.length === positions &&
-      previous.indices.length === indices;
-    for (let i = 0; equal && i < position.count; i++)
-      equal =
-        previous?.positions[i * 3] === position.getX(i) &&
-        previous.positions[i * 3 + 1] === position.getY(i) &&
-        previous.positions[i * 3 + 2] === position.getZ(i);
-    for (let i = 0; equal && i < indices; i++)
-      equal = previous?.indices[i] === index?.getX(i);
-    if (equal && previous) return previous.version;
-    const snapshot: MeshSnapshot = {
-      positions: [],
-      indices: [],
-      version: ++this.version,
-    };
-    for (let i = 0; i < position.count; i++)
-      snapshot.positions.push(
-        position.getX(i),
-        position.getY(i),
-        position.getZ(i),
-      );
-    for (let i = 0; i < indices; i++) {
-      if (!index) throw new Error("Missing mesh index");
-      snapshot.indices.push(index.getX(i));
-    }
+    if (previous && matchesGeometry(previous, geometry))
+      return previous.version;
+    const snapshot = { ...snapshotGeometry(geometry), version: ++this.version };
     this.meshes.set(geometry, snapshot);
     return snapshot.version;
   }

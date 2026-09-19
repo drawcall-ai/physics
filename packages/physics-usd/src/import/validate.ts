@@ -1,3 +1,4 @@
+import { jointDofs } from "@drawcall/physics";
 import { PRIM_SPEC, attribute, numeric, schemas } from "./layer.js";
 import type { Layer } from "./layer.js";
 
@@ -42,7 +43,7 @@ export function validate(layer: Layer): void {
     "gravityDirection",
     "gravityMagnitude",
   ]);
-  const dofs = ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"];
+  const dofs = jointDofs;
   const supported = new Set([
     "PhysicsRigidBodyAPI",
     "PhysicsMassAPI",
@@ -80,7 +81,7 @@ export function validate(layer: Layer): void {
           throw new Error(`Unsupported USD transform operation on ${path}`);
       }
       const type = spec.fields.typeName;
-      const driveAxes =
+      const driveAxes: readonly string[] =
         type === "PhysicsRevoluteJoint"
           ? ["angular"]
           : type === "PhysicsPrismaticJoint" || type === "PhysicsDistanceJoint"

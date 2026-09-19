@@ -1,4 +1,10 @@
-import { Joint, RigidBody, constructLike } from "@drawcall/physics";
+import {
+  Joint,
+  RigidBody,
+  constructLike,
+  cleanup,
+  rollback,
+} from "@drawcall/physics";
 import { Group } from "three";
 import type { Vec3 } from "@drawcall/physics";
 
@@ -11,8 +17,11 @@ export class PhysicsUSDScene extends Group {
     try {
       return target.copy(this, recursive);
     } catch (error) {
-      target.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => target.dispose()],
+        "Physics operation and cleanup failed",
+      );
     }
   }
 
@@ -35,8 +44,14 @@ export class PhysicsUSDScene extends Group {
       if (object instanceof RigidBody || object instanceof Joint)
         this.own(object);
     });
-    for (const object of this.owned) object.dispose();
+    const objects = [...this.owned];
     this.owned.clear();
-    this.removeFromParent();
+    cleanup(
+      [
+        ...objects.map((object) => () => object.dispose()),
+        () => this.removeFromParent(),
+      ],
+      "USD scene disposal failed",
+    );
   }
 }

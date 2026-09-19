@@ -1,8 +1,5 @@
-import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
-import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
-import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 import { Vector3 } from "three";
-import { backend } from "../backend";
+import { backend, buildWorld } from "../backend";
 import { view } from "../view";
 import { decomposition } from "./decomposition";
 
@@ -25,9 +22,7 @@ for (const child of Array.from(nav.children)) {
 }
 nav.prepend(controls);
 const { root, lanes } = decomposition();
-const world = await (backend === "mujoco"
-  ? buildMujoco({ wasmUrl })
-  : buildRapier());
+const world = await buildWorld();
 const demo = view(world, root, new Vector3(0, 1.5, 0));
 document
   .querySelector("#replay")

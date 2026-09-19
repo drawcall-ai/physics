@@ -6,7 +6,7 @@ export function tuple(values: readonly number[]): string {
   return `(${values.join(", ")})`;
 }
 
-export function transform(
+function transform(
   prim: Prim,
   matrix: Matrix4,
   scale: readonly number[] = [1, 1, 1],

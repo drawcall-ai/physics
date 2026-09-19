@@ -1,8 +1,5 @@
 import * as THREE from "three";
-import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
-import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
-import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
-import { backend } from "../backend";
+import { buildWorld } from "../backend";
 import { view } from "../view";
 import { cases } from "./cases";
 import { specimen, verify } from "./specimen";
@@ -27,9 +24,7 @@ let current: ReturnType<typeof specimen> | undefined = specimen(
   true,
 );
 root.add(current.root);
-const world = await (backend === "mujoco"
-  ? buildMujoco({ wasmUrl })
-  : buildRapier());
+const world = await buildWorld();
 world.onAfterStep((delta) => current?.step(delta));
 let checking = false;
 let status = "";

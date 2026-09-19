@@ -1,7 +1,7 @@
 import { Joint } from "./joint.js";
 import { RigidBody } from "./body.js";
 import type { Trigger } from "./trigger.js";
-import { cleanup } from "./cleanup.js";
+import { cleanup, rollback } from "./cleanup.js";
 import { assertLive, type PhysicsWorld } from "./world.js";
 
 type Registered = RigidBody | Joint | Trigger;
@@ -95,7 +95,8 @@ export async function buildRegistered<T extends PhysicsWorld>(
     if (next) {
       const failed = next;
       world = undefined;
-      cleanup(
+      rollback(
+        error,
         [
           // Native joints must be released before their endpoint bodies.
           ...[...objects]
@@ -104,9 +105,6 @@ export async function buildRegistered<T extends PhysicsWorld>(
             )
             .map((object) => () => failed.unregister(object)),
           () => failed.dispose(),
-          () => {
-            throw error;
-          },
         ],
         "Physics world build failed",
       );

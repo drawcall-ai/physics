@@ -1,8 +1,9 @@
+import { disposeClonedPhysics } from "./clone.js";
 import { Group, type Object3D, type Object3DEventMap } from "three";
 import { RigidBody } from "./body.js";
 import { Collider, validateGroups, type CollisionGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
-import { cleanup } from "./cleanup.js";
+import { cleanup, rollback } from "./cleanup.js";
 import { validateShape } from "./shapes.js";
 import { splitTransform } from "./transforms.js";
 import { registry } from "./registry.js";
@@ -96,8 +97,11 @@ export class Trigger extends Group<TriggerEventMap> {
     try {
       return target.copy(this, recursive);
     } catch (error) {
-      target.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => disposeClonedPhysics(target)],
+        "Physics operation and cleanup failed",
+      );
     }
   }
   override copy(source: this, recursive = true): this {

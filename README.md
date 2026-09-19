@@ -201,8 +201,14 @@ Scene code calls physics methods directly on bodies and joints.
 
 ```sh
 pnpm install
+pnpm --filter @drawcall/physics-mujoco build:coacd
 pnpm check
 ```
+
+The CoACD build downloads pinned native sources and installs Emscripten 5.0.2
+if needed. It requires Bash, curl, tar, CMake, Node.js, and Python 3. Its inputs
+are temporary and its output is gitignored; rerun it after cleaning generated
+files or changing the build script. CI runs it before checks and publishing.
 
 Run `pnpm --filter @drawcall/example-ragdoll dev` or
 `pnpm --filter @drawcall/example-car dev`, then open the Vite URL.
@@ -329,7 +335,6 @@ and rigid bodies beneath them. Supported convex shapes depend on the adapter.
 import { BoxCollider, Trigger } from "@drawcall/physics";
 
 const goal = new Trigger(); // registers with the scene registry
-// Pass { world } when selecting a world explicitly.
 goal.position.set(0.5, 0.8, 0);
 goal.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
 scene.add(goal);

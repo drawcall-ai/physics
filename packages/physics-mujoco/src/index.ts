@@ -19,7 +19,7 @@ export async function buildWorld(
     }
     const meshes = new Meshes();
     const api = await loading;
-    await meshes.prepare(initial, options.coacdWasmUrl);
+    await meshes.prepare(initial);
     return new MujocoWorld(api, options, meshes);
   });
 }

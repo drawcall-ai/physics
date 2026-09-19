@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { cleanup } from "@drawcall/physics";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import "./style.css";
 
@@ -68,20 +69,27 @@ export function view(
       });
     },
     dispose() {
-      events.abort();
-      renderer.setAnimationLoop(null);
-      world.dispose();
-      controls.dispose();
-      timer.dispose();
+      const resources = new Set<THREE.BufferGeometry | THREE.Material>();
       scene.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
-        object.geometry.dispose();
+        resources.add(object.geometry);
         for (const material of Array.isArray(object.material)
           ? object.material
           : [object.material])
-          material.dispose();
+          resources.add(material);
       });
-      renderer.dispose();
+      cleanup(
+        [
+          () => events.abort(),
+          () => renderer.setAnimationLoop(null),
+          () => world.dispose(),
+          () => controls.dispose(),
+          () => timer.dispose(),
+          ...Array.from(resources, (resource) => () => resource.dispose()),
+          () => renderer.dispose(),
+        ],
+        "Failed to dispose example",
+      );
     },
   };
 }

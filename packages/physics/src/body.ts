@@ -1,3 +1,4 @@
+import { disposeClonedPhysics } from "./clone.js";
 import {
   Group,
   Matrix4,
@@ -8,7 +9,7 @@ import {
 } from "three";
 import { Collider, validateMaterial, validateGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
-import { cleanup } from "./cleanup.js";
+import { cleanup, rollback } from "./cleanup.js";
 import {
   assertRigidTransform,
   splitTransform,
@@ -216,8 +217,11 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     try {
       return target.copy(this, recursive);
     } catch (error) {
-      target.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => disposeClonedPhysics(target)],
+        "Physics operation and cleanup failed",
+      );
     }
   }
 

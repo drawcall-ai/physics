@@ -2,6 +2,7 @@ import { Object3D, Vector3 } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import {
+  rollback,
   Joint,
   RigidBody,
   ancestorBody,
@@ -43,8 +44,11 @@ export class PhysicsUSDLoader {
       await Promise.all(textures);
       return scene;
     } catch (error) {
-      scene.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => scene.dispose()],
+        "Physics operation and cleanup failed",
+      );
     }
   }
 
@@ -72,8 +76,11 @@ export class PhysicsUSDLoader {
       new LayerImport(layer, scene).run();
       return { scene, textures: composer.texturePromises };
     } catch (error) {
-      scene.dispose();
-      throw error;
+      rollback(
+        error,
+        [() => scene.dispose()],
+        "Physics operation and cleanup failed",
+      );
     }
   }
 }

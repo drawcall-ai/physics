@@ -9,14 +9,14 @@
     "dist",
     "README.md",
     "LICENSE",
-    "coacd"
+    "generated/coacd"
   ],
   "sideEffects": false,
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "build:coacd": "bash coacd/build.sh"
+    "build:coacd": "bash scripts/build-coacd.sh"
   },
   "dependencies": {
     "@mujoco/mujoco": "3.13.0"
@@ -26,7 +26,8 @@
     "three": ">=0.180.0"
   },
   "devDependencies": {
-    "@drawcall/physics": "workspace:*"
+    "@drawcall/physics": "workspace:*",
+    "@types/node": "^24.13.6"
   },
   "license": "MIT",
   "repository": {

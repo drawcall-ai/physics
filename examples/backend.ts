@@ -1,3 +1,8 @@
+import type { PhysicsOptions } from "@drawcall/physics";
+import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
+import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
+import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
+
 const url = new URL(location.href);
 export const backend = url.searchParams.get("backend") ?? "rapier";
 if (backend !== "rapier" && backend !== "mujoco")
@@ -23,3 +28,11 @@ window.addEventListener("unhandledrejection", (event) => {
   const status = document.querySelector("output");
   if (status) status.textContent = String(event.reason);
 });
+
+export function buildWorld(
+  options: PhysicsOptions & { solverIterations?: number } = {},
+) {
+  return backend === "mujoco"
+    ? buildMujoco({ ...options, wasmUrl })
+    : buildRapier(options);
+}

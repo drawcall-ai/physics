@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+packages/physics-mujoco/generated/
+packages/physics-mujoco/src/model/coacd.ts
 
 # Copied from the root by the publish workflow.
 packages/physics/README.md
