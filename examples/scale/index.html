@@ -8,6 +8,11 @@
       nav {
         max-width: min(760px, calc(100vw - 32px));
       }
+      nav a {
+        pointer-events: auto;
+        color: #83d9cb;
+        margin: 0 8px;
+      }
       select {
         max-width: 100%;
         margin-bottom: 8px;
@@ -48,6 +53,7 @@
       </p>
       <select aria-label="Scale case"></select
       ><br />
+      <a href="?demo=decomposition&amp;backend=mujoco">Convex vs decomposed</a>
       <button id="compound">Falling compound</button>
       <button id="kinematic">Moving kinematic lift</button>
       <button id="recreate">Remove &amp; recreate</button>
@@ -59,6 +65,6 @@
         <ol id="results"></ol>
       </details>
     </nav>
-    <script type="module" src="./main.ts"></script>
+    <script type="module" src="./entry.ts"></script>
   </body>
 </html>

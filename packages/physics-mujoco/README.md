@@ -115,3 +115,10 @@ silently accepting a solver reset.
 
 Run `pnpm --filter @drawcall/physics-mujoco test` for Node contract tests. The car,
 ragdoll, and scale packages additionally test their full scenes against MuJoCo.
+
+To see decomposition in action, run `pnpm --filter @drawcall/example-scale dev`
+and open **Convex vs decomposed** (`?demo=decomposition&backend=mujoco`).
+Two identical frame meshes use different collision approximations: the left
+cube rests on a single hull spanning the opening; the right cube falls through
+an opening preserved by CoACD. Both frames are authored before `buildWorld()`.
+**Replay drops** resets the world and reuses the prepared colliders.
