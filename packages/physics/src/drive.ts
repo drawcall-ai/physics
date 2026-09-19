@@ -60,7 +60,10 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
     const speed = this.options.maxVelocity;
     if (speed === undefined) return [-max, max];
     const clamp = (value: number) => Math.max(-max, Math.min(max, value));
-    return [clamp(-max * (1 + velocity / speed)), clamp(max * (1 - velocity / speed))];
+    return [
+      clamp(-max * (1 + velocity / speed)),
+      clamp(max * (1 - velocity / speed)),
+    ];
   }
   /** The joint this drive is attached to through its `setDrive`. */
   get joint(): Joint | undefined {
