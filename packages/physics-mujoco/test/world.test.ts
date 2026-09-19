@@ -356,11 +356,3 @@ test("raycasts see bodies added and moved between steps", async () => {
   added.position.x = 5;
   expect(ray()).toBeCloseTo(4.5);
 });
-
-for (const noSlipIterations of [-1, 1.5, NaN, Infinity]) {
-  test(`rejects the no-slip iteration count ${noSlipIterations}`, async () => {
-    await expect(world({ noSlipIterations })).rejects.toThrow(
-      "noSlipIterations must be a nonnegative integer",
-    );
-  });
-}

@@ -23,7 +23,6 @@ export interface ModelOptions {
   fixedDelta: number;
   gravity: readonly number[];
   solverIterations: number;
-  noSlipIterations: number;
 }
 export function modelXml(
   bodies: ReadonlySet<RigidBody>,
@@ -101,7 +100,7 @@ export function modelXml(
     })
     .join("");
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" noslip_iterations="${options.noSlipIterations}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${pairs.join("")}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${pairs.join("")}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates, roots };
 }
 

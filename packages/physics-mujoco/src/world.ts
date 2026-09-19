@@ -40,8 +40,6 @@ import { Meshes } from "./model/meshes.js";
 
 export interface MujocoOptions extends PhysicsOptions {
   solverIterations?: number;
-  /** MuJoCo no-slip post-solver passes; raise above zero to stop grasped objects creeping through friction. */
-  noSlipIterations?: number;
   /** Browser bundlers can pass an emitted asset URL; Node resolves the packaged WASM automatically. */
   wasmUrl?: string;
 }
@@ -76,7 +74,6 @@ export class MujocoWorld implements PhysicsWorld {
     this.maxSubsteps = options.maxSubsteps ?? 5;
     const gravity = [...(options.gravity ?? [0, -9.81, 0])];
     const solverIterations = options.solverIterations ?? 50;
-    const noSlipIterations = options.noSlipIterations ?? 0;
     if (!Number.isFinite(this.fixedDelta) || this.fixedDelta <= 0)
       throw new Error("fixedDelta must be positive and finite");
     if (!Number.isInteger(this.maxSubsteps) || this.maxSubsteps < 1)
@@ -85,14 +82,11 @@ export class MujocoWorld implements PhysicsWorld {
       throw new Error("Gravity must be finite");
     if (!Number.isInteger(solverIterations) || solverIterations < 1)
       throw new Error("solverIterations must be a positive integer");
-    if (!Number.isInteger(noSlipIterations) || noSlipIterations < 0)
-      throw new Error("noSlipIterations must be a nonnegative integer");
     this.scene = new Scene(api, {
       meshes,
       fixedDelta: this.fixedDelta,
       gravity,
       solverIterations,
-      noSlipIterations,
     });
   }
   register(object: RigidBody | Joint | Trigger): void {
