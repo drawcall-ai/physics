@@ -34,16 +34,21 @@ import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 const world = await buildWorld({ wasmUrl, solverIterations: 50 });
 ```
 
+`frictionCone` selects MuJoCo's friction model. The default `"pyramidal"` is what MuJoCo
+ships and proved more robust for kinematic contact at small steps; `"elliptic"` models
+friction faithfully and is the cone `frictionImpedanceRatio` is defined for.
 `frictionImpedanceRatio` is MuJoCo's `impratio`: how stiff friction constraints are
 relative to normal ones. At the default `1` a resting or grasped object still creeps,
 because soft friction trades slip for force. Raising it converges on Coulomb friction
-without changing the limit at which contacts start to slide; grasping needs around `50`.
+without changing the limit at which contacts start to slide; grasping needs around `50`
+with elliptic cones, and a ratio above `1` without them is rejected.
 
 A drive's `maxVelocity` is honoured here as the motor's back-EMF: the joint is damped by
 `maxForce / maxVelocity`, so a saturated drive settles at its rated speed. The damping sits on
 the joint rather than the actuator, both because back-EMF resists motion whenever the motor is
 connected and because MuJoCo integrates joint damping implicitly, which a force limit that
-chased the measured speed did not survive.
+chased the measured speed did not survive. Distance joints and free generic joints,
+which MuJoCo drives by generalized force, brake by the same damping.
 
 Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 The examples demonstrate both development and production asset loading.

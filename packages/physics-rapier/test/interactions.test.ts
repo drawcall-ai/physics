@@ -372,3 +372,20 @@ it("does not retain invalid native trigger handles after unregistering their par
   world.update(world.fixedDelta);
   expect(trigger.overlaps(target)).toBe(true);
 });
+
+it("delivers the whole batch of contact events even when a listener throws", async () => {
+  const world = await createWorld({
+    gravity: [0, -9.81, 0],
+    fixedDelta: 1 / 60,
+  });
+  const floor = box("static");
+  const body = box();
+  body.position.y = 1;
+  const floorBegin = vi.fn();
+  body.addEventListener("contactbegin", () => {
+    throw new Error("listener failed");
+  });
+  floor.addEventListener("contactbegin", floorBegin);
+  expect(() => world.update(world.fixedDelta)).toThrow("listener failed");
+  expect(floorBegin).toHaveBeenCalledOnce();
+});

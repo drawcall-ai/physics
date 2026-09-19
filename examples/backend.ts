@@ -29,9 +29,7 @@ window.addEventListener("unhandledrejection", (event) => {
   if (status) status.textContent = String(event.reason);
 });
 
-export function buildWorld(
-  options: PhysicsOptions & { solverIterations?: number } = {},
-) {
+export function buildWorld(options: PhysicsOptions = {}) {
   return backend === "mujoco"
     ? buildMujoco({ ...options, wasmUrl })
     : buildRapier(options);

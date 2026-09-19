@@ -221,7 +221,14 @@ for controls and source.
 `body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint reads work during scene construction, before a world has been built. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
 
 Before building, velocity setters store authored state and teleportation updates
-the object immediately. Forces, impulses, kinematic targets, sleep/wake, and
+the object immediately. Velocity, forces, and impulses belong to dynamic bodies;
+setting them on a static or kinematic body throws. Teleporting a body moves every
+dynamic body jointed to it along with it, so an articulated assembly stays intact.
+An assembly articulated to a static or kinematic base or the world can only move
+within those joints: Rapier applies the pose, re-bases the turn count of the joints
+it straddles, and its solver corrects a pose outside their freedom on the next step;
+MuJoCo rejects the call.
+Forces, impulses, kinematic targets, sleep/wake, and
 queries require a built world and throw otherwise. There is no authoring-world
 stand-in and no `{ world }` option on scene objects.
 
@@ -245,7 +252,10 @@ Each `setTarget` replaces all three terms and zeroes the omitted ones; a nonzero
 position needs stiffness and a nonzero velocity needs damping. A drive belongs to
 one joint at a time. `model` defaults to `"force"`; `"acceleration"` is
 backend-dependent. `maxForce` is N for translations or N·m for rotations; omission
-means unbounded. Subclass `JointDrive` to carry application data with the drive:
+means unbounded. `maxVelocity` is the motor's no-load speed: it damps the coordinate
+by `maxForce / maxVelocity`, so a saturated drive settles at its rated speed rather
+than accelerating without limit. It needs `maxForce`, and backends whose motors take
+only a constant force limit reject it. Subclass `JointDrive` to carry application data with the drive:
 joint copies and assembly clones reconstruct the subclass.
 
 A drive with a constant target is a spring. A distance joint with an unlimited
@@ -295,7 +305,8 @@ joints have no state. Backends deliver one frame-0 reading per joint
 (`translation`, `rotation`, `linearVelocity`, `angularVelocity`, continuous `angle`)
 from which every typed state derives.
 Revolute position tracks turns each substep; motion must remain below π per substep.
-Teleport rebases without counting turns; reset restores the initialized coordinate.
+Teleporting an assembly keeps the turns of the joints inside it and rebases the ones
+it straddles; reset restores the initialized coordinate.
 Rapier position-drive targets use continuous radians and must remain less than π
 from the current position; longer trajectories need intermediate targets.
 Body linear velocity is measured at COM, with both velocity vectors world-aligned.

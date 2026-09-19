@@ -15,12 +15,14 @@ export {
 export {
   authoredVelocity,
   setAuthoredVelocity,
-  authoredVelocityAtPoint,
+  velocityAtPoint,
 } from "./velocity.js";
-export { authoredJointReading, jointReading, wrapAngle } from "./reading.js";
+export { sceneJointReading, jointReading, wrapAngle } from "./reading.js";
+export { unconstrained, treeJoint, assembly } from "./assembly.js";
 export { constructLike } from "./construct.js";
 export { cleanup, rollback } from "./cleanup.js";
 export { Interactions } from "./interactions.js";
+export { SteppedWorld } from "./stepped.js";
 export {
   snapshotGeometry,
   matchesGeometry,

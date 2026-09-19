@@ -5,7 +5,7 @@ import {
   Trigger,
   splitTransform,
   authoredVelocity,
-  authoredJointReading,
+  sceneJointReading,
   type JointReading,
   type PhysicsVelocity,
   setWorldPose,
@@ -67,7 +67,7 @@ export class Scene {
   }
   trackAngles(): void {
     for (const [joint, record] of this.records) {
-      const sampled = authoredJointReading(
+      const sampled = sceneJointReading(
         joint,
         record.frames,
         () => new Vector3(),
@@ -83,7 +83,7 @@ export class Scene {
       setAuthoredVelocity(body, record.initialVelocity);
     }
     for (const [joint, record] of this.records) {
-      record.angle = authoredJointReading(
+      record.angle = sceneJointReading(
         joint,
         record.frames,
         () => new Vector3(),
@@ -117,7 +117,7 @@ export class Scene {
           joint.getFrame(0, new Matrix4()),
           joint.getFrame(1, new Matrix4()),
         ];
-        const angle = authoredJointReading(
+        const angle = sceneJointReading(
           joint,
           frames,
           () => new Vector3(),
@@ -125,11 +125,7 @@ export class Scene {
         joints.set(joint, { frames, angle, sampled: angle });
       }
     }
-    const change = this.changes.scan(
-      this.objects,
-      this.jointObjects,
-      this.triggers,
-    );
+    const change = this.scan();
     const key = change.key;
     if (this.compiled && key === this.key) return this.compiled;
     const previous = this.compiled;
@@ -165,12 +161,10 @@ export class Scene {
   /** The live model when it still matches the authored scene; queries reuse it instead of compiling. */
   matching(): Compiled | undefined {
     if (!this.current) return undefined;
-    const change = this.changes.scan(
-      this.objects,
-      this.jointObjects,
-      this.triggers,
-    );
-    return change.key === this.key ? this.current : undefined;
+    return this.scan().key === this.key ? this.current : undefined;
+  }
+  private scan() {
+    return this.changes.scan(this.objects, this.jointObjects, this.triggers);
   }
   /** Compiles the authored scene without committing it, so queries leave the live scene editable. */
   preview(time: number, read: (joint: Joint) => JointReading): Compiled {

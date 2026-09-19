@@ -54,6 +54,12 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
     this.options = { ...options };
   }
 
+  /** The damping `maxForce / maxVelocity` the motor exerts on its own coordinate; undefined when unlimited. */
+  get backEmf(): number | undefined {
+    const { maxForce, maxVelocity } = this.options;
+    if (maxVelocity === undefined || maxForce === undefined) return undefined;
+    return maxForce / maxVelocity;
+  }
   /** The joint this drive is attached to through its `setDrive`. */
   get joint(): Joint | undefined {
     return attachments.get(this);

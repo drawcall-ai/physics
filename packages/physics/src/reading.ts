@@ -5,16 +5,17 @@ import { AxisJoint, DistanceJoint, PrismaticJoint } from "./joints.js";
 import { GenericJoint } from "./generic.js";
 import type { Joint } from "./joint.js";
 import { axisVector, splitTransform } from "./transforms.js";
-import { authoredVelocityAtPoint } from "./velocity.js";
+import { velocityAtPoint } from "./velocity.js";
 import type { JointReading } from "./world.js";
 
-export function authoredJointReading(
+/**
+ * The joint's reading from the scene as it stands: body poses from the scene graph and velocities
+ * from the bodies. Backends pass the frames they captured and how they measure a body's velocity at a point.
+ */
+export function sceneJointReading(
   object: Joint,
   frames?: readonly [Matrix4, Matrix4],
-  velocityAtPoint: (
-    body: RigidBody,
-    point: Vector3,
-  ) => Vector3 = authoredVelocityAtPoint,
+  measure?: (body: RigidBody, point: Vector3) => Vector3,
 ): JointReading {
   object.validate();
   const options = object.options;
@@ -45,18 +46,18 @@ export function authoredJointReading(
     angular: new Vector3(),
   };
   const velocity1 = body1.getVelocity();
-  // Only translational readings need anchor velocities, which authoring infers from explicit mass properties.
-  const translational =
+  // Without a backend measurement, only translational readings need anchor velocities, which
+  // authoring can infer solely from explicit mass properties.
+  const anchors =
+    measure !== undefined ||
     object instanceof PrismaticJoint ||
     object instanceof DistanceJoint ||
     object instanceof GenericJoint;
+  const velocityAt = measure ?? velocityAtPoint;
   const anchor0 = new Vector3().setFromMatrixPosition(a);
   const anchor1 = new Vector3().setFromMatrixPosition(b);
-  const linear0 =
-    translational && body0 ? velocityAtPoint(body0, anchor0) : new Vector3();
-  const linear1 = translational
-    ? velocityAtPoint(body1, anchor1)
-    : new Vector3();
+  const linear0 = anchors && body0 ? velocityAt(body0, anchor0) : new Vector3();
+  const linear1 = anchors ? velocityAt(body1, anchor1) : new Vector3();
   return jointReading(
     a,
     b,
@@ -106,5 +107,5 @@ export function wrapAngle(angle: number): number {
 
 export function readJoint(object: Joint): JointReading {
   registry.assertRegistered(object);
-  return registry.world?.readJoint(object) ?? authoredJointReading(object);
+  return registry.world?.readJoint(object) ?? sceneJointReading(object);
 }

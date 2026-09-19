@@ -162,7 +162,7 @@ it("registers each cloned joint once without unregistering it", () => {
 });
 
 it("authors poses and velocities before building and rejects simulation commands", () => {
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody();
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   body.teleport(new Matrix4().makeTranslation(1, 2, 3));
   expect(body.position.toArray()).toEqual([1, 2, 3]);
@@ -170,13 +170,27 @@ it("authors poses and velocities before building and rejects simulation commands
   const joint = new RevoluteJoint({ body0: null, body1: body });
   expect(joint.getState().position).toBeCloseTo(0);
   expect(() => body.applyImpulse(new Vector3(3, 0, 0))).toThrow("buildWorld");
-  expect(() => body.setKinematicTarget(new Matrix4())).toThrow("buildWorld");
+  expect(() => body.setKinematicTarget(new Matrix4())).toThrow("kinematic");
   expect(() => body.applyForce(new Vector3(NaN, 0, 0))).toThrow("finite");
+  expect(() =>
+    new RigidBody({ type: "static" }).setVelocity({ linear: new Vector3() }),
+  ).toThrow("dynamic body");
   expect(() => body.teleport(new Matrix4().makeScale(2, 2, 2))).toThrow(
     "unit scale",
   );
   body.dispose();
   expect(() => body.getVelocity()).toThrow("disposed");
+});
+
+it("teleports an authored assembly before a world exists", () => {
+  const root = new RigidBody();
+  const child = new RigidBody();
+  child.position.x = 2;
+  const joint = new RevoluteJoint({ body0: root, body1: child });
+  joint.position.x = 1;
+  root.teleport(new Matrix4().makeTranslation(0, 5, 0));
+  expect(child.position.toArray()).toEqual([2, 5, 0]);
+  expect(joint.getState().position).toBeCloseTo(0);
 });
 
 it("remaps bodies beneath a joint used as the hierarchy root", () => {

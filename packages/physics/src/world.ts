@@ -8,6 +8,8 @@ export interface PhysicsOptions {
   readonly gravity?: Vec3;
   readonly fixedDelta?: number;
   readonly maxSubsteps?: number;
+  /** Constraint solver iterations per step; the backend's own default when omitted. */
+  readonly solverIterations?: number;
 }
 
 export interface PhysicsVelocity {
@@ -76,7 +78,12 @@ export interface PhysicsWorld {
   /** Backend integration; validated scene commands arrive through body and joint methods. */
   getVelocity(object: RigidBody): PhysicsVelocity;
   setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void;
-  teleport(object: RigidBody, matrix: Matrix4): void;
+  /**
+   * Adopts the poses the scene already holds for the body and the dynamic bodies jointed to it.
+   * An assembly articulated to a static or kinematic base or the world can only move within
+   * those joints; a backend that cannot honour that rejects the call.
+   */
+  teleport(object: RigidBody): void;
   setKinematicTarget(object: RigidBody, matrix: Matrix4): void;
   applyImpulse(object: RigidBody, impulse: Vector3, point?: Vector3): void;
   applyForce(object: RigidBody, force: Vector3, point?: Vector3): void;

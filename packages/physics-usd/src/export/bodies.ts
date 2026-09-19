@@ -42,7 +42,7 @@ export function writeBody(
     body.linearDamping !== 0 ||
     body.angularDamping !== 0 ||
     body.gravityScale !== 1 ||
-    !(body.options.canSleep ?? true)
+    !body.options.canSleep
   )
     throw new Error(
       "Core USD Physics cannot represent damping, gravity scale, or sleep policy overrides",

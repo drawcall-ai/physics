@@ -59,15 +59,18 @@ Rapier's own limits are tested in `test/rapier.test.ts`: equal static/dynamic fr
 `JointDrive` stiffness and damping map directly to Rapier's force/acceleration
 solver motors, including native force/torque limits. A drive without a target, or
 without stiffness and damping, configures no native motor. The effort term is
-applied as a force pair for one substep and clamped to `maxForce` on its own, so
-the cap does not bound the sum of both terms. Revolute position targets use the
+applied as a force pair for one substep and clamped to `maxForce` on its own. Since
+that cap cannot bound the sum of both terms, a capped drive that combines gains with
+effort is rejected, as is a drive's `maxVelocity`, which a constant motor force
+cannot model. Revolute position targets use the
 same continuous radians as `getState().position`. With nonzero stiffness, a target
 must remain less than π radians from the current position at every
 preparation/step boundary. Longer moves require intermediate targets; unsupported
 goals throw before the solver advances. The adapter wraps accepted goals for
 Rapier’s native shortest-arc motor, so holding a measured multi-turn position and
 trajectories crossing ±π work without losing turn count. Velocity-only drives have
-no position-target restriction, and generic joints do not track turns.
+no position-target restriction. Every joint's `readJoint().angle` continues across
+turns; generic `getState()` still reads wrapped Euler angles.
 Independent body forces remain additive.
 See the [core contracts](../../README.md#drives-and-readings) for
 command lifetime, continuous angles, simulation time, mass properties, and raycasts.

@@ -57,7 +57,7 @@ export function createBody(
   desc
     .setTranslation(position.x, position.y, position.z)
     .setRotation(new Quaternion().setFromRotationMatrix(pose))
-    .setCanSleep(options.canSleep ?? true)
+    .setCanSleep(options.canSleep)
     .setLinvel(velocity.linear.x, velocity.linear.y, velocity.linear.z)
     .setAngvel(velocity.angular);
   const body = backend.createRigidBody(desc);

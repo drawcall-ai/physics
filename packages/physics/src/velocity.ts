@@ -22,10 +22,8 @@ export function setAuthoredVelocity(
   velocities.set(object, next);
 }
 
-export function authoredVelocityAtPoint(
-  body: RigidBody,
-  point: Vector3,
-): Vector3 {
+/** The body's velocity at a world point, from its velocity and its explicit center of mass. */
+export function velocityAtPoint(body: RigidBody, point: Vector3): Vector3 {
   const { linear, angular } = body.getVelocity();
   if (angular.lengthSq() === 0) return linear;
   const center = body.options.centerOfMass;

@@ -6,7 +6,15 @@ import {
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { Compiled } from "./model/compile.js";
-import { array, at, pose, quaternion, rotation, vector } from "./values.js";
+import {
+  array,
+  at,
+  pose,
+  quaternion,
+  rotation,
+  vector,
+  type HeapView,
+} from "./values.js";
 
 export function bodyId(compiled: Compiled, body: RigidBody): number {
   const id = compiled.bodies.get(body);
@@ -36,21 +44,29 @@ export function velocity(
     buffer.delete();
   }
 }
-export function freeJoint(compiled: Compiled, id: number): number {
+export function freeJoint(
+  api: MainModule,
+  compiled: Compiled,
+  id: number,
+): number {
   const joint = at(compiled.model.body_jntadr, id);
-  if (joint < 0 || at(compiled.model.jnt_type, joint) !== 0)
+  if (
+    joint < 0 ||
+    at(compiled.model.jnt_type, joint) !== api.mjtJoint.mjJNT_FREE.value
+  )
     throw new Error(
       "MuJoCo pose and velocity commands require a free root body; use joint drives to move articulated bodies",
     );
   return joint;
 }
 export function writeVelocity(
+  api: MainModule,
   compiled: Compiled,
   id: number,
   value: Partial<PhysicsVelocity>,
 ): void {
   const { model, data } = compiled;
-  const joint = freeJoint(compiled, id);
+  const joint = freeJoint(api, compiled, id);
   const address = at(model.jnt_dofadr, joint);
   const orientation = quaternion(data.xquat, id * 4);
   const offset = vector(data.xipos, id * 3).sub(vector(data.xpos, id * 3));
@@ -72,7 +88,7 @@ export function writeVelocity(
 }
 /** Overwrite a span and report whether it held different values. */
 function overwrite(
-  target: ReturnType<typeof array>,
+  target: HeapView,
   values: readonly number[],
   offset: number,
 ): boolean {
@@ -86,6 +102,7 @@ function overwrite(
 }
 /** Returns whether the pose differed from the one already stored. */
 export function writePose(
+  api: MainModule,
   compiled: Compiled,
   id: number,
   matrix: Matrix4,
@@ -102,7 +119,7 @@ export function writePose(
     const moved = overwrite(array(model.body_pos), position, id * 3);
     return overwrite(array(model.body_quat), q, id * 4) || moved;
   }
-  const address = at(model.jnt_qposadr, freeJoint(compiled, id));
+  const address = at(model.jnt_qposadr, freeJoint(api, compiled, id));
   return overwrite(array(data.qpos), [...position, ...q], address);
 }
 export function synchronize(
@@ -114,22 +131,30 @@ export function synchronize(
       set(body, pose(compiled.data.xpos, compiled.data.xquat, id));
 }
 
-/** Copies authored static and trigger poses into the model; returns whether any moved. */
-export function refreshPoses(compiled: Compiled): boolean {
-  let moved = false;
+/**
+ * Copies authored static and trigger poses into the model and recomputes derived state when
+ * any of them, or a pose the caller already wrote (`moved`), changed.
+ */
+export function refreshPoses(
+  api: MainModule,
+  compiled: Compiled,
+  moved = false,
+): void {
   for (const [body, id] of compiled.bodies)
     if (!body.disposed && body.bodyType === "static") {
       body.updateWorldMatrix(true, false);
-      if (writePose(compiled, id, splitTransform(body.matrixWorld).pose))
+      if (writePose(api, compiled, id, splitTransform(body.matrixWorld).pose))
         moved = true;
     }
   for (const [trigger, id] of compiled.triggers)
     if (!trigger.disposed) {
       trigger.updateWorldMatrix(true, false);
-      if (writePose(compiled, id, splitTransform(trigger.matrixWorld).pose))
+      if (
+        writePose(api, compiled, id, splitTransform(trigger.matrixWorld).pose)
+      )
         moved = true;
     }
-  return moved;
+  if (moved) api.mj_forward(compiled.model, compiled.data);
 }
 export function validateState(api: MainModule, compiled: Compiled): void {
   if (

@@ -1,6 +1,5 @@
 import {
   AxisJoint,
-  DistanceJoint,
   FixedJoint,
   GenericJoint,
   SphericalJoint,
@@ -25,17 +24,6 @@ export type Coordinate = {
   | { kind: "axis"; joint: AxisJoint }
   | { kind: "generic"; joint: GenericJoint; axis: (typeof jointDofs)[number] }
 );
-export function unconstrained(joint: Joint): boolean {
-  return (
-    joint instanceof GenericJoint &&
-    jointDofs.every((axis) => joint.dofs[axis] === "free")
-  );
-}
-export function treeJoint(joint: Joint): boolean {
-  return (
-    joint.enabled && !(joint instanceof DistanceJoint) && !unconstrained(joint)
-  );
-}
 export function jointXml(
   joint: Joint,
   record: JointRecord,
@@ -59,16 +47,13 @@ export function jointXml(
     const key = coordinate.name;
     // Back-EMF resists motion whenever the motor is connected, so it belongs on the joint, where
     // MuJoCo integrates it implicitly. It is what settles a saturated drive at its rated speed.
-    const drive = driveOf(coordinate);
-    const resistance =
-      drive && drive.options.maxVelocity !== undefined
-        ? ` damping="${drive.options.maxForce! / drive.options.maxVelocity}"`
-        : "";
+    const backEmf = driveOf(coordinate)?.backEmf;
+    const damping = backEmf === undefined ? "" : ` damping="${backEmf}"`;
     if (limits && limits[0] === limits[1])
       throw new Error(
         "MuJoCo scalar limits must have a nonzero range; use a locked dof instead",
       );
-    return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${resistance}/>`;
+    return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}/>`;
   };
   if (joint instanceof FixedJoint) return "";
   if (joint instanceof SphericalJoint)

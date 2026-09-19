@@ -313,3 +313,19 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
   expect(body.position.y).toBeCloseTo(-9.81 / 1000, 2);
   expect(body.getVelocity().angular.length()).toBeLessThan(1e-6);
 });
+
+it("rejects a capped drive that combines gains with effort, which Rapier caps separately", async () => {
+  const world = await createWorld();
+  const joint = new PrismaticJoint({
+    body0: null,
+    body1: inertialBody(),
+    axis: "X",
+  });
+  joint.setDrive(
+    new JointDrive({ damping: 1, maxForce: 2 }).setTarget({
+      velocity: 1,
+      effort: 1,
+    }),
+  );
+  expect(() => world.update(0)).toThrow("cannot combine gains with effort");
+});

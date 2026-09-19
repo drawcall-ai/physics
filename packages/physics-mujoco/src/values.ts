@@ -1,7 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 
+export type HeapView = Float64Array | Int32Array | Uint8Array;
 /** MuJoCo's generated declarations leave heap views untyped. Check that boundary once per access. */
-export function array(value: unknown): Float64Array | Int32Array | Uint8Array {
+export function array(value: unknown): HeapView {
   if (
     value instanceof Float64Array ||
     value instanceof Int32Array ||

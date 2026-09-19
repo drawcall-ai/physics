@@ -48,6 +48,7 @@ export function parseLayer(text: string): Layer {
     }
     specsByPath[path] = { specType: value.specType, fields: value.fields };
   }
+  // The flattened specs lose variant sets and over/class prims; only the text tree still shows them.
   const tree = new USDAParser().parseText(text);
   const visit = (node: unknown, parent: string) => {
     if (!record(node)) return;

@@ -4,14 +4,15 @@ import {
   DistanceJoint,
   jointDofs,
   splitTransform,
+  unconstrained,
   type Joint,
   type JointDrive,
   type JointReading,
 } from "@drawcall/physics";
 import { Quaternion, Vector3 } from "three";
 import type { Compiled } from "./model/compile.js";
-import { driveOf, unconstrained, type JointRecord } from "./model/joints.js";
-import { array, at } from "./values.js";
+import { driveOf, type JointRecord } from "./model/joints.js";
+import { array } from "./values.js";
 import { bodyId } from "./motion.js";
 import { project, inverseInertia, apply, type Load } from "./forces.js";
 
@@ -46,7 +47,7 @@ export function applyDrives(
       direction: Vector3,
       angular: boolean,
     ) => {
-      if (!drive?.target) return;
+      if (!drive || (!drive.target && drive.backEmf === undefined)) return;
       direction.applyQuaternion(rotation);
       const force = angular ? new Vector3() : direction;
       const torque = angular ? direction : new Vector3();
@@ -129,22 +130,28 @@ function coordinateInertia(
   return 1 / inverse;
 }
 function effort(
-  drive: JointDrive | undefined,
+  drive: JointDrive,
   position: number,
   velocity: number,
   inverse: number,
   dt: number,
 ): number {
-  if (!drive?.target) return 0;
   const { target, options } = drive;
   const scale = options.model === "acceleration" ? 1 / inverse : 1;
-  const k = (options.stiffness ?? 0) * scale,
-    d = (options.damping ?? 0) * scale;
-  const force =
-    (k * (target.position - position - dt * velocity) +
-      d * (target.velocity - velocity) +
-      target.effort) /
-    (1 + (d * dt + k * dt * dt) * inverse);
+  const k = target ? (options.stiffness ?? 0) * scale : 0,
+    d = target ? (options.damping ?? 0) * scale : 0;
+  const force = target
+    ? (k * (target.position - position - dt * velocity) +
+        d * (target.velocity - velocity) +
+        target.effort) /
+      (1 + (d * dt + k * dt * dt) * inverse)
+    : 0;
   const max = options.maxForce ?? Infinity;
-  return Math.max(-max, Math.min(max, force));
+  // Back-EMF brakes the coordinate whenever the motor is connected and sits outside the force cap,
+  // as the joint damping does for tree joints.
+  const emf = drive.backEmf ?? 0;
+  return (
+    Math.max(-max, Math.min(max, force)) -
+    (emf * velocity) / (1 + emf * dt * inverse)
+  );
 }

@@ -2,16 +2,16 @@ import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   RigidBody,
   Trigger,
+  SteppedWorld,
   type Joint,
-  type PhysicsWorld,
   type PhysicsOptions,
   type PhysicsVelocity,
   type RaycastOptions,
-  registry,
   authoredVelocity,
-  authoredJointReading,
+  sceneJointReading,
+  assembly,
   setAuthoredVelocity,
-  setWorldPose,
+  splitTransform,
   assertLive,
   assertOwned,
   ancestorBody,
@@ -30,7 +30,6 @@ import { prepareJoint, type JointBinding } from "./joints.js";
 import { Pending, type Command } from "./pending.js";
 import { raycast } from "./query.js";
 import { readBinding, rebaseAngle, trackAngle } from "./reading.js";
-import { Interactions } from "@drawcall/physics";
 import { sampleInteractions } from "./interactions.js";
 import {
   refreshTrigger,
@@ -38,58 +37,26 @@ import {
   type TriggerBinding,
 } from "./triggers.js";
 
-export interface RapierOptions extends PhysicsOptions {
-  solverIterations?: number;
-}
+export type RapierOptions = PhysicsOptions;
 
-export class RapierWorld implements PhysicsWorld {
+export class RapierWorld extends SteppedWorld {
   private readonly backend: Rapier.World;
   private readonly objects = new Set<RigidBody>();
   private readonly bodies = new Map<RigidBody, BodyBinding>();
   private readonly joints = new Map<Joint, JointBinding | undefined>();
   private readonly triggers = new Map<Trigger, TriggerBinding | undefined>();
-  private readonly interactions = new Interactions();
-  private readonly removals = new Set<RigidBody | Joint | Trigger>();
-  private updating = false;
   private freed = false;
   private readonly pending: Pending;
   private anchor: Rapier.RigidBody | undefined;
-  private elapsed = 0;
-  private completedTime = 0;
-  get time(): number {
-    return this.completedTime;
-  }
-  private isDisposed = false;
-  get disposed(): boolean {
-    return this.isDisposed;
-  }
-  private readonly before = new Set<(delta: number) => void>();
-  private readonly after = new Set<(delta: number) => void>();
-  readonly fixedDelta: number;
-  private readonly maxSubsteps: number;
 
   constructor(
     private readonly api: typeof Rapier,
     options: RapierOptions = {},
   ) {
-    this.fixedDelta = options.fixedDelta ?? 1 / 60;
-    this.maxSubsteps = options.maxSubsteps ?? 5;
-    if (!Number.isFinite(this.fixedDelta) || this.fixedDelta <= 0)
-      throw new Error("fixedDelta must be positive and finite.");
-    if (!Number.isInteger(this.maxSubsteps) || this.maxSubsteps < 1)
-      throw new Error("maxSubsteps must be a positive integer.");
-    const gravity = new Vector3(...(options.gravity ?? [0, -9.81, 0]));
-    if (![gravity.x, gravity.y, gravity.z].every(Number.isFinite))
-      throw new Error("Gravity must be finite.");
-    if (
-      options.solverIterations !== undefined &&
-      (!Number.isInteger(options.solverIterations) ||
-        options.solverIterations < 1)
-    )
-      throw new Error("solverIterations must be a positive integer.");
-    this.backend = new api.World(gravity);
-    if (options.solverIterations !== undefined)
-      this.backend.numSolverIterations = options.solverIterations;
+    super(options);
+    this.backend = new api.World(new Vector3(...this.gravity));
+    if (this.solverIterations !== undefined)
+      this.backend.numSolverIterations = this.solverIterations;
     this.backend.timestep = this.fixedDelta;
     this.pending = new Pending(api, this.bodies);
   }
@@ -106,17 +73,8 @@ export class RapierWorld implements PhysicsWorld {
         if (ancestorBody(trigger) === object) this.interactions.remove(trigger);
     if (object instanceof RigidBody || object instanceof Trigger)
       this.interactions.remove(object);
-    if (this.interactions.dispatching) {
-      this.removals.add(object);
-      return;
-    }
     cleanup(
-      [
-        () => this.remove(object),
-        () => {
-          if (!this.isDisposed) this.dispatch();
-        },
-      ],
+      [() => this.remove(object), () => this.dispatch()],
       "Physics object removal failed",
     );
   }
@@ -133,7 +91,6 @@ export class RapierWorld implements PhysicsWorld {
           ...[...this.triggers]
             .filter(([trigger]) => ancestorBody(trigger) === object)
             .map(([trigger, binding]) => () => {
-              this.interactions.remove(trigger);
               if (binding) removeTrigger(this.backend, binding);
               this.triggers.set(trigger, undefined);
             }),
@@ -153,38 +110,15 @@ export class RapierWorld implements PhysicsWorld {
     if (joint) this.backend.removeImpulseJoint(joint, true);
     this.joints.delete(object);
   }
-  update(delta: number): void {
-    assertLive(this);
-    this.assertIdle();
-    if (!Number.isFinite(delta) || delta < 0)
-      throw new Error("delta must be finite and nonnegative.");
-    this.updating = true;
-    try {
-      this.prepare("pending");
-      this.elapsed = Math.min(
-        this.elapsed + delta,
-        this.fixedDelta * this.maxSubsteps,
-      );
-      while (!this.isDisposed && this.elapsed >= this.fixedDelta) this.step();
-    } finally {
-      this.updating = false;
-      if (this.isDisposed) this.free();
-    }
+  protected prepare(): void {
+    this.reconcile("pending");
   }
-  private step(): void {
-    assertLive(this);
-    this.prepare("pending");
-    for (const callback of this.before) {
-      callback(this.fixedDelta);
-      if (this.isDisposed) return;
-    }
-    this.prepare("all");
+  protected step(): void {
+    this.reconcile("all");
     for (const [object, binding] of this.joints) {
       if (binding?.joint && object.enabled) applyEfforts(object, binding.joint);
     }
     this.backend.step();
-    this.elapsed -= this.fixedDelta;
-    this.completedTime += this.fixedDelta;
     for (const [object, { body }] of this.bodies) {
       synchronize(object, body);
       body.resetForces(false);
@@ -199,16 +133,8 @@ export class RapierWorld implements PhysicsWorld {
       triggers.set(trigger, binding);
     }
     sampleInteractions(this.interactions, this.backend, this.bodies, triggers);
-    this.dispatch();
-    for (const callback of this.after) {
-      if (this.isDisposed) return;
-      callback(this.fixedDelta);
-    }
   }
-  reset(): void {
-    assertLive(this);
-    this.assertIdle();
-    this.interactions.clear();
+  protected restore(): void {
     this.pending.clear();
     for (const [object, binding] of this.bodies) {
       object.validate();
@@ -224,36 +150,22 @@ export class RapierWorld implements PhysicsWorld {
       body.resetTorques(false);
       synchronize(object, body);
     }
-    this.elapsed = 0;
-    this.completedTime = 0;
     for (const [object, binding] of this.joints) {
       if (binding) rebaseAngle(object, binding);
     }
   }
-  dispose(): void {
-    if (this.isDisposed) return;
-    this.isDisposed = true;
-    this.interactions.clear();
+  protected disposeObjects(): void {
     cleanup(
-      [
-        ...[
-          ...this.triggers.keys(),
-          ...this.joints.keys(),
-          ...this.objects,
-        ].map((object) => () => object.dispose()),
-        () => {
-          this.before.clear();
-          this.after.clear();
-          registry.detach(this);
-          if (!this.updating && !this.interactions.dispatching) this.free();
-        },
-      ],
+      [...this.triggers.keys(), ...this.joints.keys(), ...this.objects].map(
+        (object) => () => object.dispose(),
+      ),
       "Physics world disposal failed",
     );
   }
-  getOverlappingBodies(trigger: Trigger): RigidBody[] {
-    assertOwned(this, trigger);
-    return this.interactions.bodies(trigger);
+  protected free(): void {
+    if (this.freed) return;
+    this.backend.free();
+    this.freed = true;
   }
   getVelocity(object: RigidBody): PhysicsVelocity {
     assertOwned(this, object);
@@ -275,15 +187,19 @@ export class RapierWorld implements PhysicsWorld {
       if (angular) body.setAngvel(angular, true);
     });
   }
-  teleport(object: RigidBody, matrix: Matrix4): void {
+  teleport(object: RigidBody): void {
     assertOwned(this, object);
-    object.validate();
-    setWorldPose(object, matrix);
-    const body = this.bodies.get(object)?.body;
-    if (!body) return;
-    writePose(body, matrix);
+    const moved = assembly(object, this.joints.keys());
+    for (const body of moved) {
+      const backend = this.bodies.get(body)?.body;
+      if (backend) writePose(backend, splitTransform(body.matrixWorld).pose);
+    }
+    // Joints inside the assembly keep their turns; only those it straddles start over.
     for (const [joint, binding] of this.joints) {
-      if (binding && joint.connects(object)) rebaseAngle(joint, binding);
+      const ends = [joint.options.body0, joint.options.body1].filter(
+        (body) => body && moved.has(body),
+      ).length;
+      if (binding && ends === 1) rebaseAngle(joint, binding);
     }
   }
   setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
@@ -324,7 +240,7 @@ export class RapierWorld implements PhysicsWorld {
     assertOwned(this, object);
     const binding = this.joints.get(object);
     if (binding) return readBinding(object, binding);
-    return authoredJointReading(object, undefined, (body, point) => {
+    return sceneJointReading(object, undefined, (body, point) => {
       const target = this.bodies.get(body)?.body;
       if (target) return new Vector3().copy(target.velocityAtPoint(point));
       const { linear, angular } = body.getVelocity();
@@ -360,20 +276,6 @@ export class RapierWorld implements PhysicsWorld {
       ),
     );
   }
-  onBeforeStep(callback: (delta: number) => void): () => void {
-    assertLive(this);
-    this.before.add(callback);
-    return () => {
-      this.before.delete(callback);
-    };
-  }
-  onAfterStep(callback: (delta: number) => void): () => void {
-    assertLive(this);
-    this.after.add(callback);
-    return () => {
-      this.after.delete(callback);
-    };
-  }
   private command(
     object: RigidBody,
     command: Command,
@@ -385,7 +287,7 @@ export class RapierWorld implements PhysicsWorld {
     else this.pending.push(object, command, changesVelocity);
   }
   /** Creates backend objects for unprepared bodies and joints; `"all"` also refreshes prepared ones. */
-  private prepare(scope: "pending" | "all"): void {
+  private reconcile(scope: "pending" | "all"): void {
     assertLive(this);
     for (const object of this.objects) {
       const binding = this.bodies.get(object);
@@ -434,39 +336,6 @@ export class RapierWorld implements PhysicsWorld {
     const binding = this.bodies.get(object);
     if (!binding) throw new Error("Missing prepared body");
     return binding.body;
-  }
-  private assertIdle(): void {
-    if (this.updating || this.interactions.dispatching)
-      throw new Error(
-        "Cannot update or reset during a physics step or event dispatch",
-      );
-  }
-  private dispatch(): void {
-    if (this.interactions.dispatching) return;
-    cleanup(
-      [
-        () => this.interactions.dispatch(),
-        () => {
-          const removals = [...this.removals];
-          this.removals.clear();
-          cleanup(
-            [
-              ...removals.map((object) => () => this.remove(object)),
-              () => {
-                if (this.isDisposed && !this.updating) this.free();
-              },
-            ],
-            "Deferred physics cleanup failed",
-          );
-        },
-      ],
-      "Physics event dispatch failed",
-    );
-  }
-  private free(): void {
-    if (this.freed) return;
-    this.backend.free();
-    this.freed = true;
   }
 }
 

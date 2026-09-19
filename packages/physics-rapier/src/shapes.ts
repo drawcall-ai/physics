@@ -13,7 +13,7 @@ export function colliderDesc(
   const position = new Vector3().setFromMatrixPosition(matrix);
   const quaternion = new Quaternion().setFromRotationMatrix(matrix);
   if (material.staticFriction !== material.dynamicFriction)
-    throw new Error("Rapier requires equal static and dynamic friction.");
+    throw new Error("Rapier requires equal static and dynamic friction");
   const result = descriptor(api, shape);
   const { membership, filter } = resolveCollisionGroups(collider, body);
   result.setCollisionGroups(((membership << 16) | filter) >>> 0);
@@ -45,7 +45,7 @@ export function descriptor(
       return factory.cylinder(shape.height / 2, shape.radius);
     case "mesh": {
       const positions = shape.geometry.getAttribute("position");
-      if (!positions) throw new Error("Mesh collider needs positions.");
+      if (!positions) throw new Error("Mesh collider needs positions");
       const vertices = new Float32Array(positions.count * 3);
       for (let i = 0; i < positions.count; i++)
         vertices.set(
@@ -55,7 +55,7 @@ export function descriptor(
       if (shape.approximation === "convexHull") {
         const hull = factory.convexHull(vertices);
         if (!hull)
-          throw new Error("Rapier could not construct the convex hull.");
+          throw new Error("Rapier could not construct the convex hull");
         return hull;
       }
       const index = shape.geometry.getIndex();

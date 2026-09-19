@@ -84,13 +84,12 @@ export class SphericalJoint extends Joint {
   }
 }
 export type DistanceJointOptions = JointOptions & {
-  readonly limits?: readonly [number, number];
+  /** Minimum and maximum distance; an `Infinity` maximum is a rope with no slack limit. */
+  readonly limits: readonly [number, number];
 };
-export class DistanceJoint extends ScalarJoint<
-  DistanceJointOptions & { readonly limits: readonly [number, number] }
-> {
+export class DistanceJoint extends ScalarJoint<DistanceJointOptions> {
   constructor(options: DistanceJointOptions) {
-    const limits = options.limits ?? [0, 0];
+    const { limits } = options;
     if (!(
       Number.isFinite(limits[0]) &&
       limits[0] >= 0 &&

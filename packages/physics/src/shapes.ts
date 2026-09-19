@@ -6,9 +6,11 @@ import {
   Mesh,
   SkinnedMesh,
   SphereGeometry,
+  type Vector3,
 } from "three";
 import type { BufferGeometry, Object3D } from "three";
 import type { RigidBody } from "./body.js";
+import type { Trigger } from "./trigger.js";
 import {
   BoxCollider,
   CapsuleCollider,
@@ -18,7 +20,11 @@ import {
   SphereCollider,
 } from "./colliders.js";
 import type { Shape } from "./colliders.js";
-import { splitTransform } from "./transforms.js";
+import {
+  assertPositiveScale,
+  assertScaledTransform,
+  splitTransform,
+} from "./transforms.js";
 
 /** The explicit collider itself, or an automatic one for a mesh, validated for this body. */
 export function colliderOf(source: Collider | Mesh, body: RigidBody): Collider {
@@ -27,11 +33,8 @@ export function colliderOf(source: Collider | Mesh, body: RigidBody): Collider {
     node && node !== body;
     node = node.parent
   )
-    if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
-      throw new Error(
-        `Collider requires positive scale: ${node.name || node.type}`,
-      );
-  splitTransform(source.matrixWorld, source.name || source.type);
+    assertPositiveScale(node, "Collider");
+  assertScaledTransform(source.matrixWorld, source.name || source.type);
   const collider =
     source instanceof Collider ? source : autoCollider(source, body);
   const shape = collider.shape();
@@ -43,6 +46,60 @@ export function colliderOf(source: Collider | Mesh, body: RigidBody): Collider {
   )
     throw new Error("Triangle mesh colliders require static bodies");
   return collider;
+}
+
+/** The collider's pose and scale in its owner's frame, with the shape scaled to world units. */
+export function resolveCollider(
+  body: RigidBody | Trigger,
+  collider: Collider,
+  capturedScale?: Vector3,
+) {
+  const { pose } = splitTransform(body.matrixWorld);
+  const transform = pose.invert().multiply(collider.matrixWorld);
+  const name = `${body.name || body.type}/${collider.source.name || collider.source.type}`;
+  const { pose: matrix, scale } = splitTransform(transform, name);
+  return {
+    collider,
+    matrix,
+    scale,
+    shape: scaleShape(collider.shape(), capturedScale ?? scale, name),
+  };
+}
+
+function scaleShape(shape: Shape, scale: Vector3, name: string): Shape {
+  const { x, y, z } = scale;
+  const radial = Math.abs(x - z) < 1e-6;
+  const uniform = radial && Math.abs(x - y) < 1e-6;
+  if (
+    ((shape.kind === "sphere" || shape.kind === "capsule") && !uniform) ||
+    (shape.kind === "cylinder" && !radial)
+  )
+    throw new Error(
+      `Unsupported nonuniform scale for ${shape.kind} at ${name}; use a mesh collider`,
+    );
+  switch (shape.kind) {
+    case "box":
+      return {
+        kind: "box",
+        size: [shape.size[0] * x, shape.size[1] * y, shape.size[2] * z],
+      };
+    case "mesh":
+      return { ...shape, geometry: shape.geometry.clone().scale(x, y, z) };
+    case "cylinder":
+      return {
+        kind: "cylinder",
+        radius: shape.radius * x,
+        height: shape.height * y,
+      };
+    case "sphere":
+      return { kind: "sphere", radius: shape.radius * x };
+    case "capsule":
+      return {
+        kind: "capsule",
+        radius: shape.radius * x,
+        height: shape.height * y,
+      };
+  }
 }
 
 function autoCollider(mesh: Mesh, body: RigidBody): Collider {

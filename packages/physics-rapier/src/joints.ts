@@ -29,7 +29,7 @@ export interface JointBinding {
   bodies: readonly [Rapier.RigidBody, Rapier.RigidBody];
   settingsVersion: number;
   driveStates: DriveState[];
-  /** Revolute turn counting: the last wrapped sample and the continuous position. */
+  /** Turn counting: the last wrapped sample and the continuous position. */
   angle?: { sampled: number; continuous: number };
 }
 
@@ -159,7 +159,7 @@ function jointData(
   if (object instanceof DistanceJoint) {
     if (object.limits[0] !== 0)
       throw new Error(
-        "Rapier distance joints only support a zero minimum distance.",
+        "Rapier distance joints only support a zero minimum distance",
       );
     // A spring joint is Rapier's driven distance constraint; its rope limit is set after creation.
     return api.JointData.spring(0, 0, 0, a, b);

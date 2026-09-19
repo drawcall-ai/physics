@@ -50,7 +50,8 @@ export {
   type PhysicsWorld,
 } from "./world.js";
 export { clone } from "./clone.js";
-export { splitTransform, resolveCollider } from "./transforms.js";
+export { splitTransform } from "./transforms.js";
+export { resolveCollider } from "./shapes.js";
 export {
   JointDrive,
   type JointDriveOptions,

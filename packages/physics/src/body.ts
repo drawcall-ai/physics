@@ -11,7 +11,9 @@ import { Collider, validateMaterial, validateGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
 import { cleanup, rollback } from "./cleanup.js";
 import {
+  assertPositiveScale,
   assertRigidTransform,
+  assertScaledTransform,
   splitTransform,
   validateVector,
 } from "./transforms.js";
@@ -24,6 +26,7 @@ import type {
   CollisionGroups,
 } from "./colliders.js";
 import { registry } from "./registry.js";
+import { assembly } from "./assembly.js";
 import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
 import { setWorldPose } from "./transforms.js";
 import type { PhysicsVelocity } from "./world.js";
@@ -110,6 +113,10 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   private assertLive(): void {
     if (this.disposed) throw new Error("Rigid body has been disposed");
   }
+  private assertDynamic(subject: string): void {
+    if (this.bodyType !== "dynamic")
+      throw new Error(`${subject} requires a dynamic body`);
+  }
   setLinearDamping(value: number): this {
     this.assertLive();
     validateDamping(value);
@@ -178,15 +185,34 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     if (value.linear) validateVector(value.linear);
     if (value.angular) validateVector(value.angular);
     this.assertLive();
+    this.assertDynamic("Velocity");
     if (registry.world) registry.world.setVelocity(this, value);
     else setAuthoredVelocity(this, value);
     return this;
   }
-  teleport(matrix: Matrix4): void {
+  /**
+   * Moves the body, and every dynamic body jointed to it, rigidly to the pose. An assembly
+   * articulated to a static or kinematic base or the world can only move within those joints.
+   */
+  teleport(matrix: Matrix4): this {
     assertRigidTransform(matrix);
     this.validate();
-    if (registry.world) registry.world.teleport(this, matrix);
-    else setWorldPose(this, matrix);
+    const delta = matrix
+      .clone()
+      .multiply(splitTransform(this.matrixWorld).pose.invert());
+    const poses = new Map(
+      [...assembly(this, registry.objects)].map((member) => {
+        if (member === this) return [member, matrix];
+        member.validate();
+        return [
+          member,
+          delta.clone().multiply(splitTransform(member.matrixWorld).pose),
+        ];
+      }),
+    );
+    for (const [member, pose] of poses) setWorldPose(member, pose);
+    registry.world?.teleport(this);
+    return this;
   }
   setKinematicTarget(matrix: Matrix4): void {
     if (this.bodyType !== "kinematic")
@@ -197,11 +223,13 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   applyImpulse(impulse: Vector3, point?: Vector3): void {
     validateVector(impulse);
     if (point) validateVector(point);
+    this.assertDynamic("An impulse");
     registry.requireWorld(this).applyImpulse(this, impulse, point);
   }
   applyForce(force: Vector3, point?: Vector3): void {
     validateVector(force);
     if (point) validateVector(point);
+    this.assertDynamic("A force");
     registry.requireWorld(this).applyForce(this, force, point);
   }
   wake(): void {
@@ -212,7 +240,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   override clone(recursive = true): this {
-    if (this.disposed) throw new Error("Cannot clone a disposed rigid body");
+    this.assertLive();
     const target = constructLike(this, [this.options]);
     try {
       return target.copy(this, recursive);
@@ -226,12 +254,12 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   override copy(source: this, recursive = true): this {
-    if (this.disposed || source.disposed)
-      throw new Error("Cannot copy a disposed rigid body");
+    this.assertLive();
+    source.assertLive();
     if (!sameOptions(this.options, source.options))
       throw new Error("Rigid body copy requires matching immutable options");
     super.copy(source, recursive);
-    this.setVelocity(source.getVelocity());
+    if (this.bodyType === "dynamic") this.setVelocity(source.getVelocity());
     this.setLinearDamping(source.linearDamping)
       .setAngularDamping(source.angularDamping)
       .setGravityScale(source.gravityScale)
@@ -272,10 +300,10 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   validate(): void {
-    if (this.disposed) throw new Error("Cannot validate a disposed rigid body");
+    this.assertLive();
     this.updateWorldMatrix(true, true);
-    splitTransform(this.matrix, this.name || this.type);
-    splitTransform(this.matrixWorld, this.name || this.type);
+    assertScaledTransform(this.matrix, this.name || this.type);
+    assertScaledTransform(this.matrixWorld, this.name || this.type);
     if (this.parent && this.bodyType !== "static") {
       const { scale } = splitTransform(this.parent.matrixWorld);
       if (
@@ -284,15 +312,10 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       )
         throw new Error("Moving bodies require uniform ancestor scale");
     }
-    let parent: Object3D | null = this;
-    while (parent) {
-      if (Math.min(parent.scale.x, parent.scale.y, parent.scale.z) <= 0)
-        throw new Error(
-          `Body requires positive scale: ${parent.name || parent.type}`,
-        );
-      if (parent !== this && parent instanceof RigidBody)
+    for (let node: Object3D | null = this; node; node = node.parent) {
+      assertPositiveScale(node, "Body");
+      if (node !== this && node instanceof RigidBody)
         throw new Error("Nested rigid bodies are not supported");
-      parent = parent.parent;
     }
   }
 }

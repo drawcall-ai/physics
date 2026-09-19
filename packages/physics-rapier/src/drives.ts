@@ -70,6 +70,10 @@ export function configureDrives(
     const goal = drive?.target;
     const gains =
       (drive?.options.stiffness ?? 0) > 0 || (drive?.options.damping ?? 0) > 0;
+    if (drive?.options.maxForce !== undefined && gains && goal?.effort)
+      throw new Error(
+        "Rapier caps its motor and a drive effort separately, so a capped drive cannot combine gains with effort",
+      );
     // A Rapier motor without gains freezes the body; effort-only drives act through per-step forces instead.
     const native =
       drive && goal && gains ? { options: drive.options, goal } : undefined;

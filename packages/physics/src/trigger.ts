@@ -5,7 +5,7 @@ import { Collider, validateGroups, type CollisionGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
 import { cleanup, rollback } from "./cleanup.js";
 import { validateShape } from "./shapes.js";
-import { splitTransform } from "./transforms.js";
+import { assertPositiveScale, assertScaledTransform } from "./transforms.js";
 import { registry } from "./registry.js";
 
 export interface TriggerEventMap extends Object3DEventMap {
@@ -30,8 +30,11 @@ export class Trigger extends Group<TriggerEventMap> {
   get collisionGroups(): CollisionGroups | undefined {
     return this.currentGroups;
   }
+  private assertLive(): void {
+    if (this.isDisposed) throw new Error("Trigger has been disposed");
+  }
   setCollisionGroups(value: CollisionGroups | undefined): this {
-    registry.assertRegistered(this);
+    this.assertLive();
     if (value) validateGroups(value);
     this.currentGroups = value && { ...value };
     this.version++;
@@ -53,13 +56,12 @@ export class Trigger extends Group<TriggerEventMap> {
     );
   }
   validate(): void {
-    registry.assertRegistered(this);
+    this.assertLive();
     this.updateWorldMatrix(true, true);
-    splitTransform(this.matrix, this.name || this.type);
-    splitTransform(this.matrixWorld, this.name || this.type);
+    assertScaledTransform(this.matrix, this.name || this.type);
+    assertScaledTransform(this.matrixWorld, this.name || this.type);
     for (let node: Object3D | null = this; node; node = node.parent) {
-      if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
-        throw new Error("Trigger requires positive scale");
+      assertPositiveScale(node, "Trigger");
       if (node !== this && node instanceof Trigger)
         throw new Error("Nested triggers are not supported");
       if (node instanceof RigidBody) {
@@ -77,10 +79,9 @@ export class Trigger extends Group<TriggerEventMap> {
         (object instanceof Trigger || object instanceof RigidBody)
       )
         throw new Error("Triggers cannot contain triggers or rigid bodies");
-      if (Math.min(object.scale.x, object.scale.y, object.scale.z) <= 0)
-        throw new Error("Trigger shapes require positive scale");
+      assertPositiveScale(object, "Trigger shape");
       if (!(object instanceof Collider)) return;
-      splitTransform(object.matrixWorld, object.name || object.type);
+      assertScaledTransform(object.matrixWorld, object.name || object.type);
       if (object.material !== undefined)
         throw new Error("Trigger colliders cannot have physics materials");
       const shape = object.shape();
@@ -92,7 +93,7 @@ export class Trigger extends Group<TriggerEventMap> {
     return colliders;
   }
   override clone(recursive = true): this {
-    registry.assertRegistered(this);
+    this.assertLive();
     const target = constructLike(this, []);
     try {
       return target.copy(this, recursive);
@@ -105,8 +106,8 @@ export class Trigger extends Group<TriggerEventMap> {
     }
   }
   override copy(source: this, recursive = true): this {
-    registry.assertRegistered(this);
-    registry.assertRegistered(source);
+    this.assertLive();
+    source.assertLive();
     super.copy(source, recursive);
     return this.setCollisionGroups(source.collisionGroups);
   }

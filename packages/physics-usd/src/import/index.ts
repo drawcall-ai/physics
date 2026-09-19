@@ -31,6 +31,7 @@ export interface PhysicsUSDImportOptions {
 export class PhysicsUSDLoader {
   constructor(private readonly options: PhysicsUSDImportOptions = {}) {}
 
+  /** Textures keep loading after this returns and report through the `LoadingManager`; `parseAsync` waits for them. */
   parse(input: ArrayBuffer | Uint8Array | string, path = ""): PhysicsUSDScene {
     return this.prepare(input, path).scene;
   }
@@ -146,12 +147,15 @@ class LayerImport {
       "physics:angularVelocity",
       [0, 0, 0],
     );
-    body.setVelocity({
+    const velocity = {
       linear: new Vector3(
         ...vector(this.layer, path, "physics:velocity", [0, 0, 0]),
       ),
       angular: new Vector3(...angular).multiplyScalar(radians),
-    });
+    };
+    if (body.bodyType === "dynamic") body.setVelocity(velocity);
+    else if (velocity.linear.lengthSq() || velocity.angular.lengthSq())
+      throw new Error(`Velocity on a non-dynamic body is unsupported: ${path}`);
     this.bodies.set(path, body);
   }
 

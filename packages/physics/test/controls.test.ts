@@ -61,7 +61,9 @@ it("copies immutable configuration, retaining resource identities and independen
   });
   expect(distance.clone().limits).toEqual([1, 3]);
   expect(() =>
-    new DistanceJoint({ body0: null, body1: body }).copy(distance),
+    new DistanceJoint({ body0: null, body1: body, limits: [0, 1] }).copy(
+      distance,
+    ),
   ).toThrow("immutable");
 });
 
@@ -179,14 +181,14 @@ it("honors subclass copy overrides for standalone joint cloning", () => {
 });
 
 it("copies immutable body type and clones independent velocity", () => {
-  const options: { type: "kinematic" | "static" } = { type: "kinematic" };
+  const options: { type: "dynamic" | "static" } = { type: "dynamic" };
   const body = new RigidBody(options).setVelocity({
     linear: new Vector3(3, 0, 0),
   });
   options.type = "static";
-  expect(body.bodyType).toBe("kinematic");
+  expect(body.bodyType).toBe("dynamic");
   const copy = body.clone();
-  expect(copy.bodyType).toBe("kinematic");
+  expect(copy.bodyType).toBe("dynamic");
   copy.setVelocity({ linear: new Vector3(5, 0, 0) });
   expect(body.getVelocity().linear.x).toBe(3);
   expect(() => new RigidBody({ type: "static" }).copy(body)).toThrow(

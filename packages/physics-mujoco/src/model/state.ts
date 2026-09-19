@@ -52,7 +52,12 @@ export function captureState(
         Array.from(
           array(previous.data.qvel).slice(
             start,
-            start + (type === 0 ? 6 : type === 1 ? 3 : 1),
+            start +
+              (type === api.mjtJoint.mjJNT_FREE.value
+                ? 6
+                : type === api.mjtJoint.mjJNT_BALL.value
+                  ? 3
+                  : 1),
           ),
         ),
       );
@@ -68,10 +73,11 @@ export function captureState(
     for (const [body, id] of next.bodies) {
       const value = velocities.get(body);
       if (body.bodyType !== "static" && next.roots.has(body) && value)
-        writeVelocity(next, id, value);
+        writeVelocity(api, next, id, value);
     }
     for (let j = 0; j < next.model.njnt; j++) {
-      if (at(next.model.jnt_type, j) === 0) continue;
+      if (at(next.model.jnt_type, j) === api.mjtJoint.mjJNT_FREE.value)
+        continue;
       const key = api.mj_id2name(next.model, api.mjtObj.mjOBJ_JOINT.value, j);
       const values = speeds.get(key);
       const address = at(next.model.jnt_dofadr, j);

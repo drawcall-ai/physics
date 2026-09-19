@@ -1,5 +1,6 @@
 import { RigidBody } from "./body.js";
 import { Trigger } from "./trigger.js";
+import { cleanup } from "./cleanup.js";
 type Pairs<T> = Map<T, Set<RigidBody>>;
 
 /** Reconcile complete samples, so compound-shape handoffs and rebuilds stay silent. */
@@ -29,7 +30,12 @@ export class Interactions {
     if (this.delivering) return;
     this.delivering = true;
     try {
-      for (let i = 0; i < this.events.length; i++) this.events[i]?.();
+      // Every listener of a batch runs even when one throws; listeners may queue the next batch.
+      while (this.events.length) {
+        const batch = this.events;
+        this.events = [];
+        cleanup(batch, "Physics event listeners failed");
+      }
     } finally {
       this.events = [];
       this.delivering = false;

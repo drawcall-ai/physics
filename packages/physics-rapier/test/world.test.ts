@@ -1,6 +1,11 @@
 import { expect, it } from "vitest";
 import { BoxGeometry, Matrix4, Mesh, Vector3 } from "three";
-import { DistanceJoint, FixedJoint, RigidBody } from "@drawcall/physics";
+import {
+  DistanceJoint,
+  FixedJoint,
+  RevoluteJoint,
+  RigidBody,
+} from "@drawcall/physics";
 import { createWorld, box, earth } from "./fixtures.js";
 
 it("adds bodies after stepping without resetting existing velocities or poses", async () => {
@@ -202,4 +207,24 @@ it("uses one update path for preparation, fractional time, catch-up and explicit
   expect(steps).toHaveLength(3);
   world.update(world.fixedDelta);
   expect(body.position.x).toBeCloseTo(0.5);
+});
+
+it("teleports a body together with the assembly jointed to it", async () => {
+  const world = await createWorld({ fixedDelta: 1 / 60 });
+  const root = box();
+  const child = box();
+  child.position.x = 2;
+  const joint = new RevoluteJoint({ body0: root, body1: child, axis: "X" });
+  joint.position.x = 1;
+  child.setVelocity({ angular: new Vector3(8, 0, 0) });
+  for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
+  const turned = joint.getState().position;
+  expect(Math.abs(turned)).toBeGreaterThan(Math.PI);
+  child.teleport(new Matrix4().makeTranslation(2, 5, 0));
+  expect(root.position.y).toBeCloseTo(5);
+  expect(child.position.y).toBeCloseTo(5);
+  // The hinge sits inside the moved assembly, so its turn count carries over.
+  expect(joint.getState().position).toBeCloseTo(turned, 3);
+  world.update(world.fixedDelta);
+  expect(root.position.y).toBeCloseTo(5);
 });

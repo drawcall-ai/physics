@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   BoxCollider,
   SphereCollider,
@@ -18,6 +18,7 @@ import {
   type MujocoWorld,
   type MujocoOptions,
 } from "../src/index.js";
+import { Scene } from "../src/scene.js";
 const worlds: MujocoWorld[] = [];
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
@@ -322,24 +323,29 @@ test("raycasts leave initial scale editable and explicit mass supports zero dens
   expect(box.getVelocity().linear.x).toBeCloseTo(1);
 });
 
-test("scans a scene of many bodies without recompiling the model per ray", async () => {
-  const value = await world({ gravity: [0, -9.81, 0] });
-  for (let i = 0; i < 40; i++) {
-    const shelf = body("static");
-    shelf.scale.set(1, 2, 4);
-    shelf.position.set((i % 8) * 3 - 12, 1, Math.floor(i / 8) * 4 - 8);
-  }
-  const moving = body();
-  moving.position.set(0, 0.5, 0);
+test("raycasts reuse the live model and only compile a preview once the scene changed", async () => {
+  const value = await world();
+  const shelf = body("static");
+  shelf.position.set(4, 0, 0);
   steps(value, 1);
-  const origin = new Vector3(0, 0.5, 0);
-  const start = performance.now();
-  for (let i = 0; i < 361; i++) {
-    const angle = (i / 360) * Math.PI * 2;
-    value.raycast(origin, new Vector3(Math.cos(angle), 0, Math.sin(angle)), 12);
+  const preview = vi.spyOn(Scene.prototype, "preview");
+  try {
+    const origin = new Vector3(0, 0.5, 0);
+    for (let i = 0; i < 36; i++) {
+      const angle = (i / 36) * Math.PI * 2;
+      value.raycast(
+        origin,
+        new Vector3(Math.cos(angle), 0, Math.sin(angle)),
+        12,
+      );
+    }
+    expect(preview).not.toHaveBeenCalled();
+    body("static").position.x = 2;
+    value.raycast(origin, new Vector3(1, 0, 0), 12);
+    expect(preview).toHaveBeenCalledTimes(1);
+  } finally {
+    preview.mockRestore();
   }
-  // Compiling a fresh model per ray took tens of seconds for a single lidar scan.
-  expect(performance.now() - start).toBeLessThan(1500);
 });
 
 test("raycasts see bodies added and moved between steps", async () => {
@@ -365,12 +371,19 @@ for (const frictionImpedanceRatio of [0.9, 0, -1, NaN, Infinity]) {
   });
 }
 
+test("a friction impedance ratio above 1 needs elliptic cones", async () => {
+  await expect(world({ frictionImpedanceRatio: 2 })).rejects.toThrow(
+    "needs elliptic friction cones",
+  );
+});
+
 test("a stiffer friction impedance slows resting creep without raising the slide limit", async () => {
   // A 0.5 friction coefficient holds a resting box below 26.6 degrees and slides it above.
   async function ramp(degrees: number, frictionImpedanceRatio: number) {
     const value = await world({
       gravity: [0, -9.81, 0],
       fixedDelta: 1 / 1000,
+      frictionCone: "elliptic",
       frictionImpedanceRatio,
     });
     const tilt = new Matrix4().makeRotationZ((degrees * Math.PI) / 180);
@@ -394,10 +407,12 @@ test("a stiffer friction impedance slows resting creep without raising the slide
     value.dispose();
     return moved;
   }
-  expect(await ramp(25, 1)).toBeGreaterThan(0.01);
-  expect(await ramp(25, 50)).toBeLessThan(0.006);
-  const soft = await ramp(40, 1);
-  expect(await ramp(40, 50)).toBeGreaterThan(soft * 0.9);
+  // Creep falls in proportion to the ratio; the slide past the limit does not change.
+  const creep = await ramp(25, 1);
+  expect(creep).toBeGreaterThan(0.001);
+  expect(await ramp(25, 50)).toBeLessThan(creep / 10);
+  const slide = await ramp(40, 1);
+  expect(await ramp(40, 50)).toBeGreaterThan(slide * 0.9);
 }, 30000);
 
 test("a drive cannot drive its joint past its rated speed", async () => {
@@ -419,8 +434,9 @@ test("a drive cannot drive its joint past its rated speed", async () => {
     value.dispose();
     return speed;
   }
-  expect(await spin(1.5)).toBeGreaterThan(1);
-  expect(await spin(1.5)).toBeLessThan(1.6);
+  const rated = await spin(1.5);
+  expect(rated).toBeGreaterThan(1);
+  expect(rated).toBeLessThan(1.6);
   expect(await spin()).toBeGreaterThan(5);
 });
 
@@ -435,5 +451,83 @@ for (const maxVelocity of [0, -1, NaN, Infinity]) {
 test("a drive velocity limit needs a force limit to fall away from", () => {
   expect(() => new JointDrive({ stiffness: 1, maxVelocity: 2 })).toThrow(
     "A drive velocity limit needs a finite maximum force",
+  );
+});
+
+test("teleporting a jointed body carries its assembly", async () => {
+  const value = await world();
+  const root = body();
+  const child = body();
+  child.position.x = 2;
+  const joint = new RevoluteJoint({ body0: root, body1: child });
+  joint.position.x = 1;
+  steps(value, 1);
+  child.teleport(new Matrix4().makeTranslation(2, 5, 0));
+  expect(root.position.y).toBeCloseTo(5);
+  expect(child.position.y).toBeCloseTo(5);
+  steps(value, 1);
+  expect(root.position.y).toBeCloseTo(5);
+  expect(child.position.x).toBeCloseTo(2);
+});
+
+test("a force-driven free joint settles at its drive's rated speed", async () => {
+  async function slide(maxVelocity?: number) {
+    const value = await world({ fixedDelta: 1 / 1000 });
+    const box = body();
+    const joint = new GenericJoint({
+      body0: null,
+      body1: box,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      dofs: {
+        transX: "free",
+        transY: "free",
+        transZ: "free",
+        rotX: "free",
+        rotY: "free",
+        rotZ: "free",
+      },
+    });
+    joint.setDrive(
+      "transX",
+      new JointDrive({
+        stiffness: 500,
+        damping: 2,
+        maxForce: 3,
+        maxVelocity,
+      }).setTarget({ position: 50 }),
+    );
+    steps(value, 5000);
+    const speed = box.getVelocity().linear.x;
+    value.dispose();
+    return speed;
+  }
+  const rated = await slide(1.5);
+  expect(rated).toBeGreaterThan(1.3);
+  expect(rated).toBeLessThan(1.6);
+  expect(await slide()).toBeGreaterThan(5);
+});
+
+test("rejects teleporting a body articulated to the world", async () => {
+  const value = await world();
+  const arm = body();
+  arm.position.x = 1;
+  new RevoluteJoint({ body0: null, body1: arm });
+  steps(value, 1);
+  expect(() => arm.teleport(new Matrix4().makeTranslation(1, 5, 0))).toThrow(
+    "free root body",
+  );
+});
+
+test("rejects teleporting a body articulated to a kinematic base", async () => {
+  const value = await world();
+  const base = body("kinematic");
+  const arm = body();
+  arm.position.x = 2;
+  const joint = new RevoluteJoint({ body0: base, body1: arm });
+  joint.position.x = 1;
+  steps(value, 1);
+  expect(() => arm.teleport(new Matrix4().makeTranslation(2, 5, 0))).toThrow(
+    "kinematic base",
   );
 });
