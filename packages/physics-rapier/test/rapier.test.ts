@@ -7,13 +7,13 @@ import {
   RigidBody,
 } from "@drawcall/physics";
 import { createWorld, inertialBody } from "./fixtures.js";
-import { setupWorld } from "../src/index.js";
+import { buildWorld } from "../src/index.js";
 
 /** Engine limitations the adapter documents and rejects explicitly. */
 
 for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
   it(`rejects invalid solver iteration count ${solverIterations}`, async () => {
-    await expect(setupWorld({ solverIterations })).rejects.toThrow(
+    await expect(buildWorld({ solverIterations })).rejects.toThrow(
       "solverIterations must be a positive integer",
     );
   });

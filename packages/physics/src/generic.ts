@@ -1,3 +1,4 @@
+import { readJoint } from "./reading.js";
 import { Euler, Vector3 } from "three";
 import { Joint, attach, sameLimits, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";
@@ -83,7 +84,7 @@ export class GenericJoint extends Joint<
   }
   /** Rotations read as XYZ Euler angles of the relative rotation, wrapped. */
   getState(axis: JointDof): AxisJointState {
-    const reading = this.world.readJoint(this);
+    const reading = readJoint(this);
     const index = jointDofs.indexOf(axis) % 3;
     if (axis.startsWith("trans"))
       return {

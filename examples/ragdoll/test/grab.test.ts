@@ -1,12 +1,12 @@
 import { expect, it } from "vitest";
 import { Vector3 } from "three";
 import { RigidBody } from "@drawcall/physics";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-rapier";
 import { createRagdoll, simulationOptions } from "../model";
 import { grab } from "../grab";
 
 it("lifts the ragdoll by its head and lets the floor stop a pull through it", async () => {
-  const world = await setupWorld(simulationOptions);
+  const world = await buildWorld(simulationOptions);
   try {
     const scene = createRagdoll();
     const head = scene.getObjectByName("Head");

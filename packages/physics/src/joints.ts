@@ -1,3 +1,4 @@
+import { readJoint } from "./reading.js";
 import { Joint, attach, sameLimits, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";
 import type { JointDrive } from "./drive.js";
@@ -61,7 +62,7 @@ export abstract class AxisJoint extends ScalarJoint<
     );
   }
   getState(): AxisJointState {
-    const reading = this.world.readJoint(this);
+    const reading = readJoint(this);
     return this.dof === "rotX"
       ? { position: reading.angle, velocity: reading.angularVelocity.x }
       : {
@@ -78,7 +79,7 @@ export class PrismaticJoint extends AxisJoint {
 }
 export class SphericalJoint extends Joint {
   getState(): SphericalJointState {
-    const { rotation, angularVelocity } = this.world.readJoint(this);
+    const { rotation, angularVelocity } = readJoint(this);
     return { rotation, angularVelocity };
   }
 }
@@ -111,7 +112,7 @@ export class DistanceJoint extends ScalarJoint<
     return sameLimits(this.limits, source.limits);
   }
   getState(): DistanceJointState {
-    const { translation, linearVelocity } = this.world.readJoint(this);
+    const { translation, linearVelocity } = readJoint(this);
     const distance = translation.length();
     return {
       distance,

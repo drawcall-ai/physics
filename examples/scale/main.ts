@@ -1,15 +1,12 @@
 import * as THREE from "three";
-import { setupWorld as setupRapier } from "@drawcall/physics-rapier";
-import { setupWorld as setupMujoco } from "@drawcall/physics-mujoco";
+import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
+import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
 import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 import { backend } from "../backend";
 import { view } from "../view";
 import { cases } from "./cases";
 import { specimen, verify } from "./specimen";
 
-const world = await (backend === "mujoco"
-  ? setupMujoco({ wasmUrl })
-  : setupRapier());
 const root = new THREE.Group();
 function controls() {
   const select = document.querySelector<HTMLSelectElement>(
@@ -23,10 +20,20 @@ const { select, results } = controls();
 for (const [index, spec] of cases.entries())
   select.add(new Option(spec.name, String(index)));
 select.selectedIndex = cases.findIndex((spec) => spec.compound);
-let current: ReturnType<typeof specimen> | undefined;
+const initialCase = cases[select.selectedIndex];
+if (!initialCase) throw new Error("Missing initial scale case");
+let current: ReturnType<typeof specimen> | undefined = specimen(
+  initialCase,
+  true,
+);
+root.add(current.root);
+const world = await (backend === "mujoco"
+  ? buildMujoco({ wasmUrl })
+  : buildRapier());
+world.onAfterStep((delta) => current?.step(delta));
 let checking = false;
 let status = "";
-let added = 0;
+let added = 1;
 let removed = 0;
 function remove() {
   if (!current) return;
@@ -43,7 +50,7 @@ function show() {
     status = verify(world, spec);
     return;
   }
-  current = specimen(world, spec, true);
+  current = specimen(spec, true);
   root.add(current.root);
   added++;
   status =

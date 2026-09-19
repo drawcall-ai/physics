@@ -1,6 +1,6 @@
 import { ancestorBody } from "@drawcall/physics";
-import { setupWorld as setupRapier } from "@drawcall/physics-rapier";
-import { setupWorld as setupMujoco } from "@drawcall/physics-mujoco";
+import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
+import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
 import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 import { backend } from "../backend";
 import { forwardHtmlEvents } from "@pmndrs/pointer-events";
@@ -8,10 +8,10 @@ import { createRagdoll, simulationOptions } from "./model";
 import { grab } from "./grab";
 import { view } from "../view";
 
-const world = await (backend === "mujoco"
-  ? setupMujoco({ ...simulationOptions, wasmUrl })
-  : setupRapier(simulationOptions));
 const scene = createRagdoll();
+const world = await (backend === "mujoco"
+  ? buildMujoco({ ...simulationOptions, wasmUrl })
+  : buildRapier(simulationOptions));
 const demo = view(world, scene);
 const pointer = forwardHtmlEvents(demo.canvas, demo.camera, scene, {
   batchEvents: false,

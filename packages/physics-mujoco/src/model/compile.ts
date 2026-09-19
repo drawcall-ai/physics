@@ -18,6 +18,7 @@ export interface Compiled {
   model: MjModel;
   data: MjData;
   bodies: Map<RigidBody, number>;
+  targets: Map<RigidBody, number>;
   triggers: Map<Trigger, number>;
   geometries: Map<number, Geometry>;
   coordinates: Map<number, Coordinate & { actuator: number; dof: number }>;
@@ -63,7 +64,7 @@ export function compile(
       if (
         body.options.mass === undefined ||
         body.options.centerOfMass ||
-        body.bodyType !== "dynamic"
+        body.bodyType === "static"
       )
         continue;
       const inferred = at(model.body_mass, index);
@@ -108,6 +109,14 @@ export function compile(
       data,
       bodies: bodyIds,
       roots,
+      targets: new Map(
+        [...bodies]
+          .filter((body) => body.bodyType === "kinematic")
+          .map((body) => [
+            body,
+            id(api.mjtObj.mjOBJ_BODY.value, `${name(body)}target`),
+          ]),
+      ),
       triggers: new Map(
         [...triggers].map((trigger) => [
           trigger,

@@ -7,14 +7,14 @@ import {
   RevoluteJoint,
 } from "@drawcall/physics";
 import { BoxGeometry, Vector3 } from "three";
-import { setupWorld, type MujocoWorld } from "../src/index.js";
+import { buildWorld, type MujocoWorld } from "../src/index.js";
 
 const worlds: MujocoWorld[] = [];
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
 });
 async function createWorld() {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const world = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
   worlds.push(world);
   return world;
 }

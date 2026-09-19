@@ -127,8 +127,7 @@ it("rejects disposed, foreign and invalid operations while accepting staged comm
   body.setKinematicTarget(new Matrix4());
   body.sleep();
   body.wake();
-  const other = await setup();
-  expect(() => other.getVelocity(body)).toThrow("another world");
+  await expect(setup()).rejects.toThrow("already built");
   body.dispose();
   expect(() => body.getVelocity()).toThrow("disposed");
   expect(() => body.teleport(new Matrix4())).toThrow("disposed");

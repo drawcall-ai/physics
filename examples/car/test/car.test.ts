@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { Euler, Vector3 } from "three";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-rapier";
 import { createCar, simulationOptions } from "../model";
 import { driveCar } from "../drive";
 import { createRoad } from "../road";
@@ -9,9 +9,9 @@ import { createGoal } from "../goal";
 test.each([1 / 120, 1 / 240])(
   "powered car crosses the bump course and brakes with independent suspension at dt=%s",
   async (fixedDelta) => {
-    const world = await setupWorld({ ...simulationOptions, fixedDelta });
-    const car = createCar(world);
-    createRoad(world);
+    const car = createCar();
+    createRoad();
+    const world = await buildWorld({ ...simulationOptions, fixedDelta });
     const goal = createGoal(car.chassis);
     let entries = 0;
     let exits = 0;

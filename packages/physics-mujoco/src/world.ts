@@ -9,7 +9,7 @@ import {
   setAuthoredVelocity,
   authoredJointReading,
   setWorldPose,
-  clearDefaultWorld,
+  registry,
   cleanup,
   type PhysicsWorld,
   type PhysicsOptions,
@@ -35,10 +35,13 @@ import { applyDrives } from "./drives.js";
 import { sample, raycast } from "./queries.js";
 import { Interactions } from "@drawcall/physics";
 
+import { Meshes } from "./model/meshes.js";
+
 export interface MujocoOptions extends PhysicsOptions {
   solverIterations?: number;
   /** Browser bundlers can pass an emitted asset URL; Node resolves the packaged WASM automatically. */
   wasmUrl?: string;
+  coacdWasmUrl?: string;
 }
 export class MujocoWorld implements PhysicsWorld {
   readonly fixedDelta: number;
@@ -65,6 +68,7 @@ export class MujocoWorld implements PhysicsWorld {
   constructor(
     private readonly api: MainModule,
     options: MujocoOptions = {},
+    meshes = new Meshes(),
   ) {
     this.fixedDelta = options.fixedDelta ?? 1 / 60;
     this.maxSubsteps = options.maxSubsteps ?? 5;
@@ -79,6 +83,7 @@ export class MujocoWorld implements PhysicsWorld {
     if (!Number.isInteger(solverIterations) || solverIterations < 1)
       throw new Error("solverIterations must be a positive integer");
     this.scene = new Scene(api, {
+      meshes,
       fixedDelta: this.fixedDelta,
       gravity,
       solverIterations,
@@ -120,8 +125,12 @@ export class MujocoWorld implements PhysicsWorld {
         const compiled = this.prepare();
         for (const { body, run } of this.pending.splice(0))
           if (!body.disposed) run(compiled);
-        for (const [body, matrix] of this.targets)
-          writePose(compiled, bodyId(compiled, body), matrix);
+        for (const [body, matrix] of this.targets) {
+          const id = compiled.targets.get(body);
+          if (id === undefined)
+            throw new Error("Missing MuJoCo kinematic target");
+          writePose(compiled, id, matrix);
+        }
         this.targets.clear();
         refreshPoses(this.api, compiled);
         applyBodyForces(this.api, compiled, this.fixedDelta);
@@ -181,9 +190,12 @@ export class MujocoWorld implements PhysicsWorld {
     if (this.scene.compiled && id !== undefined) {
       if (body.bodyType === "dynamic") freeJoint(this.scene.compiled, id);
       writePose(this.scene.compiled, id, matrix);
+      const target = this.scene.compiled.targets.get(body);
+      if (target !== undefined) writePose(this.scene.compiled, target, matrix);
       this.api.mj_forward(this.scene.compiled.model, this.scene.compiled.data);
       synchronize(this.scene.compiled, setWorldPose);
     }
+    this.targets.delete(body);
     setWorldPose(body, matrix);
   }
   setKinematicTarget(body: RigidBody, matrix: Matrix4): void {
@@ -310,7 +322,7 @@ export class MujocoWorld implements PhysicsWorld {
           this.after.clear();
           this.pending.length = 0;
           this.targets.clear();
-          clearDefaultWorld(this);
+          registry.detach(this);
           if (!this.updating) this.free();
         },
       ],

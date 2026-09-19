@@ -4,7 +4,7 @@ import { RigidBody } from "./body.js";
 import { constructLike } from "./construct.js";
 import { cleanup } from "./cleanup.js";
 import { assertRigidTransform, splitTransform } from "./transforms.js";
-import type { PhysicsWorld } from "./world.js";
+import { registry } from "./registry.js";
 
 export type JointOptions = {
   readonly body0: RigidBody | null;
@@ -16,7 +16,6 @@ export type JointOptions = {
 export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
-  readonly world: PhysicsWorld;
   protected readonly config: Options;
   get options(): Options {
     return {
@@ -60,7 +59,6 @@ export abstract class Joint<
 
   constructor(options: Options) {
     super();
-    this.world = options.body1.world;
     this.config = {
       ...options,
       frame0: options.frame0?.clone(),
@@ -70,13 +68,11 @@ export abstract class Joint<
       assertRigidTransform(options.frame0);
       assertRigidTransform(options.frame1);
     }
-    if (options.body0 && options.body0.world !== this.world)
-      throw new Error("Joint bodies must belong to the same world");
     if (options.body0 === options.body1)
       throw new Error("Joint must connect distinct bodies");
     if (options.body0?.disposed || options.body1.disposed)
       throw new Error("Joint cannot connect disposed bodies");
-    this.world.register(this);
+    registry.register(this);
   }
 
   get disposed(): boolean {
@@ -93,7 +89,7 @@ export abstract class Joint<
     cleanup(
       [
         () => this.releaseDrives(),
-        () => this.world.unregister(this),
+        () => registry.unregister(this),
         () => this.removeFromParent(),
       ],
       "Joint disposal failed",
@@ -228,12 +224,8 @@ function mappedBody(
   objects: ReadonlyMap<Object3D, Object3D>,
 ): RigidBody {
   const target = objects.get(body) ?? body;
-  if (
-    !(target instanceof RigidBody) ||
-    target.disposed ||
-    target.world !== body.world
-  )
-    throw new Error("Joint copy requires live bodies in the same world");
+  if (!(target instanceof RigidBody) || target.disposed)
+    throw new Error("Joint copy requires live bodies");
   return target;
 }
 

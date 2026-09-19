@@ -1,12 +1,12 @@
 import { expect, it } from "vitest";
 import { RigidBody } from "@drawcall/physics";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-rapier";
 import { createRagdoll, simulationOptions } from "../model";
 
 it.each([15, 30, 60])(
   "falls forward without rebounding upright at %i FPS",
   async (fps) => {
-    const world = await setupWorld(simulationOptions);
+    const world = await buildWorld(simulationOptions);
     try {
       const scene = createRagdoll();
       const bodies = scene.children.filter(

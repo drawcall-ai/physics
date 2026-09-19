@@ -111,11 +111,6 @@ function collect(scene: Object3D): { bodies: RigidBody[]; joints: Joint[] } {
         "Collider must belong to a rigid body in the exported scene",
       );
   });
-  const world = bodies[0]?.world;
-  if (bodies.some((body) => body.world !== world))
-    throw new Error(
-      "Cannot export bodies from different physics worlds into one USD simulation",
-    );
   return { bodies, joints };
 }
 

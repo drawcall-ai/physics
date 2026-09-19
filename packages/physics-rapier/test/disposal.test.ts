@@ -5,7 +5,7 @@ import {
   FixedJoint,
   RigidBody,
   Trigger,
-  getDefaultWorld,
+  registry,
 } from "@drawcall/physics";
 import { createWorld } from "./fixtures.js";
 
@@ -27,7 +27,7 @@ it("cleans every world registration after a removed listener throws", async () =
     expect(object.disposed).toBe(true);
     expect(object.parent).toBeNull();
   }
-  expect(() => getDefaultWorld()).toThrow();
+  expect(() => registry.requireWorld()).toThrow();
   expect(() => world.dispose()).not.toThrow();
 });
 

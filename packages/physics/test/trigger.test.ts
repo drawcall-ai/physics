@@ -1,31 +1,22 @@
 import { afterEach, expect, expectTypeOf, it, vi } from "vitest";
 import { BoxGeometry, Group, Mesh, Vector3 } from "three";
 import {
-  AuthoringWorld,
+  registry,
   BoxCollider,
   MeshCollider,
   RigidBody,
   Trigger,
   clone,
   resolveCollisionGroups,
-  setDefaultWorld,
   type RaycastHit,
 } from "../src/index.js";
 
-const worlds: AuthoringWorld[] = [];
-function setup() {
-  const world = new AuthoringWorld();
-  worlds.push(world);
-  setDefaultWorld(world);
-  return world;
-}
 afterEach(() => {
-  for (const world of worlds) world.dispose();
-  worlds.length = 0;
+  registry.clear();
+  vi.restoreAllMocks();
 });
 
 it("owns only explicit shapes and stops body collider collection at its boundary", () => {
-  setup();
   const body = new RigidBody();
   const mesh = new Mesh(new BoxGeometry());
   const trigger = new Trigger();
@@ -40,7 +31,6 @@ it("owns only explicit shapes and stops body collider collection at its boundary
 });
 
 it("resolves complete collider overrides without inheriting a body's masks into its trigger", () => {
-  setup();
   const body = new RigidBody().setCollisionGroups({ membership: 1, filter: 2 });
   const trigger = new Trigger();
   const shape = new BoxCollider();
@@ -77,8 +67,7 @@ it("resolves complete collider overrides without inheriting a body's masks into 
   ).toThrow("16-bit");
 });
 
-it("rejects nested owners, foreign parenting, physical materials, and surface meshes", () => {
-  const world = setup();
+it("rejects nested owners, physical materials, and surface meshes", () => {
   const trigger = new Trigger();
   const nested = new Trigger();
   trigger.add(nested);
@@ -96,14 +85,9 @@ it("rejects nested owners, foreign parenting, physical materials, and surface me
     ),
   );
   expect(() => trigger.getColliders()).toThrow("Triangle meshes");
-  const other = setup();
-  new RigidBody({ world: other }).add(trigger);
-  expect(() => trigger.validate()).toThrow("another world");
-  expect(trigger.world).toBe(world);
 });
 
 it("clones trigger ownership and settings without copying listeners", () => {
-  const world = setup();
   const body = new RigidBody().setCollisionGroups({ membership: 1, filter: 2 });
   const trigger = new Trigger().setCollisionGroups({
     membership: 4,
@@ -113,44 +97,40 @@ it("clones trigger ownership and settings without copying listeners", () => {
   trigger.addEventListener("enter", listener);
   trigger.add(new BoxCollider());
   body.add(trigger);
-  const nextWorld = setup();
   const copiedBody = clone(body);
   const copiedTrigger = copiedBody.children[0];
   if (!(copiedTrigger instanceof Trigger))
     throw new Error("Expected a cloned Trigger");
-  expect(copiedTrigger.world).toBe(world);
+  expect(registry.objects.has(copiedTrigger)).toBe(true);
   expect(copiedTrigger.parent).toBe(copiedBody);
   expect(copiedBody.collisionGroups).toEqual(body.collisionGroups);
   expect(copiedTrigger.collisionGroups).toEqual(trigger.collisionGroups);
   expect(copiedTrigger.getColliders()[0]).not.toBe(trigger.getColliders()[0]);
   copiedTrigger.dispatchEvent({ type: "enter", body });
   expect(listener).not.toHaveBeenCalled();
-  expect(nextWorld.objects.size).toBe(0);
-  expect(world.objects.size).toBe(4);
+  expect(registry.objects.size).toBe(4);
 });
 
 it("keeps detachment distinct from disposal and cascades attached trigger disposal", () => {
-  const world = setup();
   const body = new RigidBody();
   const trigger = new Trigger();
   body.add(new Group().add(trigger));
   new Group().add(body).remove(body);
-  expect(world.objects.has(body)).toBe(true);
+  expect(registry.objects.has(body)).toBe(true);
   expect(trigger.disposed).toBe(false);
   body.dispose();
   expect(trigger.disposed).toBe(true);
-  expect(world.objects.size).toBe(0);
+  expect(registry.objects.size).toBe(0);
   expect(() => trigger.getOverlappingBodies()).toThrow("disposed");
 });
 
 it("detaches a Trigger and preserves both unregister and scene listener failures", () => {
-  const world = setup();
   const trigger = new Trigger();
   new Group().add(trigger);
   const unregisterError = new Error("exit callback failed");
   const removedError = new Error("removed callback failed");
-  const unregister = world.unregister.bind(world);
-  vi.spyOn(world, "unregister").mockImplementation((object) => {
+  const unregister = registry.unregister.bind(registry);
+  vi.spyOn(registry, "unregister").mockImplementation((object) => {
     unregister(object);
     throw unregisterError;
   });
@@ -166,12 +146,11 @@ it("detaches a Trigger and preserves both unregister and scene listener failures
   );
   expect(trigger.parent).toBeNull();
   expect(trigger.disposed).toBe(true);
-  expect(world.objects.size).toBe(0);
+  expect(registry.objects.size).toBe(0);
   expect(() => trigger.dispose()).not.toThrow();
 });
 
 it("finishes disposing every attached Trigger and its body after callback failures", () => {
-  const world = setup();
   const body = new RigidBody();
   const first = new Trigger();
   const second = new Trigger();
@@ -179,8 +158,8 @@ it("finishes disposing every attached Trigger and its body after callback failur
   new Group().add(body);
   const firstError = new Error("first exit callback failed");
   const bodyError = new Error("body exit callback failed");
-  const unregister = world.unregister.bind(world);
-  vi.spyOn(world, "unregister").mockImplementation((object) => {
+  const unregister = registry.unregister.bind(registry);
+  vi.spyOn(registry, "unregister").mockImplementation((object) => {
     unregister(object);
     if (object === first) throw firstError;
     if (object === body) throw bodyError;
@@ -193,25 +172,22 @@ it("finishes disposing every attached Trigger and its body after callback failur
     expect(object.parent).toBeNull();
     expect(object.disposed).toBe(true);
   }
-  expect(world.objects.size).toBe(0);
+  expect(registry.objects.size).toBe(0);
   expect(() => body.dispose()).not.toThrow();
 });
 
 it("fails visibly for authoring overlap reads and invalid arguments", () => {
-  const world = setup();
   const trigger = new Trigger();
   const body = new RigidBody();
-  expect(() => trigger.getOverlappingBodies()).toThrow("overlap queries");
-  expect(() => trigger.overlaps(body)).toThrow("overlap queries");
-  setup();
-  expect(() => trigger.overlaps(new RigidBody())).toThrow("another world");
+  expect(() => trigger.getOverlappingBodies()).toThrow("buildWorld");
+  expect(() => trigger.overlaps(body)).toThrow("buildWorld");
+  expect(() => trigger.overlaps(new RigidBody())).toThrow("buildWorld");
   body.dispose();
   expect(() => trigger.overlaps(body)).toThrow("disposed");
-  expect(world.objects.has(trigger)).toBe(true);
+  expect(registry.objects.has(trigger)).toBe(true);
 });
 
 it("types trigger and contact payloads while preserving Three.js scene events", () => {
-  setup();
   const trigger = new Trigger();
   const body = new RigidBody();
   trigger.addEventListener("enter", (event) => {

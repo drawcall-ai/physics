@@ -8,13 +8,15 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "coacd"
   ],
   "sideEffects": false,
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:coacd": "bash coacd/build.sh"
   },
   "dependencies": {
     "@mujoco/mujoco": "3.13.0"

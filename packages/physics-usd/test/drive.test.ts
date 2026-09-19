@@ -1,21 +1,17 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { Group } from "three";
 import {
-  AuthoringWorld,
+  registry,
   JointDrive,
   RevoluteJoint,
   RigidBody,
 } from "@drawcall/physics";
 import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
 
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-});
-afterEach(() => world.dispose());
+afterEach(() => registry.clear());
 
 it("rejects untargeted and effort-driven export instead of changing actuation", async () => {
-  const body = new RigidBody({ world, type: "static" });
+  const body = new RigidBody({ type: "static" });
   const joint = new RevoluteJoint({ body0: null, body1: body });
   const drive = new JointDrive({ stiffness: 10 });
   joint.setDrive(drive);

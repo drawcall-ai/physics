@@ -14,7 +14,7 @@ import {
 
 import type { Case } from "./cases";
 
-export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
+export function specimen(spec: Case, spin = false) {
   const root = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
@@ -31,7 +31,6 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
     colliders: AutoColliders = "auto",
   ) {
     const body = new RigidBody({
-      world,
       type,
       colliders,
       ...(type === "static" ? {} : { mass: 2 }),
@@ -147,17 +146,15 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
     : [{ falling: target, top: () => 0 }];
   let time = 0;
   let initial: THREE.Matrix4 | undefined;
-  const stop =
-    spec.type === "kinematic"
-      ? world.onAfterStep((delta) => {
-          initial ??= splitTransform(target.matrixWorld).pose;
-          time += delta;
-          const position = new THREE.Vector3().setFromMatrixPosition(initial);
-          position.y += 0.65 * Math.sin(time * 1.3);
-          target.setKinematicTarget(initial.clone().setPosition(position));
-        })
-      : undefined;
   return {
+    step(delta: number) {
+      if (spec.type !== "kinematic") return;
+      initial ??= splitTransform(target.matrixWorld).pose;
+      time += delta;
+      const position = new THREE.Vector3().setFromMatrixPosition(initial);
+      position.y += 0.65 * Math.sin(time * 1.3);
+      target.setKinematicTarget(initial.clone().setPosition(position));
+    },
     root,
     target,
     boundsError() {
@@ -210,7 +207,6 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
       }, 0);
     },
     dispose() {
-      stop?.();
       for (const body of bodies) body.dispose();
       root.removeFromParent();
       geometries.forEach((g) => g.dispose());
@@ -220,7 +216,8 @@ export function specimen(world: PhysicsWorld, spec: Case, spin = false) {
 }
 
 export function verify(world: PhysicsWorld, spec: Case) {
-  const item = specimen(world, spec);
+  const item = specimen(spec);
+  const stop = world.onAfterStep(item.step);
   try {
     try {
       world.update(world.fixedDelta);
@@ -243,6 +240,7 @@ export function verify(world: PhysicsWorld, spec: Case) {
       throw new Error(`Contact gap ${gap.toFixed(3)} m`);
     return `PASS: bounds match; contact gap ${gap.toFixed(3)} m`;
   } finally {
+    stop();
     item.dispose();
   }
 }

@@ -19,9 +19,8 @@ npm install @drawcall/physics @drawcall/physics-rapier three
 ```ts
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from "three";
 import { RigidBody, RevoluteJoint } from "@drawcall/physics";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-rapier";
 
-const world = await setupWorld({ gravity: [0, -9.81, 0] });
 const scene = new Group();
 const material = new MeshStandardMaterial();
 const frame = new RigidBody({ type: "static" });
@@ -39,6 +38,8 @@ const hinge = new RevoluteJoint({
 hinge.position.x = 0.06;
 scene.add(frame, door, hinge);
 
+const world = await buildWorld({ gravity: [0, -9.81, 0] });
+
 // Call from your render loop with elapsed time in seconds.
 world.update(1 / 60);
 
@@ -46,28 +47,26 @@ world.update(1 / 60);
 world.dispose();
 ```
 
-For MuJoCo, install `@drawcall/physics-mujoco` and import its `setupWorld` instead.
+For MuJoCo, install `@drawcall/physics-mujoco` and import its `buildWorld` instead.
 See the [MuJoCo adapter](packages/physics-mujoco/README.md) for browser WASM asset
 loading and engine-specific constraints. All examples offer a backend dropdown;
 changing it restarts the simulation.
 
-## World ownership
+## Building a world
 
-Install a world before constructing physics objects. `setupWorld()` from a backend
-package initializes the engine and installs its world. For authoring without
-simulation, the core works without loading an engine:
+Bodies, joints, and triggers register immediately in the core's single `registry`.
+No engine is required to construct, clone, import, or export a scene. Finish the
+initial scene, then call `await buildWorld(options)` from your chosen backend.
+The returned world is ready for queries and simulation; building does not advance time.
 
-```ts
-import { AuthoringWorld, setDefaultWorld } from "@drawcall/physics";
+Building before scene construction also works. Subsequent registrations and
+disposals are forwarded to the attached backend, which prepares changes before
+stepping. Initial building gives backends an opportunity to optimize the full
+scene: MuJoCo decomposes initial triangle meshes into convex parts, while later
+mesh additions use one convex hull. There is no background decomposition.
 
-setDefaultWorld(new AuthoringWorld());
-```
-
-Bodies capture the default world, or an explicit `{ world }` constructor option.
-Joints inherit their connected bodies' world; cross-world connections fail.
-Construction calls `world.register(object)`. A backend creates pending resources
-before stepping, after geometry and initial transforms have been configured. New
-bodies and joints can be constructed while the simulation is running.
+Only one world may be built or building at a time. Failed builds leave authored
+objects registered so they can be corrected and the build retried.
 
 Constructor options are copied and typed readonly: body type/mass, collider dimensions,
 joint bodies/frames/limits/dofs, and drive gains. `options` carries the resolved
@@ -78,10 +77,10 @@ and a drive's `setTarget`.
 Private state and readonly configuration use TypeScript; numeric physics and
 external-input constraints are checked at runtime.
 
-`body.dispose()` releases its resources and connected joints. Removing a body from
-its Three.js parent does not dispose it. `world.dispose()` releases all its objects
-and clears the default only if that world is still the default. A later
-`setupWorld()` affects new objects; existing bodies retain their original world.
+`body.dispose()` unregisters it and disposes connected joints and attached triggers.
+Removing a body from its Three.js parent does not dispose it. `world.dispose()`
+releases its objects, native resources, and registry attachment. `registry.clear()`
+disposes registered scene objects, including when no world has been built.
 
 ## Objects
 
@@ -193,7 +192,7 @@ side of a joint. The core also exports adapter helpers (authored velocity and jo
 readings, world-pose writeback, validation, and the shared world assertions) that
 scene code never needs.
 
-Install `@drawcall/physics-rapier` for `await setupWorld()` and
+Install `@drawcall/physics-rapier` for `await buildWorld()` and
 `@drawcall/physics-usd` for `PhysicsUSDExporter` / `PhysicsUSDLoader`. Each has one
 public entry point. The core exports `PhysicsWorld` so hosts can work with different backends.
 Scene code calls physics methods directly on bodies and joints.
@@ -213,9 +212,12 @@ for controls and source.
 
 ### State access and static previews
 
-`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint reads work during scene construction, including while a host stages objects outside world registration. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
+`body.getVelocity()`, `body.setVelocity({ linear, angular })`, `body.teleport(pose)`, and authored joint reads work during scene construction, before a world has been built. Velocity defaults to zero. Input and output vectors are independent copies. Read transforms through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning; observation after a step needs no refresh. After direct authoring or hierarchy changes, call `body.updateWorldMatrix(true, false)` if reading immediately. That matrix includes scale; `splitTransform(body.matrixWorld).pose` gives a rigid pose for teleportation.
 
-`AuthoringWorld` permits a static preview to run one scene callback without a simulation backend. Velocity is stored authored state; teleportation updates the object immediately. Valid forces, impulses, kinematic targets, and sleep/wake calls are explicitly inert; they do not move the object or alter velocity. Step observers can register/unsubscribe but never run. Invalid arguments and disposed/foreign objects still fail. Calling `update` or `reset` on an authoring world still throws because it cannot simulate.
+Before building, velocity setters store authored state and teleportation updates
+the object immediately. Forces, impulses, kinematic targets, sleep/wake, and
+queries require a built world and throw otherwise. There is no authoring-world
+stand-in and no `{ world }` option on scene objects.
 
 The Rapier adapter prepares completed assemblies at `update(0)` as well as timed updates and before-step boundaries. Reads and writes need no preparation call. Temporary backend bodies evaluate pending impulses and queries without capturing final parent scale, collider geometry, mass, or joint anchors. See the [Rapier lifecycle contract](packages/physics-rapier/README.md) for simulation operations and reset semantics.
 
@@ -292,7 +294,7 @@ Rapier position-drive targets use continuous radians and must remain less than Ï
 from the current position; longer trajectories need intermediate targets.
 Body linear velocity is measured at COM, with both velocity vectors world-aligned.
 Rapier reads rotating-slider velocity using native COM inference without stepping.
-AuthoringWorld requires explicit mass properties for this read and otherwise throws.
+Reading before building requires explicit mass properties for this read and otherwise throws.
 `world.time` counts completed substeps, advances before `onAfterStep`, and resets to
 zero. Catch-up time discarded by `maxSubsteps` is not simulated time.
 
@@ -313,7 +315,7 @@ Narrow on `hit.kind`: `"body"` hits contain `body`, and `"trigger"` hits contain
 `excludeBodies` excludes solid body hits, not attached Trigger hits. Query masks
 use the same mutual rule as simulation. Inside-origin rays return the exit surface.
 Queries include the current authored scene before the first update, without advancing time.
-AuthoringWorld has no raycasts. Release the packages together for this breaking API.
+Raycasts require a built world.
 
 ## Triggers and contact events
 
@@ -326,7 +328,7 @@ and rigid bodies beneath them. Supported convex shapes depend on the adapter.
 ```ts
 import { BoxCollider, Trigger } from "@drawcall/physics";
 
-const goal = new Trigger(); // captures the default world
+const goal = new Trigger(); // registers with the scene registry
 // Pass { world } when selecting a world explicitly.
 goal.position.set(0.5, 0.8, 0);
 goal.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
@@ -366,7 +368,7 @@ completed-step observations. Returned arrays are snapshots. Reads do not run
 fresh geometry tests or guarantee sampling at final integrated poses. Before the
 first step the set is empty; `update(0)` does not populate it. Events dispatch
 after transforms and overlap state synchronize, before `onAfterStep`. Late listeners
-receive no replay. AuthoringWorld accepts Triggers but throws on overlap reads.
+receive no replay. Triggers can be authored before building; overlap reads require a built world.
 
 For a robot evaluation, require the gripper to occupy the region and remain
 nearly stationary for half a simulated second, within ten simulated seconds:

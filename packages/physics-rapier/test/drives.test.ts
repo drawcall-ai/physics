@@ -91,6 +91,7 @@ it("limits native drive force and torque independently of timestep and model", a
         );
         world.update(dt);
         expect(joint.getState().velocity).toBeCloseTo(dt, 5);
+        world.dispose();
       }
 });
 
@@ -122,6 +123,7 @@ it("makes acceleration-based drives mass independent", async () => {
       expect(heavy.getState().velocity).toBeLessThan(
         light.getState().velocity / 5,
       );
+    world.dispose();
   }
 });
 

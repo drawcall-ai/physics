@@ -208,6 +208,7 @@ it("holds bodies with fixed, spherical, and distance constraints", async () => {
     scene.add(joint);
     steps(world);
     expect(body.position.y).toBeCloseTo(-2, 1);
+    world.dispose();
   }
 });
 

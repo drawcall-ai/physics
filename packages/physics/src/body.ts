@@ -22,8 +22,10 @@ import type {
   PhysicsMaterial,
   CollisionGroups,
 } from "./colliders.js";
-import { getDefaultWorld } from "./world.js";
-import type { PhysicsWorld, PhysicsVelocity } from "./world.js";
+import { registry } from "./registry.js";
+import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
+import { setWorldPose } from "./transforms.js";
+import type { PhysicsVelocity } from "./world.js";
 
 export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
@@ -41,7 +43,6 @@ export type MassProperties =
       readonly principalAxes?: readonly [number, number, number, number];
     };
 export type RigidBodyOptions = MassProperties & {
-  readonly world?: PhysicsWorld;
   readonly type?: RigidBodyType;
   readonly colliders?: AutoColliders;
   readonly canSleep?: boolean;
@@ -57,7 +58,6 @@ export interface RigidBodyEventMap extends Object3DEventMap {
 }
 export class RigidBody extends Group<RigidBodyEventMap> {
   private isDisposed = false;
-  readonly world: PhysicsWorld;
   readonly options: NormalizedOptions;
   readonly bodyType: RigidBodyType;
   private currentLinearDamping = 0;
@@ -73,7 +73,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
 
   constructor(options: RigidBodyOptions = {}) {
     super();
-    this.world = options.world ?? getDefaultWorld();
     this.bodyType = options.type ?? "dynamic";
     const defaults = {
       type: this.bodyType,
@@ -90,7 +89,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
         }
       : { ...options, ...defaults };
     validateMass(this.options);
-    this.world.register(this);
+    registry.register(this);
   }
   get settingsVersion(): number {
     return this.version;
@@ -163,7 +162,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     cleanup(
       [
         ...triggers.map((trigger) => () => trigger.dispose()),
-        () => this.world.unregister(this),
+        () => registry.unregister(this),
         () => this.removeFromParent(),
       ],
       "Rigid body disposal failed",
@@ -171,46 +170,49 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   getVelocity(): PhysicsVelocity {
-    return this.world.getVelocity(this);
+    this.assertLive();
+    return registry.world?.getVelocity(this) ?? authoredVelocity(this);
   }
   setVelocity(value: Partial<PhysicsVelocity>): this {
     if (value.linear) validateVector(value.linear);
     if (value.angular) validateVector(value.angular);
-    this.world.setVelocity(this, value);
+    this.assertLive();
+    if (registry.world) registry.world.setVelocity(this, value);
+    else setAuthoredVelocity(this, value);
     return this;
   }
   teleport(matrix: Matrix4): void {
     assertRigidTransform(matrix);
-    this.world.teleport(this, matrix);
+    this.validate();
+    if (registry.world) registry.world.teleport(this, matrix);
+    else setWorldPose(this, matrix);
   }
   setKinematicTarget(matrix: Matrix4): void {
     if (this.bodyType !== "kinematic")
       throw new Error("Kinematic targets require a kinematic body");
     assertRigidTransform(matrix);
-    this.world.setKinematicTarget(this, matrix);
+    registry.requireWorld(this).setKinematicTarget(this, matrix);
   }
   applyImpulse(impulse: Vector3, point?: Vector3): void {
     validateVector(impulse);
     if (point) validateVector(point);
-    this.world.applyImpulse(this, impulse, point);
+    registry.requireWorld(this).applyImpulse(this, impulse, point);
   }
   applyForce(force: Vector3, point?: Vector3): void {
     validateVector(force);
     if (point) validateVector(point);
-    this.world.applyForce(this, force, point);
+    registry.requireWorld(this).applyForce(this, force, point);
   }
   wake(): void {
-    this.world.wake(this);
+    registry.requireWorld(this).wake(this);
   }
   sleep(): void {
-    this.world.sleep(this);
+    registry.requireWorld(this).sleep(this);
   }
 
   override clone(recursive = true): this {
     if (this.disposed) throw new Error("Cannot clone a disposed rigid body");
-    const target = constructLike(this, [
-      { ...this.options, world: this.world },
-    ]);
+    const target = constructLike(this, [this.options]);
     try {
       return target.copy(this, recursive);
     } catch (error) {

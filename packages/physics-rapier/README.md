@@ -3,20 +3,20 @@
 Rapier implementation of `PhysicsWorld`.
 
 ```ts
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-rapier";
 import { RigidBody, BoxCollider } from "@drawcall/physics";
 import { BoxGeometry, Mesh, Vector3 } from "three";
 
-const world = await setupWorld({ gravity: [0, -9.81, 0] });
 const body = new RigidBody({ mass: 1 });
 body.add(new Mesh(new BoxGeometry(1, 1, 1)));
 scene.add(body);
+const world = await buildWorld({ gravity: [0, -9.81, 0] });
 world.update(deltaSeconds);
 ```
 
-`setupWorld()` initializes Rapier and installs the new default world. Objects capture their world when constructed. A later setup affects only new objects. Joints use their connected bodies' world.
+`buildWorld()` initializes Rapier, attaches to the single physics registry, and prepares all registered objects without advancing time. Create the initial scene first; building an empty world and adding objects later also works. Only one world can be attached at a time.
 
-`setupWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
+`buildWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
 
 Dynamic bodies need colliders or complete explicit mass properties; static and kinematic bodies may be colliderless. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
 

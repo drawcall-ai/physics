@@ -7,7 +7,7 @@ import {
   type PhysicsOptions,
   type PhysicsVelocity,
   type RaycastOptions,
-  clearDefaultWorld,
+  registry,
   authoredVelocity,
   authoredJointReading,
   setAuthoredVelocity,
@@ -130,9 +130,6 @@ export class RapierWorld implements PhysicsWorld {
     if (object instanceof RigidBody) {
       cleanup(
         [
-          ...[...this.joints.keys()]
-            .filter((joint) => joint.connects(object))
-            .map((joint) => () => joint.dispose()),
           ...[...this.triggers]
             .filter(([trigger]) => ancestorBody(trigger) === object)
             .map(([trigger, binding]) => () => {
@@ -247,7 +244,7 @@ export class RapierWorld implements PhysicsWorld {
         () => {
           this.before.clear();
           this.after.clear();
-          clearDefaultWorld(this);
+          registry.detach(this);
           if (!this.updating && !this.interactions.dispatching) this.free();
         },
       ],

@@ -10,8 +10,8 @@ import type { Compiled } from "./compile.js";
 import { array, at, name } from "../values.js";
 import { writeVelocity } from "../motion.js";
 
-/** Save native joint speeds by name while body COM velocities cover newly free roots. */
-export function captureVelocities(
+/** Preserve motion and commanded poses when topology changes rebuild the model. */
+export function captureState(
   api: MainModule,
   previous: Compiled | undefined,
   bodies: Iterable<RigidBody>,
@@ -20,6 +20,23 @@ export function captureVelocities(
   const velocities = new Map(
     [...bodies].map((body) => [body, body.getVelocity()]),
   );
+  const targets = new Map<
+    RigidBody,
+    { position: number[]; rotation: number[] }
+  >();
+  if (previous) {
+    for (const [body, id] of previous.targets) {
+      const mocap = at(previous.model.body_mocapid, id);
+      targets.set(body, {
+        position: Array.from(
+          array(previous.data.mocap_pos).slice(mocap * 3, mocap * 3 + 3),
+        ),
+        rotation: Array.from(
+          array(previous.data.mocap_quat).slice(mocap * 4, mocap * 4 + 4),
+        ),
+      });
+    }
+  }
   const speeds = new Map<string, number[]>();
   if (previous)
     for (let j = 0; j < previous.model.njnt; j++) {
@@ -41,9 +58,16 @@ export function captureVelocities(
       );
     }
   return (next) => {
+    for (const [body, id] of next.targets) {
+      const pose = targets.get(body);
+      if (!pose) continue;
+      const mocap = at(next.model.body_mocapid, id);
+      array(next.data.mocap_pos).set(pose.position, mocap * 3);
+      array(next.data.mocap_quat).set(pose.rotation, mocap * 4);
+    }
     for (const [body, id] of next.bodies) {
       const value = velocities.get(body);
-      if (body.bodyType === "dynamic" && next.roots.has(body) && value)
+      if (body.bodyType !== "static" && next.roots.has(body) && value)
         writeVelocity(next, id, value);
     }
     for (let j = 0; j < next.model.njnt; j++) {

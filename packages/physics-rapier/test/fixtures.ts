@@ -7,7 +7,7 @@ import {
   type RigidBodyType,
 } from "@drawcall/physics";
 import {
-  setupWorld,
+  buildWorld,
   type RapierOptions,
   type RapierWorld,
 } from "../src/index.js";
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 export async function createWorld(options: RapierOptions = {}) {
-  const world = await setupWorld({
+  const world = await buildWorld({
     gravity: [0, 0, 0],
     fixedDelta: 0.01,
     ...options,

@@ -1,11 +1,6 @@
-import { beforeEach, afterEach } from "vitest";
-import { AuthoringWorld, setDefaultWorld } from "../src/index.js";
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-  setDefaultWorld(world);
-});
-afterEach(() => world.dispose());
+import { afterEach } from "vitest";
+import { registry } from "../src/index.js";
+afterEach(() => registry.clear());
 import { describe, expect, it } from "vitest";
 import {
   BoxGeometry,

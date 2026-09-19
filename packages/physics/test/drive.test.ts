@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, expect, expectTypeOf, it } from "vitest";
+import { afterEach, expect, expectTypeOf, it } from "vitest";
 import {
-  AuthoringWorld,
+  registry,
   DistanceJoint,
   GenericJoint,
   JointDrive,
@@ -8,15 +8,9 @@ import {
   type JointDriveTarget,
   RevoluteJoint,
   RigidBody,
-  setDefaultWorld,
 } from "../src/index.js";
 
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-  setDefaultWorld(world);
-});
-afterEach(() => world.dispose());
+afterEach(() => registry.clear());
 function hinge() {
   return new RevoluteJoint({ body0: null, body1: new RigidBody() });
 }

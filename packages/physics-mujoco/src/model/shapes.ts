@@ -6,6 +6,7 @@ import {
   type CollisionGroups,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
+import type { Meshes } from "./meshes.js";
 import { heightfield } from "./heightfield.js";
 import { placement, name } from "../values.js";
 
@@ -22,7 +23,7 @@ interface Shapes {
   assets: string[];
   geometries: Geometry[];
 }
-export function shapes(owner: RigidBody | Trigger): Shapes {
+export function shapes(owner: RigidBody | Trigger, meshes?: Meshes): Shapes {
   const assets: string[] = [],
     geometries: Geometry[] = [],
     xml: string[] = [];
@@ -80,19 +81,29 @@ export function shapes(owner: RigidBody | Trigger): Shapes {
           matrix,
         );
       } else {
-        const positions = shape.geometry.getAttribute("position");
-        const field =
-          shape.approximation === "trimesh"
-            ? heightfield(shape.geometry, prefix)
-            : undefined;
-        if (field) {
+        const prepared = meshes?.get(owner, collider)?.shape;
+        if (prepared?.kind === "heightfield") {
+          const field = heightfield(shape.geometry, prefix);
+          if (!field)
+            throw new Error(
+              "Prepared heightfield is not supported at this scale",
+            );
           assets.push(field.asset);
           add(
             "",
             `type="hfield" hfield="${prefix}"`,
             part.matrix.clone().multiply(field.matrix),
           );
-        } else if (shape.approximation === "convexHull") {
+          continue;
+        }
+        const hulls: number[][] = [];
+        if (prepared?.kind === "compound") {
+          for (const hull of prepared.hulls)
+            hulls.push(
+              hull.map((value, i) => value * part.scale.getComponent(i % 3)),
+            );
+        } else {
+          const positions = shape.geometry.getAttribute("position");
           const vertices: number[] = [];
           for (let i = 0; i < positions.count; i++)
             vertices.push(
@@ -100,33 +111,12 @@ export function shapes(owner: RigidBody | Trigger): Shapes {
               positions.getY(i),
               positions.getZ(i),
             );
-          assets.push(
-            `<mesh name="${prefix}" vertex="${vertices.join(" ")}"/>`,
-          );
-          add("", `type="mesh" mesh="${prefix}"`);
-        } else {
-          // MuJoCo collides mesh convex hulls. Individual thin triangular prisms preserve concavities.
-          const indices = shape.geometry.index;
-          for (let i = 0; i < (indices?.count ?? positions.count); i += 3) {
-            const points = [0, 1, 2].map((j) =>
-              new Vector3().fromBufferAttribute(
-                positions,
-                indices ? indices.getX(i + j) : i + j,
-              ),
-            );
-            const [a, b, c] = points;
-            if (!a || !b || !c) throw new Error("Incomplete mesh triangle");
-            const normal = b.clone().sub(a).cross(c.clone().sub(a));
-            if (normal.lengthSq() === 0) continue;
-            normal.normalize().multiplyScalar(0.001);
-            const vertices = [
-              ...points,
-              ...points.map((p) => p.clone().sub(normal)),
-            ].flatMap((p) => p.toArray());
-            const key = `${prefix}t${i}`;
-            assets.push(`<mesh name="${key}" vertex="${vertices.join(" ")}"/>`);
-            add(`t${i}`, `type="mesh" mesh="${key}"`);
-          }
+          hulls.push(vertices);
+        }
+        for (const [index, hull] of hulls.entries()) {
+          const key = `${prefix}h${index}`;
+          assets.push(`<mesh name="${key}" vertex="${hull.join(" ")}"/>`);
+          add(`h${index}`, `type="mesh" mesh="${key}"`);
         }
       }
     } finally {

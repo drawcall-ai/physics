@@ -46,22 +46,19 @@ it("updates collider geometry without resetting the body", async () => {
   expect(Math.abs(body.position.y)).toBeGreaterThan(0.8);
 });
 
-it("captures worlds at construction and disposes pending joints with their body", async () => {
+it("allows one attached world and disposes pending joints with their body", async () => {
   const first = await createWorld(earth);
-  const a = box();
-  const second = await createWorld(earth);
-  const b = box();
-  expect(a.world).toBe(first);
-  expect(b.world).toBe(second);
-  expect(() => new FixedJoint({ body0: a, body1: b })).toThrow("world");
-  const joint = new FixedJoint({ body0: null, body1: a });
-  a.dispose();
+  const body = box();
+  await expect(createWorld(earth)).rejects.toThrow("already built");
+  const joint = new FixedJoint({ body0: null, body1: body });
+  body.dispose();
   first.update(first.fixedDelta);
   expect(joint.disposed).toBe(true);
   first.dispose();
-  expect(box().world).toBe(second);
-  second.dispose();
-  expect(() => box()).toThrow("setupWorld");
+  const next = box();
+  const second = await createWorld(earth);
+  second.update(second.fixedDelta);
+  expect(next.position.y).toBeLessThan(0);
 });
 
 it("materializes bodies created by before-step callbacks", async () => {

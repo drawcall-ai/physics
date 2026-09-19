@@ -7,7 +7,6 @@ import {
   RevoluteJoint,
   FixedJoint,
   JointDrive,
-  type PhysicsWorld,
   type Vec3,
 } from "@drawcall/physics";
 
@@ -58,7 +57,7 @@ export function box(size: Vec3, material: THREE.Material) {
   return new THREE.Mesh(new THREE.BoxGeometry(...size), material);
 }
 
-export function createCar(world: PhysicsWorld) {
+export function createCar() {
   const root = new THREE.Group();
   root.name = "SuspensionCar";
   function body(
@@ -68,7 +67,7 @@ export function createCar(world: PhysicsWorld) {
     size: Vec3,
     collides = false,
   ) {
-    const result = new RigidBody({ world, mass, canSleep: false });
+    const result = new RigidBody({ mass, canSleep: false });
     result.name = name;
     result.position.set(...position);
     const collider = new BoxCollider({ size });
@@ -141,7 +140,6 @@ export function createCar(world: PhysicsWorld) {
       }
       steering.name = `${name}${front ? "Steering" : "KnuckleMount"}`;
       const tire = new RigidBody({
-        world,
         mass: 22,
         canSleep: false,
       });

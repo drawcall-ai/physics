@@ -5,25 +5,20 @@ import { constructLike } from "./construct.js";
 import { cleanup } from "./cleanup.js";
 import { validateShape } from "./shapes.js";
 import { splitTransform } from "./transforms.js";
-import { assertOwned, getDefaultWorld, type PhysicsWorld } from "./world.js";
+import { registry } from "./registry.js";
 
-export interface TriggerOptions {
-  readonly world?: PhysicsWorld;
-}
 export interface TriggerEventMap extends Object3DEventMap {
   enter: { readonly body: RigidBody };
   exit: { readonly body: RigidBody };
 }
 export class Trigger extends Group<TriggerEventMap> {
-  readonly world: PhysicsWorld;
   private isDisposed = false;
   private currentGroups?: CollisionGroups;
   private version = 0;
 
-  constructor(options: TriggerOptions = {}) {
+  constructor() {
     super();
-    this.world = options.world ?? getDefaultWorld();
-    this.world.register(this);
+    registry.register(this);
   }
   get disposed(): boolean {
     return this.isDisposed;
@@ -35,30 +30,29 @@ export class Trigger extends Group<TriggerEventMap> {
     return this.currentGroups;
   }
   setCollisionGroups(value: CollisionGroups | undefined): this {
-    assertOwned(this.world, this);
+    registry.assertRegistered(this);
     if (value) validateGroups(value);
     this.currentGroups = value && { ...value };
     this.version++;
     return this;
   }
   overlaps(body: RigidBody): boolean {
-    assertOwned(this.world, body);
+    registry.assertRegistered(body);
     return this.getOverlappingBodies().includes(body);
   }
   getOverlappingBodies(): RigidBody[] {
-    assertOwned(this.world, this);
-    return this.world.getOverlappingBodies(this);
+    return registry.requireWorld(this).getOverlappingBodies(this);
   }
   dispose(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;
     cleanup(
-      [() => this.world.unregister(this), () => this.removeFromParent()],
+      [() => registry.unregister(this), () => this.removeFromParent()],
       "Trigger disposal failed",
     );
   }
   validate(): void {
-    assertOwned(this.world, this);
+    registry.assertRegistered(this);
     this.updateWorldMatrix(true, true);
     splitTransform(this.matrix, this.name || this.type);
     splitTransform(this.matrixWorld, this.name || this.type);
@@ -68,7 +62,7 @@ export class Trigger extends Group<TriggerEventMap> {
       if (node !== this && node instanceof Trigger)
         throw new Error("Nested triggers are not supported");
       if (node instanceof RigidBody) {
-        assertOwned(this.world, node);
+        registry.assertRegistered(node);
         node.validate();
       }
     }
@@ -97,8 +91,8 @@ export class Trigger extends Group<TriggerEventMap> {
     return colliders;
   }
   override clone(recursive = true): this {
-    assertOwned(this.world, this);
-    const target = constructLike(this, [{ world: this.world }]);
+    registry.assertRegistered(this);
+    const target = constructLike(this, []);
     try {
       return target.copy(this, recursive);
     } catch (error) {
@@ -107,8 +101,8 @@ export class Trigger extends Group<TriggerEventMap> {
     }
   }
   override copy(source: this, recursive = true): this {
-    assertOwned(this.world, this);
-    assertOwned(source.world, source);
+    registry.assertRegistered(this);
+    registry.assertRegistered(source);
     super.copy(source, recursive);
     return this.setCollisionGroups(source.collisionGroups);
   }

@@ -1,3 +1,4 @@
+import { registry } from "./registry.js";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "./body.js";
 import { AxisJoint, DistanceJoint, PrismaticJoint } from "./joints.js";
@@ -101,4 +102,9 @@ export function jointReading(
 /** Wraps an angle into [-π, π]. */
 export function wrapAngle(angle: number): number {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+export function readJoint(object: Joint): JointReading {
+  registry.assertRegistered(object);
+  return registry.world?.readJoint(object) ?? authoredJointReading(object);
 }

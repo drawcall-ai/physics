@@ -7,7 +7,6 @@ import {
   ancestorBody,
   type PhysicsMaterial,
 } from "@drawcall/physics";
-import type { PhysicsWorld } from "@drawcall/physics";
 import { PhysicsUSDScene } from "../scene.js";
 import { radians } from "../units.js";
 import { attribute, boolean, numeric, prims, schemas } from "./layer.js";
@@ -26,7 +25,6 @@ import { readShape } from "./shapes.js";
 
 export interface PhysicsUSDImportOptions {
   manager?: LoadingManager;
-  world?: PhysicsWorld;
 }
 
 export class PhysicsUSDLoader {
@@ -68,7 +66,7 @@ export class PhysicsUSDLoader {
     validate(layer);
     const composer = new USDComposer(this.options.manager);
     const visual = composer.compose(layer, assets, {}, path);
-    const scene = new PhysicsUSDScene(this.options.world);
+    const scene = new PhysicsUSDScene();
     try {
       scene.add(...visual.children);
       new LayerImport(layer, scene).run();
@@ -131,7 +129,6 @@ class LayerImport {
     if (!rigid && ancestorBody(object)) return;
     const body = wrapBody(
       object,
-      this.scene.world,
       bodyType(this.layer, path, rigid),
       massProperties(this.layer, path, object),
     );
@@ -196,7 +193,7 @@ class LayerImport {
     if (!object) throw new Error(`Missing collision geometry ${path}`);
     let body = this.bodies.get(path) ?? ancestorBody(object);
     if (!body) {
-      body = wrapBody(object, this.scene.world, "static");
+      body = wrapBody(object, "static");
       this.scene.own(body);
       this.bodies.set(path, body);
     }

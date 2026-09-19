@@ -1,15 +1,15 @@
 import { expect, test } from "vitest";
-import { setupWorld } from "@drawcall/physics-mujoco";
+import { buildWorld } from "@drawcall/physics-mujoco";
 import { createCar, simulationOptions } from "../model";
 import { createRoad } from "../road";
 import { createGoal } from "../goal";
 import { driveCar } from "../drive";
 
 test("MuJoCo drives, steers, resets, and brakes the suspension car", async () => {
-  const world = await setupWorld(simulationOptions);
+  const car = createCar();
+  createRoad();
+  const world = await buildWorld(simulationOptions);
   try {
-    const car = createCar(world);
-    createRoad(world);
     const goal = createGoal(car.chassis);
     const driver = driveCar(world, car);
     for (let i = 0; i < 2400; i++) world.update(world.fixedDelta);

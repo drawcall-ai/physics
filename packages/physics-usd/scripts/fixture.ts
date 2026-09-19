@@ -1,15 +1,12 @@
 import { writeFileSync } from "node:fs";
 import { Scene, Group, Mesh, MeshStandardMaterial, BoxGeometry } from "three";
 import {
-  AuthoringWorld,
-  setDefaultWorld,
+  registry,
   RigidBody,
   RevoluteJoint,
   JointMotor,
 } from "@drawcall/physics";
 import { PhysicsUSDExporter } from "../dist/index.js";
-const world = new AuthoringWorld();
-setDefaultWorld(world);
 const scene = new Scene();
 const assembly = new Group();
 assembly.position.set(2, 3, 4);
@@ -42,4 +39,4 @@ writeFileSync(
   await new PhysicsUSDExporter().parseAsync(scene),
 );
 
-world.dispose();
+registry.clear();

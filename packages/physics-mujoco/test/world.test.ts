@@ -14,7 +14,7 @@ import {
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
 import {
-  setupWorld,
+  buildWorld,
   type MujocoWorld,
   type MujocoOptions,
 } from "../src/index.js";
@@ -23,7 +23,7 @@ afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
 });
 async function world(options: MujocoOptions = {}) {
-  const value = await setupWorld({
+  const value = await buildWorld({
     gravity: [0, 0, 0],
     fixedDelta: 0.01,
     ...options,
@@ -221,11 +221,10 @@ test("generic joint exposes a driven linear degree of freedom", async () => {
 });
 
 test("validates options, ownership, scales, and unsupported closed joint chains", async () => {
-  await expect(setupWorld({ fixedDelta: 0 })).rejects.toThrow("fixedDelta");
+  await expect(buildWorld({ fixedDelta: 0 })).rejects.toThrow("fixedDelta");
   const a = await world();
   const box = body();
-  const b = await world();
-  expect(() => b.getVelocity(box)).toThrow("another world");
+  await expect(world()).rejects.toThrow("already built");
   a.update(0);
   box.scale.x = 2;
   expect(() => a.update(0)).toThrow("scale cannot change");

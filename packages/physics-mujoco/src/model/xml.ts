@@ -16,7 +16,10 @@ import {
 } from "./joints.js";
 import { name, placement } from "../values.js";
 
+import type { Meshes } from "./meshes.js";
+
 export interface ModelOptions {
+  meshes?: Meshes;
   fixedDelta: number;
   gravity: readonly number[];
   solverIterations: number;
@@ -34,7 +37,7 @@ export function modelXml(
     coordinates: Coordinate[] = [];
   const { sites, tendons, equalities } = distanceXml(joints);
   function contents(owner: RigidBody | Trigger): string {
-    const result = shapes(owner);
+    const result = shapes(owner, options.meshes);
     assets.push(...result.assets);
     geometries.push(...result.geometries);
     return result.xml;
@@ -47,20 +50,23 @@ export function modelXml(
       ? record.frames[0].clone().multiply(record.frames[1].clone().invert())
       : splitTransform(body.matrixWorld).pose;
     let connection =
-      body.bodyType === "dynamic" && !joint
+      body.bodyType !== "static" && !joint
         ? `<freejoint name="${name(body)}free"/>`
         : "";
     if (joint && record)
       connection = jointXml(joint, record, read(joint), coordinates);
     const mass = body.options;
+    const geometry = contents(body);
     const inertial = mass.centerOfMass
       ? `<inertial pos="${mass.centerOfMass.join(" ")}" mass="${mass.mass}" diaginertia="${mass.diagonalInertia.join(" ")}" quat="${[mass.principalAxes?.[3] ?? 1, mass.principalAxes?.[0] ?? 0, mass.principalAxes?.[1] ?? 0, mass.principalAxes?.[2] ?? 0].join(" ")}"/>`
-      : "";
+      : body.bodyType === "kinematic" && !geometry
+        ? `<inertial pos="0 0 0" mass="${mass.mass ?? 1}" diaginertia="1 1 1"/>`
+        : "";
     const children = [...parents]
       .filter(([, edge]) => edge.joint.options.body0 === body)
       .map(([child]) => bodyXml(child))
       .join("");
-    return `<body name="${name(body)}" ${placement(pose)} ${body.bodyType === "kinematic" ? 'mocap="true"' : ""} gravcomp="${1 - body.gravityScale}">${connection}${inertial}${contents(body)}${(sites.get(body) ?? []).join("")}${children}</body>`;
+    return `<body name="${name(body)}" ${placement(pose)} gravcomp="${body.bodyType === "kinematic" ? 1 : 1 - body.gravityScale}">${connection}${inertial}${geometry}${(sites.get(body) ?? []).join("")}${children}</body>`;
   }
   const roots = new Set([...bodies].filter((body) => !parents.has(body)));
   const xmlBodies =
@@ -69,6 +75,17 @@ export function modelXml(
       .filter(([, parent]) => !parent.joint.options.body0)
       .map(([body]) => bodyXml(body))
       .join("");
+  const xmlTargets = [...bodies]
+    .filter((body) => body.bodyType === "kinematic")
+    .map((body) => {
+      // A stiff native weld supplies contact velocity without teleporting collision geometry.
+      // MuJoCo clamps positive solref time constants to at least two timesteps.
+      equalities.push(
+        `<weld body1="${name(body)}" body2="${name(body)}target" relpose="0 0 0 1 0 0 0" solref="${2 * options.fixedDelta} 1" solimp="0.999 0.999 0.001"/>`,
+      );
+      return `<body name="${name(body)}target" mocap="true" ${placement(splitTransform(body.matrixWorld).pose)}/>`;
+    })
+    .join("");
   const xmlTriggers = [...triggers]
     .map(
       (trigger) =>
@@ -83,7 +100,7 @@ export function modelXml(
     })
     .join("");
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${pairs.join("")}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${pairs.join("")}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates, roots };
 }
 

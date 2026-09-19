@@ -48,9 +48,6 @@ export {
   type RaycastOptions,
   type RaycastHit,
   type PhysicsWorld,
-  setDefaultWorld,
-  getDefaultWorld,
-  AuthoringWorld,
 } from "./world.js";
 export { clone } from "./clone.js";
 export { splitTransform, resolveCollider } from "./transforms.js";
@@ -63,8 +60,6 @@ export {
 // Adapter integration; scene code needs none of these.
 export * from "./backend.js";
 
-export {
-  Trigger,
-  type TriggerOptions,
-  type TriggerEventMap,
-} from "./trigger.js";
+export { Trigger, type TriggerEventMap } from "./trigger.js";
+
+export { registry } from "./registry.js";

@@ -16,7 +16,7 @@ import {
 import { Matrix4, Vector3 } from "three";
 import { compile, type Compiled, type ModelOptions } from "./model/compile.js";
 import type { JointRecord } from "./model/joints.js";
-import { captureVelocities } from "./model/velocities.js";
+import { captureState } from "./model/state.js";
 import { Changes } from "./changes.js";
 
 interface BodyRecord {
@@ -63,12 +63,6 @@ export class Scene {
     }
     this.objects.delete(object);
     this.bodies.delete(object);
-    cleanup(
-      [...this.jointObjects]
-        .filter((joint) => joint.connects(object))
-        .map((joint) => () => joint.dispose()),
-      "Joint disposal failed",
-    );
   }
   trackAngles(): void {
     for (const [joint, record] of this.records) {
@@ -138,7 +132,7 @@ export class Scene {
     const key = change.key;
     if (this.compiled && key === this.key) return this.compiled;
     const previous = this.compiled;
-    const restoreVelocities = captureVelocities(
+    const restoreState = captureState(
       this.api,
       previous,
       this.objects,
@@ -153,7 +147,7 @@ export class Scene {
       (joint) => read(joint),
     );
     try {
-      restoreVelocities(next);
+      restoreState(next);
       next.data.time = time;
       this.api.mj_forward(next.model, next.data);
     } catch (error) {

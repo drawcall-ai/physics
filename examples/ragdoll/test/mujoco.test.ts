@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
 import { RigidBody } from "@drawcall/physics";
 import { Vector3 } from "three";
-import { setupWorld } from "@drawcall/physics-mujoco";
+import { buildWorld } from "@drawcall/physics-mujoco";
 import { createRagdoll, simulationOptions } from "../model";
 import { grab } from "../grab";
 
 test("MuJoCo ragdoll falls, can be grabbed and released, and resets", async () => {
-  const world = await setupWorld(simulationOptions);
+  const world = await buildWorld(simulationOptions);
   try {
     const scene = createRagdoll();
     const pelvis = scene.getObjectByName("Pelvis");

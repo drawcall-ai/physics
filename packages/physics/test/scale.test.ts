@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { BoxGeometry, Group, Matrix4, Mesh, Vector3 } from "three";
 import {
-  AuthoringWorld,
+  registry,
   RigidBody,
   BoxCollider,
   SphereCollider,
@@ -10,14 +10,8 @@ import {
   MeshCollider,
   FixedJoint,
   resolveCollider,
-  setDefaultWorld,
 } from "../src/index.js";
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-  setDefaultWorld(world);
-});
-afterEach(() => world.dispose());
+afterEach(() => registry.clear());
 
 it("combines ancestor, body and collider scale including offsets without mutating sources", () => {
   const root = new Group();

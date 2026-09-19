@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   Matrix4,
   Object3D,
@@ -13,9 +13,7 @@ import {
 import {
   clone,
   resolveCollider,
-  AuthoringWorld,
-  setDefaultWorld,
-  getDefaultWorld,
+  registry,
   BoxCollider,
   CapsuleCollider,
   CylinderCollider,
@@ -39,12 +37,7 @@ import {
   PhysicsUSDScene,
 } from "../src/index.js";
 
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-  setDefaultWorld(world);
-});
-afterEach(() => world.dispose());
+afterEach(() => registry.clear());
 
 function doorAssembly(model: "force" | "acceleration" = "force") {
   const scene = new Scene();
@@ -134,7 +127,7 @@ describe("USD Physics interchange", () => {
     );
   });
 
-  it("owns imported registrations without replacing the application world", async () => {
+  it("owns imported registrations before any world is built", async () => {
     const { scene } = doorAssembly();
     const imported = new PhysicsUSDLoader().parse(
       await new PhysicsUSDExporter().parseAsync(scene),
@@ -143,37 +136,35 @@ describe("USD Physics interchange", () => {
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody);
     expect(bodies.length).toBe(2);
-    for (const body of bodies) expect(body.world).toBe(imported.world);
-    expect(imported.world).not.toBe(world);
-    expect(getDefaultWorld()).toBe(world);
+    for (const body of bodies) expect(registry.objects.has(body)).toBe(true);
+    expect(registry.world).toBeUndefined();
     imported.dispose();
-    expect(getDefaultWorld()).toBe(world);
-    expect(() => new RigidBody({ world: imported.world })).toThrow();
+    expect(registry.world).toBeUndefined();
+    for (const body of bodies) expect(body.disposed).toBe(true);
   });
 
-  it("registers in a supplied world and disposes only imported objects", async () => {
+  it("registers imported objects and disposes only those objects", async () => {
     const { scene, door } = doorAssembly();
-    const imported = new PhysicsUSDLoader({ world }).parse(
+    const imported = new PhysicsUSDLoader({}).parse(
       await new PhysicsUSDExporter().parseAsync(scene),
     );
     const importedBodies = imported
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody);
     for (const body of importedBodies) {
-      expect(body.world).toBe(world);
-      expect(world.objects.has(body)).toBe(true);
+      expect(registry.objects.has(body)).toBe(true);
     }
     imported.dispose();
     for (const body of importedBodies) expect(body.disposed).toBe(true);
-    expect(world.objects.has(door)).toBe(true);
+    expect(registry.objects.has(door)).toBe(true);
     expect(door.disposed).toBe(false);
-    expect(getDefaultWorld()).toBe(world);
+    expect(registry.world).toBeUndefined();
   });
 
-  it("cleans up failed imports without disposing a supplied world", () => {
+  it("cleans up failed imports without disposing existing registrations", () => {
     const existing = new RigidBody({ type: "static" });
     expect(() =>
-      new PhysicsUSDLoader({ world }).parse(`#usda 1.0
+      new PhysicsUSDLoader({}).parse(`#usda 1.0
 (
  metersPerUnit = 1
 )
@@ -189,12 +180,12 @@ def PhysicsRevoluteJoint "Hinge"
  uniform token physics:axis = "INVALID"
 }`),
     ).toThrow("Invalid joint axis");
-    expect([...world.objects]).toEqual([existing]);
-    expect(getDefaultWorld()).toBe(world);
+    expect([...registry.objects]).toEqual([existing]);
+    expect(registry.world).toBeUndefined();
   });
 
-  it("imports without an installed default world", () => {
-    world.dispose();
+  it("imports without a built world", () => {
+    registry.clear();
     const imported = new PhysicsUSDLoader().parse(`#usda 1.0
 (
  metersPerUnit = 1
@@ -210,7 +201,7 @@ def Cube "Crate" (
         .getObjectsByProperty("isObject3D", true)
         .filter((object) => object instanceof RigidBody),
     ).toHaveLength(1);
-    expect(() => getDefaultWorld()).toThrow();
+    expect(registry.world).toBeUndefined();
     imported.dispose();
   });
 
@@ -592,23 +583,6 @@ def Cube "Crate" (
   });
 });
 
-it("rejects merging independent physics worlds into one USD simulation", async () => {
-  const other = new AuthoringWorld();
-  try {
-    const scene = new Group();
-    for (const target of [world, other]) {
-      const body = new RigidBody({ world: target });
-      body.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial()));
-      scene.add(body);
-    }
-    await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
-      "different physics worlds",
-    );
-  } finally {
-    other.dispose();
-  }
-});
-
 it("rejects orphan colliders and joints referencing bodies outside the export", async () => {
   const exporter = new PhysicsUSDExporter();
   const scene = new Group();
@@ -640,7 +614,6 @@ it("clones imported assemblies with remapped joints and independent disposal", a
   expect(nativeJoint.options.body1).toBe(imported.getObjectByName("Door"));
   native.dispose();
   const cloned = clone(imported);
-  expect(cloned.world).toBe(imported.world);
   expect(cloned.gravity).toEqual(imported.gravity);
   const originalDoor = imported.getObjectByName("Door");
   const copiedDoor = cloned.getObjectByName("Door");
@@ -659,9 +632,7 @@ it("clones imported assemblies with remapped joints and independent disposal", a
     throw new Error("Missing cloned door bodies");
   expect(copiedDoor.disposed).toBe(true);
   expect(originalDoor.disposed).toBe(false);
-  expect(
-    () => new RigidBody({ world: imported.world, type: "static" }),
-  ).not.toThrow();
+  expect(() => new RigidBody({ type: "static" })).not.toThrow();
   imported.dispose();
 });
 

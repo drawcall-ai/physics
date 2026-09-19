@@ -4,7 +4,8 @@ export {
   validateGroups,
   resolveCollisionGroups,
 } from "./colliders.js";
-export { clearDefaultWorld, assertLive, assertOwned } from "./world.js";
+export { assertLive } from "./world.js";
+export { assertOwned, buildRegistered } from "./registry.js";
 export {
   validateVector,
   assertRigidTransform,

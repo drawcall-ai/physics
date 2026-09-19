@@ -7,13 +7,13 @@ import {
   jointDofs,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
-import { setupWorld, type MujocoWorld } from "../src/index.js";
+import { buildWorld, type MujocoWorld } from "../src/index.js";
 const worlds: MujocoWorld[] = [];
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
 });
 async function world() {
-  const value = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const value = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
   worlds.push(value);
   return value;
 }
@@ -158,4 +158,49 @@ test("free acceleration drive between static endpoints has no response", async (
   );
   expect(() => value.update(value.fixedDelta)).not.toThrow();
   expect(body.position.x).toBe(0);
+});
+
+test("kinematic target and motion survive rebuilding, teleport, and reset", async () => {
+  const value = await world();
+  const body = new RigidBody({ type: "kinematic", mass: 2 });
+  body.add(new BoxCollider());
+  value.update(0);
+  const target = new Matrix4().makeRotationZ(0.3).setPosition(0, 1, 0);
+  body.setKinematicTarget(target);
+  value.update(value.fixedDelta);
+  const position = body.position.clone();
+  const velocity = body.getVelocity();
+  expect(velocity.linear.y).toBeGreaterThan(0);
+  expect(velocity.angular.z).toBeGreaterThan(0);
+  const extra = new RigidBody({ type: "static" });
+  extra.add(new BoxCollider());
+  extra.position.x = 10;
+  value.update(0);
+  expect(body.position.distanceTo(position)).toBeLessThan(1e-10);
+  expect(body.getVelocity().linear.distanceTo(velocity.linear)).toBeLessThan(
+    1e-10,
+  );
+  expect(body.getVelocity().angular.distanceTo(velocity.angular)).toBeLessThan(
+    1e-10,
+  );
+  for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
+  expect(body.position.y).toBeCloseTo(1, 5);
+  expect(body.rotation.z).toBeCloseTo(0.3, 5);
+  body.setKinematicTarget(new Matrix4().makeTranslation(0, 5, 0));
+  body.teleport(new Matrix4().makeTranslation(0, 2, 0));
+  for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
+  expect(body.position.y).toBeCloseTo(2, 5);
+  value.reset();
+  for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
+  expect(body.position.length()).toBeLessThan(1e-10);
+  expect(body.getVelocity().linear.length()).toBeLessThan(1e-10);
+});
+
+test("colliderless kinematic targets remain valid moving anchors", async () => {
+  const value = await world();
+  const body = new RigidBody({ type: "kinematic", colliders: false });
+  value.update(0);
+  body.setKinematicTarget(new Matrix4().makeTranslation(1, 2, 3));
+  for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
+  expect(body.position.distanceTo(new Vector3(1, 2, 3))).toBeLessThan(1e-5);
 });

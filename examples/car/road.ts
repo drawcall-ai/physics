@@ -1,13 +1,8 @@
 import * as THREE from "three";
-import {
-  RigidBody,
-  BoxCollider,
-  MeshCollider,
-  type PhysicsWorld,
-} from "@drawcall/physics";
+import { RigidBody, BoxCollider, MeshCollider } from "@drawcall/physics";
 import { box } from "./model";
 
-export function createRoad(world: PhysicsWorld) {
+export function createRoad() {
   const root = new THREE.Group();
   const asphalt = new THREE.MeshStandardMaterial({
     color: "#526478",
@@ -21,7 +16,7 @@ export function createRoad(world: PhysicsWorld) {
     color: "#d2d8d7",
     roughness: 1,
   });
-  const floor = new RigidBody({ world, type: "static" });
+  const floor = new RigidBody({ type: "static" });
   floor.name = "Road";
   floor.position.set(0, -0.15, 30);
   const floorCollider = new BoxCollider({ size: [8, 0.3, 90] });
@@ -64,7 +59,7 @@ export function createRoad(world: PhysicsWorld) {
     );
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const body = new RigidBody({ world, type: "static" });
+    const body = new RigidBody({ type: "static" });
     body.name = name;
     body.position.set(x, 0.005, z);
     const mesh = new THREE.Mesh(geometry, yellow);

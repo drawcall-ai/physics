@@ -1,25 +1,19 @@
-import { afterEach, beforeEach, expect, expectTypeOf, it } from "vitest";
+import { afterEach, expect, expectTypeOf, it } from "vitest";
 import { Matrix4, Vector3 } from "three";
 import {
-  AuthoringWorld,
+  registry,
   DistanceJoint,
   MeshCollider,
   PrismaticJoint,
   RevoluteJoint,
   RigidBody,
   SphericalJoint,
-  setDefaultWorld,
   type RigidBodyOptions,
   type JointOptions,
   type Vec3,
 } from "../src/index.js";
 
-let world: AuthoringWorld;
-beforeEach(() => {
-  world = new AuthoringWorld();
-  setDefaultWorld(world);
-});
-afterEach(() => world.dispose());
+afterEach(() => registry.clear());
 const mass = {
   mass: 1,
   centerOfMass: [0, 0, 0],
@@ -28,18 +22,15 @@ const mass = {
 
 it("copies immutable configuration, retaining resource identities and independent joint frames", () => {
   const centerOfMass: [number, number, number] = [1, 2, 3];
-  const options = { ...mass, world, centerOfMass };
+  const options = { ...mass, centerOfMass };
   const body = new RigidBody(options);
-  expectTypeOf<
-    Pick<RigidBody, "world" | "options" | "bodyType">
-  >().toEqualTypeOf<
-    Readonly<Pick<RigidBody, "world" | "options" | "bodyType">>
+  expectTypeOf<Pick<RigidBody, "options" | "bodyType">>().toEqualTypeOf<
+    Readonly<Pick<RigidBody, "options" | "bodyType">>
   >();
   options.mass = 20;
   centerOfMass[0] = 9;
   expect(body.options).toEqual({
     ...mass,
-    world,
     centerOfMass: [1, 2, 3],
     type: "dynamic",
     colliders: "auto",
@@ -95,7 +86,7 @@ it.each(invalidMass)(
   "rejects invalid mass properties before registration: %j",
   (options, error) => {
     expect(() => new RigidBody(options)).toThrow(error);
-    expect(world.objects.size).toBe(0);
+    expect(registry.objects.size).toBe(0);
   },
 );
 
@@ -132,13 +123,7 @@ it("validates runtime controls before storing and checks the authoring world bou
   }).setCollideConnected(true);
   joint.setEnabled(false).setEnabled(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  const foreign = new AuthoringWorld();
-  expect(() => foreign.readJoint(joint)).toThrow("another world");
-  foreign.dispose();
-  expect(world.time).toBe(0);
-  expect(() => world.raycast(new Vector3(), new Vector3(1, 0, 0), 10)).toThrow(
-    "raycast",
-  );
+  expect(() => registry.requireWorld()).toThrow("buildWorld");
   body.dispose();
   expect(() => joint.setDrive(undefined)).toThrow("disposed");
   expect(() => body.setAngularDamping(0)).toThrow("disposed");

@@ -1,18 +1,15 @@
 import { expect, it } from "vitest";
 import { Group } from "three";
 import {
-  AuthoringWorld,
+  registry,
   GenericJoint,
   JointDrive,
   RevoluteJoint,
   RigidBody,
-  getDefaultWorld,
-  setDefaultWorld,
 } from "../src/index.js";
 
 it("marks joints disposed and releases all drive slots before removed callbacks", () => {
-  const world = new AuthoringWorld();
-  const body = new RigidBody({ world });
+  const body = new RigidBody({});
   const first = new JointDrive({});
   const second = new JointDrive({});
   const joint = new GenericJoint({ body0: null, body1: body })
@@ -30,13 +27,11 @@ it("marks joints disposed and releases all drive slots before removed callbacks"
   expect(() => joint.dispose()).toThrow(error);
   expect(joint.drives.size).toBe(0);
   expect(joint.parent).toBeNull();
-  expect(world.objects.has(joint)).toBe(false);
-  world.dispose();
+  expect(registry.objects.has(joint)).toBe(false);
+  registry.clear();
 });
 
 it("cleans authoring registrations and the default world after multiple scene errors", () => {
-  const world = new AuthoringWorld();
-  setDefaultWorld(world);
   const body = new RigidBody();
   const drive = new JointDrive({});
   const first = new RevoluteJoint({ body0: null, body1: body }).setDrive(drive);
@@ -52,7 +47,7 @@ it("cleans authoring registrations and the default world after multiple scene er
   });
   let failure: unknown;
   try {
-    world.dispose();
+    registry.clear();
   } catch (error) {
     failure = error;
   }
@@ -60,13 +55,12 @@ it("cleans authoring registrations and the default world after multiple scene er
   if (!(failure instanceof AggregateError))
     throw new Error("Expected disposal errors");
   expect(failure.errors).toEqual([firstError, secondError]);
-  expect(world.disposed).toBe(true);
-  expect(world.objects.size).toBe(0);
+  expect(registry.objects.size).toBe(0);
   expect(drive.joint).toBeUndefined();
   for (const object of [first, second, body]) {
     expect(object.disposed).toBe(true);
     expect(object.parent).toBeNull();
   }
-  expect(() => getDefaultWorld()).toThrow();
-  expect(() => world.dispose()).not.toThrow();
+  expect(() => registry.requireWorld()).toThrow();
+  expect(() => registry.clear()).not.toThrow();
 });
