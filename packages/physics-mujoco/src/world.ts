@@ -40,6 +40,12 @@ import { Meshes } from "./model/meshes.js";
 
 export interface MujocoOptions extends PhysicsOptions {
   solverIterations?: number;
+  /**
+   * MuJoCo's impratio: how stiff friction constraints are relative to normal ones. At the default 1
+   * a static grip still creeps, because soft friction trades slip for force; raising it converges on
+   * Coulomb friction without raising the limit at which contacts start to slide.
+   */
+  frictionImpedanceRatio?: number;
   /** Browser bundlers can pass an emitted asset URL; Node resolves the packaged WASM automatically. */
   wasmUrl?: string;
 }
@@ -74,6 +80,7 @@ export class MujocoWorld implements PhysicsWorld {
     this.maxSubsteps = options.maxSubsteps ?? 5;
     const gravity = [...(options.gravity ?? [0, -9.81, 0])];
     const solverIterations = options.solverIterations ?? 50;
+    const frictionImpedanceRatio = options.frictionImpedanceRatio ?? 1;
     if (!Number.isFinite(this.fixedDelta) || this.fixedDelta <= 0)
       throw new Error("fixedDelta must be positive and finite");
     if (!Number.isInteger(this.maxSubsteps) || this.maxSubsteps < 1)
@@ -82,11 +89,14 @@ export class MujocoWorld implements PhysicsWorld {
       throw new Error("Gravity must be finite");
     if (!Number.isInteger(solverIterations) || solverIterations < 1)
       throw new Error("solverIterations must be a positive integer");
+    if (!Number.isFinite(frictionImpedanceRatio) || frictionImpedanceRatio < 1)
+      throw new Error("frictionImpedanceRatio must be at least 1");
     this.scene = new Scene(api, {
       meshes,
       fixedDelta: this.fixedDelta,
       gravity,
       solverIterations,
+      frictionImpedanceRatio,
     });
   }
   register(object: RigidBody | Joint | Trigger): void {

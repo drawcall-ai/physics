@@ -356,3 +356,46 @@ test("raycasts see bodies added and moved between steps", async () => {
   added.position.x = 5;
   expect(ray()).toBeCloseTo(4.5);
 });
+
+for (const frictionImpedanceRatio of [0.9, 0, -1, NaN, Infinity]) {
+  test(`rejects the friction impedance ratio ${frictionImpedanceRatio}`, async () => {
+    await expect(world({ frictionImpedanceRatio })).rejects.toThrow(
+      "frictionImpedanceRatio must be at least 1",
+    );
+  });
+}
+
+test("a stiffer friction impedance slows resting creep without raising the slide limit", async () => {
+  // A 0.5 friction coefficient holds a resting box below 26.6 degrees and slides it above.
+  async function ramp(degrees: number, frictionImpedanceRatio: number) {
+    const value = await world({
+      gravity: [0, -9.81, 0],
+      fixedDelta: 1 / 1000,
+      frictionImpedanceRatio,
+    });
+    const tilt = new Matrix4().makeRotationZ((degrees * Math.PI) / 180);
+    const slope = new RigidBody({ type: "static" });
+    slope.add(new BoxCollider({ size: [2, 0.1, 2] }));
+    slope.applyMatrix4(tilt);
+    const box = new RigidBody({ mass: 0.1 });
+    box.add(new BoxCollider({ size: [0.05, 0.05, 0.05] }));
+    box.position.y = 0.076;
+    box.applyMatrix4(tilt);
+    for (const object of [slope, box])
+      object.setMaterial({
+        staticFriction: 0.5,
+        dynamicFriction: 0.5,
+        restitution: 0,
+      });
+    steps(value, 500);
+    const rested = box.position.clone();
+    steps(value, 10000);
+    const moved = box.position.distanceTo(rested);
+    value.dispose();
+    return moved;
+  }
+  expect(await ramp(25, 1)).toBeGreaterThan(0.01);
+  expect(await ramp(25, 50)).toBeLessThan(0.006);
+  const soft = await ramp(40, 1);
+  expect(await ramp(40, 50)).toBeGreaterThan(soft * 0.9);
+}, 30000);
