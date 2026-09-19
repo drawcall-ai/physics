@@ -162,6 +162,17 @@ export class Scene {
     previous?.free();
     return next;
   }
+  /** The live model when it still matches the authored scene; queries reuse it instead of compiling. */
+  matching(): Compiled | undefined {
+    if (!this.current) return undefined;
+    const change = this.changes.scan(
+      this.objects,
+      this.jointObjects,
+      this.triggers,
+    );
+    return change.key === this.key ? this.current : undefined;
+  }
+  /** Compiles the authored scene without committing it, so queries leave the live scene editable. */
   preview(time: number, read: (joint: Joint) => JointReading): Compiled {
     const scene = new Scene(this.api, this.options);
     for (const body of this.objects) scene.objects.add(body);

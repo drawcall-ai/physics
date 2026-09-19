@@ -70,28 +70,40 @@ export function writeVelocity(
     address + 3,
   );
 }
+/** Overwrite a span and report whether it held different values. */
+function overwrite(
+  target: ReturnType<typeof array>,
+  values: readonly number[],
+  offset: number,
+): boolean {
+  let moved = false;
+  for (const [i, value] of values.entries()) {
+    if (target[offset + i] === value) continue;
+    target[offset + i] = value;
+    moved = true;
+  }
+  return moved;
+}
+/** Returns whether the pose differed from the one already stored. */
 export function writePose(
   compiled: Compiled,
   id: number,
   matrix: Matrix4,
-): void {
+): boolean {
   const { model, data } = compiled;
   const position = new Vector3().setFromMatrixPosition(matrix).toArray();
   const q = rotation(new Quaternion().setFromRotationMatrix(matrix));
   const mocap = at(model.body_mocapid, id);
   if (mocap >= 0) {
-    array(data.mocap_pos).set(position, mocap * 3);
-    array(data.mocap_quat).set(q, mocap * 4);
-  } else if (
-    at(model.body_dofnum, id) === 0 &&
-    at(model.body_parentid, id) === 0
-  ) {
-    array(model.body_pos).set(position, id * 3);
-    array(model.body_quat).set(q, id * 4);
-  } else {
-    const address = at(model.jnt_qposadr, freeJoint(compiled, id));
-    array(data.qpos).set([...position, ...q], address);
+    const moved = overwrite(array(data.mocap_pos), position, mocap * 3);
+    return overwrite(array(data.mocap_quat), q, mocap * 4) || moved;
   }
+  if (at(model.body_dofnum, id) === 0 && at(model.body_parentid, id) === 0) {
+    const moved = overwrite(array(model.body_pos), position, id * 3);
+    return overwrite(array(model.body_quat), q, id * 4) || moved;
+  }
+  const address = at(model.jnt_qposadr, freeJoint(compiled, id));
+  return overwrite(array(data.qpos), [...position, ...q], address);
 }
 export function synchronize(
   compiled: Compiled,
@@ -102,18 +114,22 @@ export function synchronize(
       set(body, pose(compiled.data.xpos, compiled.data.xquat, id));
 }
 
-export function refreshPoses(api: MainModule, compiled: Compiled): void {
+/** Copies authored static and trigger poses into the model; returns whether any moved. */
+export function refreshPoses(compiled: Compiled): boolean {
+  let moved = false;
   for (const [body, id] of compiled.bodies)
     if (!body.disposed && body.bodyType === "static") {
       body.updateWorldMatrix(true, false);
-      writePose(compiled, id, splitTransform(body.matrixWorld).pose);
+      if (writePose(compiled, id, splitTransform(body.matrixWorld).pose))
+        moved = true;
     }
   for (const [trigger, id] of compiled.triggers)
     if (!trigger.disposed) {
       trigger.updateWorldMatrix(true, false);
-      writePose(compiled, id, splitTransform(trigger.matrixWorld).pose);
+      if (writePose(compiled, id, splitTransform(trigger.matrixWorld).pose))
+        moved = true;
     }
-  api.mj_forward(compiled.model, compiled.data);
+  return moved;
 }
 export function validateState(api: MainModule, compiled: Compiled): void {
   if (

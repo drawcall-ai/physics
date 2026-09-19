@@ -34,6 +34,10 @@ import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 const world = await buildWorld({ wasmUrl, solverIterations: 50 });
 ```
 
+`noSlipIterations` runs MuJoCo's no-slip post-solver, which stops objects held by
+friction alone from creeping out of a grip. It defaults to `0`; a gripper that has
+to carry its payload needs roughly `20`.
+
 Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 The examples demonstrate both development and production asset loading.
 `buildWorld` prepares registered colliders, attaches to the single physics registry,

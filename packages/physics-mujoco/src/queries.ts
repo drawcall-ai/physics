@@ -10,7 +10,7 @@ import {
 import { Vector3 } from "three";
 import type { Compiled } from "./model/compile.js";
 import { array, at } from "./values.js";
-import { matches } from "./model/shapes.js";
+import { matches, type Geometry } from "./model/shapes.js";
 import type { Interactions } from "@drawcall/physics";
 
 export function sample(
@@ -81,6 +81,8 @@ export function sample(
   }
   interactions.replace(overlaps, contacts);
 }
+/** MuJoCo filters rays by geometry group; the adapter filters by collider instead. */
+const everyGroup = [1, 1, 1, 1, 1, 1];
 export function raycast(
   api: MainModule,
   compiled: Compiled,
@@ -101,42 +103,84 @@ export function raycast(
     );
   const unit = direction.clone().normalize();
   const normal = new api.DoubleBuffer(3);
-  let result: RaycastHit | null = null;
+  const found = new api.IntBuffer(1);
   try {
-    for (const [id, geom] of compiled.geometries) {
-      if (geom.owner instanceof Trigger && !options.includeTriggers) continue;
-      if (
-        geom.owner instanceof RigidBody &&
-        options.excludeBodies?.includes(geom.owner)
-      )
-        continue;
-      if (
-        options.collisionGroups &&
-        !matches(options.collisionGroups, geom.groups)
-      )
-        continue;
-      const distance = rayDistance(api, compiled, id, origin, unit, normal);
-      if (
-        distance < 0 ||
-        distance > maxDistance ||
-        (result && distance >= result.distance)
-      )
-        continue;
-      const hit = {
-        distance,
-        point: origin.clone().addScaledVector(unit, distance),
-        normal: new Vector3().fromArray(array(normal.GetView())),
-        collider: geom.source,
-      };
-      result =
-        geom.owner instanceof RigidBody
-          ? { ...hit, kind: "body", body: geom.owner }
-          : { ...hit, kind: "trigger", trigger: geom.owner };
-    }
-    return result;
+    // One accelerated query beats intersecting every geometry from JavaScript.
+    const distance = api.mj_ray(
+      compiled.model,
+      compiled.data,
+      origin.toArray(),
+      unit.toArray(),
+      everyGroup,
+      true,
+      -1,
+      found,
+      normal,
+    );
+    if (distance < 0 || distance > maxDistance) return null;
+    const geom = compiled.geometries.get(at(found.GetView(), 0));
+    if (geom && allows(geom, options))
+      return hit(geom, origin, unit, distance, normal);
+    // The closest geometry is filtered out, so the rest have to be intersected.
+    return nearest(api, compiled, origin, unit, maxDistance, options, normal);
   } finally {
+    found.delete();
     normal.delete();
   }
+}
+
+function allows(geom: Geometry, options: RaycastOptions): boolean {
+  if (geom.owner instanceof Trigger && !options.includeTriggers) return false;
+  if (
+    geom.owner instanceof RigidBody &&
+    options.excludeBodies?.includes(geom.owner)
+  )
+    return false;
+  return (
+    !options.collisionGroups || matches(options.collisionGroups, geom.groups)
+  );
+}
+
+function hit(
+  geom: Geometry,
+  origin: Vector3,
+  unit: Vector3,
+  distance: number,
+  normal: DoubleBuffer,
+): RaycastHit {
+  const common = {
+    distance,
+    point: origin.clone().addScaledVector(unit, distance),
+    normal: new Vector3().fromArray(array(normal.GetView())),
+    collider: geom.source,
+  };
+  return geom.owner instanceof RigidBody
+    ? { ...common, kind: "body", body: geom.owner }
+    : { ...common, kind: "trigger", trigger: geom.owner };
+}
+
+function nearest(
+  api: MainModule,
+  compiled: Compiled,
+  origin: Vector3,
+  unit: Vector3,
+  maxDistance: number,
+  options: RaycastOptions,
+  normal: DoubleBuffer,
+): RaycastHit | null {
+  let result: RaycastHit | null = null;
+  for (const [id, geom] of compiled.geometries) {
+    if (!allows(geom, options)) continue;
+    const distance = rayDistance(api, compiled, id, origin, unit, normal);
+    if (
+      distance < 0 ||
+      distance > maxDistance ||
+      (result && distance >= result.distance)
+    )
+      continue;
+    result = hit(geom, origin, unit, distance, normal);
+  }
+  return result;
 }
 
 function rayDistance(

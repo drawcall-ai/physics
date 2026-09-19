@@ -321,3 +321,46 @@ test("raycasts leave initial scale editable and explicit mass supports zero dens
   value.update(0.01);
   expect(box.getVelocity().linear.x).toBeCloseTo(1);
 });
+
+test("scans a scene of many bodies without recompiling the model per ray", async () => {
+  const value = await world({ gravity: [0, -9.81, 0] });
+  for (let i = 0; i < 40; i++) {
+    const shelf = body("static");
+    shelf.scale.set(1, 2, 4);
+    shelf.position.set((i % 8) * 3 - 12, 1, Math.floor(i / 8) * 4 - 8);
+  }
+  const moving = body();
+  moving.position.set(0, 0.5, 0);
+  steps(value, 1);
+  const origin = new Vector3(0, 0.5, 0);
+  const start = performance.now();
+  for (let i = 0; i < 361; i++) {
+    const angle = (i / 360) * Math.PI * 2;
+    value.raycast(origin, new Vector3(Math.cos(angle), 0, Math.sin(angle)), 12);
+  }
+  // Compiling a fresh model per ray took tens of seconds for a single lidar scan.
+  expect(performance.now() - start).toBeLessThan(1500);
+});
+
+test("raycasts see bodies added and moved between steps", async () => {
+  const value = await world();
+  const ray = () =>
+    value.raycast(new Vector3(), new Vector3(1, 0, 0), 20)?.distance;
+  const near = body("static");
+  near.position.x = 3;
+  steps(value, 1);
+  expect(ray()).toBeCloseTo(2.5);
+  near.position.x = 8;
+  expect(ray()).toBeCloseTo(7.5);
+  const added = body("static");
+  added.position.x = 5;
+  expect(ray()).toBeCloseTo(4.5);
+});
+
+for (const noSlipIterations of [-1, 1.5, NaN, Infinity]) {
+  test(`rejects the no-slip iteration count ${noSlipIterations}`, async () => {
+    await expect(world({ noSlipIterations })).rejects.toThrow(
+      "noSlipIterations must be a nonnegative integer",
+    );
+  });
+}

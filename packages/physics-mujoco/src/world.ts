@@ -40,6 +40,8 @@ import { Meshes } from "./model/meshes.js";
 
 export interface MujocoOptions extends PhysicsOptions {
   solverIterations?: number;
+  /** MuJoCo no-slip post-solver passes; raise above zero to stop grasped objects creeping through friction. */
+  noSlipIterations?: number;
   /** Browser bundlers can pass an emitted asset URL; Node resolves the packaged WASM automatically. */
   wasmUrl?: string;
 }
@@ -74,6 +76,7 @@ export class MujocoWorld implements PhysicsWorld {
     this.maxSubsteps = options.maxSubsteps ?? 5;
     const gravity = [...(options.gravity ?? [0, -9.81, 0])];
     const solverIterations = options.solverIterations ?? 50;
+    const noSlipIterations = options.noSlipIterations ?? 0;
     if (!Number.isFinite(this.fixedDelta) || this.fixedDelta <= 0)
       throw new Error("fixedDelta must be positive and finite");
     if (!Number.isInteger(this.maxSubsteps) || this.maxSubsteps < 1)
@@ -82,11 +85,14 @@ export class MujocoWorld implements PhysicsWorld {
       throw new Error("Gravity must be finite");
     if (!Number.isInteger(solverIterations) || solverIterations < 1)
       throw new Error("solverIterations must be a positive integer");
+    if (!Number.isInteger(noSlipIterations) || noSlipIterations < 0)
+      throw new Error("noSlipIterations must be a nonnegative integer");
     this.scene = new Scene(api, {
       meshes,
       fixedDelta: this.fixedDelta,
       gravity,
       solverIterations,
+      noSlipIterations,
     });
   }
   register(object: RigidBody | Joint | Trigger): void {
@@ -125,14 +131,16 @@ export class MujocoWorld implements PhysicsWorld {
         const compiled = this.prepare();
         for (const { body, run } of this.pending.splice(0))
           if (!body.disposed) run(compiled);
+        let moved = false;
         for (const [body, matrix] of this.targets) {
           const id = compiled.targets.get(body);
           if (id === undefined)
             throw new Error("Missing MuJoCo kinematic target");
-          writePose(compiled, id, matrix);
+          if (writePose(compiled, id, matrix)) moved = true;
         }
         this.targets.clear();
-        refreshPoses(this.api, compiled);
+        if (refreshPoses(compiled) || moved)
+          this.api.mj_forward(compiled.model, compiled.data);
         applyBodyForces(this.api, compiled, this.fixedDelta);
         applyDrives(
           this.api,
@@ -149,7 +157,8 @@ export class MujocoWorld implements PhysicsWorld {
         this.elapsed -= this.fixedDelta;
         this.completed += this.fixedDelta;
         this.scene.trackAngles();
-        refreshPoses(this.api, compiled);
+        if (refreshPoses(compiled))
+          this.api.mj_forward(compiled.model, compiled.data);
         sample(this.api, compiled, this.interactions);
         this.interactions.dispatch();
         for (const callback of this.after) {
@@ -287,10 +296,12 @@ export class MujocoWorld implements PhysicsWorld {
   ) {
     assertLive(this);
     for (const body of options?.excludeBodies ?? []) assertOwned(this, body);
-    const compiled = this.scene.preview(this.time, (joint) =>
-      this.readJoint(joint),
-    );
+    const live = this.scene.matching();
+    const compiled =
+      live ?? this.scene.preview(this.time, (joint) => this.readJoint(joint));
     try {
+      if (refreshPoses(compiled))
+        this.api.mj_forward(compiled.model, compiled.data);
       return raycast(
         this.api,
         compiled,
@@ -300,7 +311,7 @@ export class MujocoWorld implements PhysicsWorld {
         options,
       );
     } finally {
-      compiled.free();
+      if (!live) compiled.free();
     }
   }
   getOverlappingBodies(trigger: Trigger): RigidBody[] {
