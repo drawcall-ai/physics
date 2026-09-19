@@ -19,6 +19,17 @@ for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
   });
 }
 
+it("rejects a drive velocity limit, which its constant motor force cannot model", async () => {
+  const world = await createWorld();
+  const joint = new RevoluteJoint({ body0: null, body1: inertialBody() });
+  joint.setDrive(
+    new JointDrive({ stiffness: 10, maxForce: 1, maxVelocity: 1.5 }).setTarget({
+      position: 1,
+    }),
+  );
+  expect(() => world.update(0)).toThrow("cannot model maxVelocity");
+});
+
 it("rejects unequal static and dynamic friction", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });

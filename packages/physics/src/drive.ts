@@ -7,6 +7,12 @@ export interface JointDriveOptions {
   readonly damping?: number;
   /** Cap on the drive force; unbounded when omitted. */
   readonly maxForce?: number;
+  /**
+   * The motor's no-load speed. Its available force then falls linearly from `maxForce` at rest to
+   * zero here and brakes beyond, so the coordinate cannot run away past its rating. Needs
+   * `maxForce`; unlimited when omitted.
+   */
+  readonly maxVelocity?: number;
   /** `acceleration` scales gains by the driven mass; backends without it reject the drive. */
   readonly model?: "force" | "acceleration";
 }
@@ -38,7 +44,23 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
           "Drive gains and maximum force must be finite and nonnegative",
         );
     }
+    const { maxVelocity, maxForce } = options;
+    if (maxVelocity !== undefined) {
+      if (!Number.isFinite(maxVelocity) || maxVelocity <= 0)
+        throw new Error("Drive maximum velocity must be finite and positive");
+      if (maxForce === undefined || !Number.isFinite(maxForce))
+        throw new Error("A drive velocity limit needs a finite maximum force");
+    }
     this.options = { ...options };
+  }
+
+  /** The force this motor can still exert at `velocity`, as a `[lower, upper]` pair. */
+  envelope(velocity: number): [number, number] {
+    const max = this.options.maxForce ?? Infinity;
+    const speed = this.options.maxVelocity;
+    if (speed === undefined) return [-max, max];
+    const clamp = (value: number) => Math.max(-max, Math.min(max, value));
+    return [clamp(-max * (1 + velocity / speed)), clamp(max * (1 - velocity / speed))];
   }
   /** The joint this drive is attached to through its `setDrive`. */
   get joint(): Joint | undefined {

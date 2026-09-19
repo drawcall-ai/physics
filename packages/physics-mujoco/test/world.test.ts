@@ -399,3 +399,41 @@ test("a stiffer friction impedance slows resting creep without raising the slide
   const soft = await ramp(40, 1);
   expect(await ramp(40, 50)).toBeGreaterThan(soft * 0.9);
 }, 30000);
+
+test("a drive cannot drive its joint past its rated speed", async () => {
+  async function spin(maxVelocity?: number) {
+    const value = await world({ fixedDelta: 1 / 1000 });
+    const arm = body();
+    const joint = new RevoluteJoint({ body0: null, body1: arm });
+    // A far target keeps the motor saturated, so only its rating can limit the speed.
+    joint.setDrive(
+      new JointDrive({
+        stiffness: 500,
+        damping: 2,
+        maxForce: 3,
+        maxVelocity,
+      }).setTarget({ position: 50 }),
+    );
+    steps(value, 2000);
+    const speed = joint.getState().velocity;
+    value.dispose();
+    return speed;
+  }
+  expect(await spin(1.5)).toBeGreaterThan(1);
+  expect(await spin(1.5)).toBeLessThan(1.6);
+  expect(await spin()).toBeGreaterThan(5);
+});
+
+for (const maxVelocity of [0, -1, NaN, Infinity]) {
+  test(`rejects the drive velocity limit ${maxVelocity}`, () => {
+    expect(() => new JointDrive({ maxForce: 1, maxVelocity })).toThrow(
+      "Drive maximum velocity must be finite and positive",
+    );
+  });
+}
+
+test("a drive velocity limit needs a force limit to fall away from", () => {
+  expect(() => new JointDrive({ stiffness: 1, maxVelocity: 2 })).toThrow(
+    "A drive velocity limit needs a finite maximum force",
+  );
+});

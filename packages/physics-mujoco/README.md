@@ -39,6 +39,9 @@ relative to normal ones. At the default `1` a resting or grasped object still cr
 because soft friction trades slip for force. Raising it converges on Coulomb friction
 without changing the limit at which contacts start to slide; grasping needs around `50`.
 
+A drive's `maxVelocity` is honoured here: the actuator's force range follows the motor's
+speed, falling to zero at the rated speed and braking past it, so a joint cannot run away.
+
 Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 The examples demonstrate both development and production asset loading.
 `buildWorld` prepares registered colliders, attaches to the single physics registry,

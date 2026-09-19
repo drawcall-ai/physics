@@ -63,6 +63,10 @@ export function configureDrives(
   joint: Rapier.ImpulseJoint,
 ): void {
   for (const [axis, drive] of slots(object)) {
+    if (drive?.options.maxVelocity !== undefined)
+      throw new Error(
+        "Rapier motors take a constant force limit, so they cannot model maxVelocity",
+      );
     const goal = drive?.target;
     const gains =
       (drive?.options.stiffness ?? 0) > 0 || (drive?.options.damping ?? 0) > 0;

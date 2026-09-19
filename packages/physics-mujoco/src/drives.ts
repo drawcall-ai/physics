@@ -11,7 +11,7 @@ import {
 import { Quaternion, Vector3 } from "three";
 import type { Compiled } from "./model/compile.js";
 import { driveOf, unconstrained, type JointRecord } from "./model/joints.js";
-import { array } from "./values.js";
+import { array, at } from "./values.js";
 import { bodyId } from "./motion.js";
 import { project, inverseInertia, apply, type Load } from "./forces.js";
 
@@ -105,10 +105,12 @@ function configureActuators(api: MainModule, compiled: Compiled): void {
     const damping = target ? (drive?.options.damping ?? 0) * scale : 0;
     array(model.actuator_biasprm)[actuator * 10 + 1] = -stiffness;
     array(model.actuator_biasprm)[actuator * 10 + 2] = -damping;
-    array(model.actuator_forcerange).set(
-      [-(drive?.options.maxForce ?? 0), drive?.options.maxForce ?? 0],
-      actuator * 2,
-    );
+    // The force range tracks the motor's speed, so a joint cannot run past its rating.
+    const range =
+      drive && drive.options.maxForce !== undefined
+        ? drive.envelope(at(data.qvel, dof))
+        : [0, 0];
+    array(model.actuator_forcerange).set(range, actuator * 2);
     array(data.ctrl)[actuator] = target
       ? stiffness * target.position + damping * target.velocity + target.effort
       : 0;
@@ -145,6 +147,6 @@ function effort(
       d * (target.velocity - velocity) +
       target.effort) /
     (1 + (d * dt + k * dt * dt) * inverse);
-  const max = options.maxForce ?? Infinity;
-  return Math.max(-max, Math.min(max, force));
+  const [lower, upper] = drive.envelope(velocity);
+  return Math.max(lower, Math.min(upper, force));
 }
