@@ -531,3 +531,44 @@ test("rejects teleporting a body articulated to a kinematic base", async () => {
     "kinematic base",
   );
 });
+
+test("collision groups collide only where each admits the other", async () => {
+  const floor = new RigidBody({ type: "static" });
+  floor.add(new BoxCollider({ size: [10, 1, 10] }));
+  floor.position.y = -0.5;
+  floor.setCollisionGroups({ membership: 1, filter: 7 });
+  const drop = (membership: number, filter: number, x: number, y = 1) => {
+    const box = body();
+    box.position.set(x, y, 0);
+    box.setCollisionGroups({ membership, filter });
+    return box;
+  };
+  // The floor admits group 2, but this box admits only group 2, not the floor's 1.
+  const through = drop(2, 2, 0);
+  const resting = drop(2, 1, 3);
+  // Group 4 admits the floor but not itself: the upper box falls onto the floor through it.
+  const lower = drop(4, 1, -3);
+  const upper = drop(4, 1, -3, 2.2);
+  const value = await world({ gravity: [0, -9.81, 0] });
+  for (let i = 0; i < 150; i++) value.update(0.01);
+  expect(through.position.y).toBeLessThan(-2);
+  expect(resting.position.y).toBeCloseTo(0.5, 1);
+  expect(lower.position.y).toBeCloseTo(0.5, 1);
+  expect(upper.position.y).toBeCloseTo(0.5, 1);
+});
+
+test("builds scenes of many colliders in time linear in their number", async () => {
+  for (let i = 0; i < 600; i++) {
+    const box = new RigidBody({ mass: 1 });
+    box.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
+    box.position.set((i % 30) * 0.2, Math.floor(i / 30) * 0.2, 0);
+  }
+  const started = performance.now();
+  await world();
+  expect(performance.now() - started).toBeLessThan(5000);
+});
+
+test("fixed joints cannot collide the bodies they hold together", async () => {
+  new FixedJoint({ body0: body(), body1: body() }).setCollideConnected(true);
+  await expect(world()).rejects.toThrow(/collideConnected/);
+});

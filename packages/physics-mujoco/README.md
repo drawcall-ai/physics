@@ -73,6 +73,13 @@ current poses and joint velocities. Drive targets update native actuators withou
 recompilation. Rebuilds are more expensive than Rapier's incremental edits.
 Raycasts use a temporary model so a read never captures permanent authoring state.
 
+Contacts go through MuJoCo's own broadphase. Each distinct collision group becomes
+`contype`/`conaffinity` bits that collide exactly as the groups do, so model size
+and step cost grow with the number of shapes, not with their pairs; MuJoCo's 32
+bits cover any practical set of groups. Friction combines as the larger of the
+two, MuJoCo's rule. Bodies held by a `FixedJoint` share one MuJoCo body, so
+`collideConnected` is an error there.
+
 The native `discrete` integrator treats servo stiffness and damping implicitly
 alongside contacts. Saturated actuators lose these implicit derivatives, so
 force-limited servos still need gains and target rates appropriate to the timestep.

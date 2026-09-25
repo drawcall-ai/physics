@@ -7,7 +7,8 @@ import {
   type Joint,
   type JointReading,
 } from "@drawcall/physics";
-import { shapes, matches, type Geometry } from "./shapes.js";
+import { shapes, type Geometry } from "./shapes.js";
+import { contacts, exclusions } from "./contacts.js";
 import {
   jointXml,
   driveOf,
@@ -38,8 +39,9 @@ export function modelXml(
     geometries: Geometry[] = [],
     coordinates: Coordinate[] = [];
   const { sites, tendons, equalities } = distanceXml(joints);
+  const contact = contacts(bodies, options.fixedDelta);
   function contents(owner: RigidBody | Trigger): string {
-    const result = shapes(owner, options.meshes);
+    const result = shapes(owner, contact, options.meshes);
     assets.push(...result.assets);
     geometries.push(...result.geometries);
     return result.xml;
@@ -94,7 +96,6 @@ export function modelXml(
         `<body name="${name(trigger)}" mocap="true" ${placement(splitTransform(trigger.matrixWorld).pose)}>${contents(trigger)}</body>`,
     )
     .join("");
-  const pairs = contactXml(geometries, joints, options.fixedDelta);
   const actuators = coordinates
     .map((c) => {
       const max = driveOf(c)?.options.maxForce;
@@ -102,7 +103,7 @@ export function modelXml(
     })
     .join("");
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${pairs.join("")}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates, roots };
 }
 
@@ -164,50 +165,4 @@ function distanceXml(joints: ReadonlyMap<Joint, JointRecord>) {
       );
   }
   return { sites, tendons, equalities };
-}
-
-function contactXml(
-  geometries: Geometry[],
-  joints: ReadonlyMap<Joint, JointRecord>,
-  fixedDelta: number,
-) {
-  const pairs: string[] = [];
-  for (const [i, a] of geometries.entries()) {
-    if (!(a.owner instanceof RigidBody)) continue;
-    for (const b of geometries.slice(i + 1)) {
-      if (
-        !(b.owner instanceof RigidBody) ||
-        a.owner === b.owner ||
-        !matches(a.groups, b.groups)
-      )
-        continue;
-      if (a.owner.bodyType !== "dynamic" && b.owner.bodyType !== "dynamic")
-        continue;
-      const ownerA = a.owner,
-        ownerB = b.owner;
-      if (
-        [...joints.keys()].some(
-          (j) =>
-            j.enabled &&
-            !j.collideConnected &&
-            j.connects(ownerA) &&
-            j.connects(ownerB),
-        )
-      )
-        continue;
-      const friction = Math.sqrt(a.friction * b.friction);
-      const restitution = Math.max(a.restitution, b.restitution);
-      const damping =
-        restitution === 0
-          ? 1
-          : -Math.log(Math.min(restitution, 0.9999)) /
-            Math.sqrt(
-              Math.PI ** 2 + Math.log(Math.min(restitution, 0.9999)) ** 2,
-            );
-      pairs.push(
-        `<pair geom1="${a.name}" geom2="${b.name}" condim="3" friction="${friction} ${friction} 0 0 0" solref="${Math.max(0.004, fixedDelta * 2)} ${damping}"/>`,
-      );
-    }
-  }
-  return pairs;
 }

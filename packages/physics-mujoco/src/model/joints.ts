@@ -55,7 +55,14 @@ export function jointXml(
       );
     return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}/>`;
   };
-  if (joint instanceof FixedJoint) return "";
+  if (joint instanceof FixedJoint) {
+    // The child joins its parent's rigid body, and MuJoCo never collides a body with itself.
+    if (joint.collideConnected)
+      throw new Error(
+        "MuJoCo cannot collide bodies held together by a FixedJoint; set collideConnected to false",
+      );
+    return "";
+  }
   if (joint instanceof SphericalJoint)
     return `<joint name="${name(joint)}" type="ball" pos="${position}"/>`;
   if (joint instanceof AxisJoint)

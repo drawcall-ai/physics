@@ -23,7 +23,11 @@ interface Shapes {
   assets: string[];
   geometries: Geometry[];
 }
-export function shapes(owner: RigidBody | Trigger, meshes?: Meshes): Shapes {
+export function shapes(
+  owner: RigidBody | Trigger,
+  contact: (geometry: Geometry) => string,
+  meshes?: Meshes,
+): Shapes {
   const assets: string[] = [],
     geometries: Geometry[] = [],
     xml: string[] = [];
@@ -48,16 +52,17 @@ export function shapes(owner: RigidBody | Trigger, meshes?: Meshes): Shapes {
         matrix = part.matrix,
       ) => {
         const key = prefix + suffix;
-        geometries.push({
+        const geometry: Geometry = {
           name: key,
           owner,
           source: collider.source,
           groups: resolveCollisionGroups(collider, owner),
           friction: material?.dynamicFriction ?? 0,
           restitution: material?.restitution ?? 0,
-        });
+        };
+        geometries.push(geometry);
         xml.push(
-          `<geom name="${key}" ${placement(matrix)} ${attributes} density="${unitDensity ? 1 : (material?.density ?? 0)}" contype="0" conaffinity="0"/>`,
+          `<geom name="${key}" ${placement(matrix)} ${attributes} density="${unitDensity ? 1 : (material?.density ?? 0)}" ${contact(geometry)}/>`,
         );
       };
       if (shape.kind === "box")
