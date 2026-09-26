@@ -1,7 +1,7 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   resolveCollider,
-  snapshotGeometry,
+  geometryVersion,
   type Collider,
   type RigidBody,
 } from "@drawcall/physics";
@@ -146,7 +146,7 @@ export function shapeFingerprint(collider: Collider, owner: Object3D): unknown {
       ? {
           kind: shape.kind,
           approximation: shape.approximation,
-          ...snapshotGeometry(shape.geometry),
+          version: geometryVersion(shape.geometry),
         }
       : shape;
   // Relative transforms accumulate tiny roundoff as bodies move under parents.

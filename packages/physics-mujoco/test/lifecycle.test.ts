@@ -39,6 +39,7 @@ test("unchanged mesh steps and target edits reuse collision geometry; raw vertex
   const positions = geometry.getAttribute("position");
   for (let i = 0; i < positions.count; i++)
     positions.setX(i, positions.getX(i) * 3);
+  positions.needsUpdate = true;
   world.update(0);
   expect(clone.mock.calls.length).toBeGreaterThan(initialCopies);
   const hit = world.raycast(new Vector3(3, 0, 0), new Vector3(-1, 0, 0), 5);

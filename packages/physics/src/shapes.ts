@@ -20,6 +20,7 @@ import {
   SphereCollider,
 } from "./colliders.js";
 import type { Shape } from "./colliders.js";
+import { geometryVersion } from "./geometry.js";
 import {
   assertPositiveScale,
   assertScaledTransform,
@@ -285,9 +286,14 @@ function validateRange(geometry: BufferGeometry): void {
   }
 }
 
+const validated = new WeakMap<BufferGeometry, string>();
+
 export function validateShape(shape: Shape): void {
   if (shape.kind === "mesh") {
     validateRange(shape.geometry);
+    // Vertices are checked again only after the geometry is replaced or marked edited.
+    const version = geometryVersion(shape.geometry);
+    if (validated.get(shape.geometry) === version) return;
     const position = shape.geometry.getAttribute("position");
     if (!position || position.count < 3 || position.itemSize !== 3)
       throw new Error("Mesh collider requires position geometry");
@@ -317,6 +323,7 @@ export function validateShape(shape: Shape): void {
         }
       }
     }
+    validated.set(shape.geometry, version);
     return;
   }
   const dimensions =

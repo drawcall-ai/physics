@@ -1,8 +1,37 @@
-import type { BufferGeometry } from "three";
+import {
+  InterleavedBufferAttribute,
+  type BufferAttribute,
+  type BufferGeometry,
+} from "three";
 
 export interface GeometrySnapshot {
   positions: number[];
   indices: number[];
+  version: string;
+}
+
+const ids = new WeakMap<object, number>();
+let next = 0;
+function id(object: object): number {
+  let value = ids.get(object);
+  if (value === undefined) ids.set(object, (value = ++next));
+  return value;
+}
+
+/**
+ * Changes when a geometry's positions or triangles are replaced or marked edited, as three.js
+ * requires for any edit (`needsUpdate`), so change detection never reads the vertices.
+ */
+export function geometryVersion(geometry: BufferGeometry): string {
+  const attribute = (
+    value: BufferAttribute | InterleavedBufferAttribute | null,
+  ) =>
+    !value
+      ? "-"
+      : value instanceof InterleavedBufferAttribute
+        ? `${id(value)}.${id(value.data)}.${value.data.version}`
+        : `${id(value)}.${value.version}`;
+  return `${id(geometry)}/${attribute(geometry.getAttribute("position"))}/${attribute(geometry.index)}`;
 }
 
 /** Collision data, independent of render attributes and their buffer layout. */
@@ -16,29 +45,13 @@ export function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
     { length: index?.count ?? position.count },
     (_, i) => (index ? index.getX(i) : i),
   );
-  return { positions, indices };
+  return { positions, indices, version: geometryVersion(geometry) };
 }
 
-/** Compare current collision data without allocating another snapshot. */
+/** Whether a geometry is still as it was when snapshotted. */
 export function matchesGeometry(
   snapshot: GeometrySnapshot,
   geometry: BufferGeometry,
 ): boolean {
-  const position = geometry.getAttribute("position");
-  const index = geometry.index;
-  if (
-    snapshot.positions.length !== position.count * 3 ||
-    snapshot.indices.length !== (index?.count ?? position.count)
-  )
-    return false;
-  for (let i = 0; i < position.count; i++)
-    if (
-      snapshot.positions[i * 3] !== position.getX(i) ||
-      snapshot.positions[i * 3 + 1] !== position.getY(i) ||
-      snapshot.positions[i * 3 + 2] !== position.getZ(i)
-    )
-      return false;
-  return snapshot.indices.every(
-    (value, i) => value === (index ? index.getX(i) : i),
-  );
+  return snapshot.version === geometryVersion(geometry);
 }

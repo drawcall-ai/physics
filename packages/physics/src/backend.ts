@@ -26,6 +26,7 @@ export { SteppedWorld } from "./stepped.js";
 export { prepareConvexParts, convexParts } from "./decomposition.js";
 export {
   snapshotGeometry,
+  geometryVersion,
   matchesGeometry,
   type GeometrySnapshot,
 } from "./geometry.js";
