@@ -19,6 +19,13 @@ const prepared = new WeakMap<
   GeometrySnapshot & { parts: number[][] }
 >();
 let coacd: Promise<MainModule> | undefined;
+const inNode =
+  typeof process === "object" && typeof process.versions?.node === "string";
+/**
+ * CoACD settings: concavity threshold, no limit on the number of parts, preprocessing and
+ * sampling resolution, MCTS nodes, iterations and depth, vertices per part, and merging.
+ */
+const SETTINGS = [0.05, -1, 50, 2000, 20, 150, 3, 256, true] as const;
 
 /** Decomposes the triangle mesh colliders of the initial bodies that `needs` selects. */
 export async function prepareConvexParts(
@@ -35,13 +42,20 @@ export async function prepareConvexParts(
       try {
         const data = snapshotGeometry(geometry);
         const { positions, indices } = manifold(data);
-        coacd ??= import("./coacd.js")
-          .then((module) => module.default())
-          .catch((error: unknown) => {
-            coacd = undefined;
-            throw error;
-          });
-        const parts = decompose(await coacd, positions, indices);
+        // In Node the parts persist across runs, keyed by the mesh and the settings.
+        const cache = inNode ? await import("./cache.js") : undefined;
+        const entry = cache?.key(positions, indices, JSON.stringify(SETTINGS));
+        let parts = entry ? await cache?.read(entry) : undefined;
+        if (!parts) {
+          coacd ??= import("./coacd.js")
+            .then((module) => module.default())
+            .catch((error: unknown) => {
+              coacd = undefined;
+              throw error;
+            });
+          parts = decompose(await coacd, positions, indices);
+          if (entry) await cache?.write(entry, parts);
+        }
         if (
           !parts.length ||
           parts.some(
@@ -89,19 +103,7 @@ function decompose(
   positions: Float64Array,
   indices: Int32Array,
 ): number[][] {
-  const result = api.decompose(
-    positions,
-    indices,
-    0.05,
-    -1,
-    50,
-    2000,
-    20,
-    150,
-    3,
-    256,
-    true,
-  );
+  const result = api.decompose(positions, indices, ...SETTINGS);
   try {
     const parts: number[][] = [];
     for (const hull of result.hulls) {
