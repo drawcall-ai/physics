@@ -24,9 +24,4 @@ export { cleanup, rollback } from "./cleanup.js";
 export { Interactions } from "./interactions.js";
 export { SteppedWorld } from "./stepped.js";
 export { prepareConvexParts, convexParts } from "./decomposition.js";
-export {
-  snapshotGeometry,
-  geometryVersion,
-  matchesGeometry,
-  type GeometrySnapshot,
-} from "./geometry.js";
+export { geometryVersion } from "./geometry.js";

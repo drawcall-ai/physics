@@ -298,6 +298,7 @@ function validateRange(geometry: BufferGeometry): void {
   }
 }
 
+/** The geometry version each approximation last validated. */
 const validated = new WeakMap<BufferGeometry, Map<string, string>>();
 
 export function validateShape(shape: Shape): void {
@@ -305,7 +306,7 @@ export function validateShape(shape: Shape): void {
     validateRange(shape.geometry);
     // Vertices are checked again only after the geometry is replaced or marked edited.
     const version = geometryVersion(shape.geometry);
-    const known = validated.get(shape.geometry);
+    let known = validated.get(shape.geometry);
     if (known?.get(shape.approximation) === version) return;
     const position = shape.geometry.getAttribute("position");
     if (!position || position.count < 3 || position.itemSize !== 3)
@@ -336,10 +337,8 @@ export function validateShape(shape: Shape): void {
         }
       }
     }
-    validated.set(
-      shape.geometry,
-      new Map(known).set(shape.approximation, version),
-    );
+    if (!known) validated.set(shape.geometry, (known = new Map()));
+    known.set(shape.approximation, version);
     return;
   }
   const dimensions =

@@ -7,7 +7,6 @@ import type {
 export interface GeometrySnapshot {
   positions: number[];
   indices: number[];
-  version: string;
 }
 
 const ids = new WeakMap<object, number>();
@@ -29,7 +28,7 @@ export function geometryVersion(geometry: BufferGeometry): string {
     !value
       ? "-"
       : "isInterleavedBufferAttribute" in value
-        ? `${id(value)}.${id(value.data)}.${value.data.version}.${value.offset}.${value.itemSize}`
+        ? `${id(value)}.${id(value.data)}.${value.data.version}`
         : `${id(value)}.${value.version}`;
   return `${id(geometry)}/${attribute(geometry.getAttribute("position"))}/${attribute(geometry.index)}`;
 }
@@ -45,13 +44,5 @@ export function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
     { length: index?.count ?? position.count },
     (_, i) => (index ? index.getX(i) : i),
   );
-  return { positions, indices, version: geometryVersion(geometry) };
-}
-
-/** Whether a geometry is still as it was when snapshotted. */
-export function matchesGeometry(
-  snapshot: GeometrySnapshot,
-  geometry: BufferGeometry,
-): boolean {
-  return snapshot.version === geometryVersion(geometry);
+  return { positions, indices };
 }

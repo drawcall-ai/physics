@@ -9,7 +9,7 @@ import {
   InterleavedBuffer,
   InterleavedBufferAttribute,
 } from "three";
-import { matchesGeometry, snapshotGeometry } from "../src/geometry.js";
+import { geometryVersion, snapshotGeometry } from "../src/geometry.js";
 import { MeshCollider, RigidBody } from "../src/index.js";
 
 it("snapshots interpreted positions, ignoring unrelated interleaved channels", () => {
@@ -26,23 +26,27 @@ it("snapshots interpreted positions, ignoring unrelated interleaved channels", (
   ]);
 });
 
-it("sees edits marked with needsUpdate and replaced attributes, as three.js requires", () => {
+it("changes version for edits marked with needsUpdate and replaced attributes, as three.js requires", () => {
   const position = new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3);
   const geometry = new BufferGeometry().setAttribute("position", position);
-  const snapshot = snapshotGeometry(geometry);
-  expect(matchesGeometry(snapshot, geometry)).toBe(true);
+  const versions = [geometryVersion(geometry)];
   position.setX(0, 2);
+  versions.push(geometryVersion(geometry));
   position.needsUpdate = true;
-  expect(matchesGeometry(snapshot, geometry)).toBe(false);
-  const edited = snapshotGeometry(geometry);
+  versions.push(geometryVersion(geometry));
   geometry.setIndex([0, 2, 1]);
-  expect(matchesGeometry(edited, geometry)).toBe(false);
-  const indexed = snapshotGeometry(geometry);
+  versions.push(geometryVersion(geometry));
+  geometry.setIndex(null);
+  versions.push(geometryVersion(geometry));
   geometry.setAttribute("position", position.clone());
-  expect(matchesGeometry(indexed, geometry)).toBe(false);
+  versions.push(geometryVersion(geometry));
+  // Unmarked edits go unseen; removing the index restores the unindexed version.
+  expect(versions[1]).toBe(versions[0]);
+  expect(versions[4]).toBe(versions[2]);
+  expect(new Set(versions).size).toBe(4);
 });
 
-it("sees an interleaved buffer marked edited", () => {
+it("changes version when an interleaved buffer is marked edited", () => {
   const data = new InterleavedBuffer(
     new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     3,
@@ -51,10 +55,26 @@ it("sees an interleaved buffer marked edited", () => {
     "position",
     new InterleavedBufferAttribute(data, 3, 0),
   );
-  const snapshot = snapshotGeometry(geometry);
+  const version = geometryVersion(geometry);
   data.array[0] = 2;
   data.needsUpdate = true;
-  expect(matchesGeometry(snapshot, geometry)).toBe(false);
+  expect(geometryVersion(geometry)).not.toBe(version);
+});
+
+it("derives automatic shapes per body type and follows swapped geometry", () => {
+  const shared = new SphereGeometry(1, 8, 4).translate(1, 0, 0);
+  const bodies = (["static", "dynamic"] as const).map((type) => {
+    const body = new RigidBody({ type });
+    body.add(new Mesh(shared));
+    return body;
+  });
+  expect(bodies.map((body) => body.getColliders()[0]!.shape())).toMatchObject([
+    { kind: "mesh", approximation: "trimesh" },
+    { kind: "mesh", approximation: "convexHull" },
+  ]);
+  const mesh = bodies[1]!.children[0] as Mesh;
+  mesh.geometry = new BoxGeometry();
+  expect(bodies[1]!.getColliders()[0]!.shape()).toMatchObject({ kind: "box" });
 });
 
 it("validates a geometry separately for each approximation", () => {
