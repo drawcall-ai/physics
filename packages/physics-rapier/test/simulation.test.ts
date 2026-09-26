@@ -1,8 +1,17 @@
 import { expect, it } from "vitest";
-import { Group, Matrix4, Mesh, BoxGeometry, Vector3 } from "three";
+import {
+  BoxGeometry,
+  ExtrudeGeometry,
+  Group,
+  Matrix4,
+  Mesh,
+  Shape,
+  Vector3,
+} from "three";
 import {
   BoxCollider,
   JointDrive,
+  MeshCollider,
   DistanceJoint,
   FixedJoint,
   PrismaticJoint,
@@ -228,4 +237,31 @@ it("applies forces for one step and accepts kinematic targets", async () => {
   kinematic.setKinematicTarget(new Matrix4().makeTranslation(6, 0, 0));
   world.update(world.fixedDelta);
   expect(kinematic.position.x).toBeCloseTo(6);
+});
+
+it("collides a triangle mesh on a moving body as its convex parts", async () => {
+  // An L-shaped prism: one convex hull would fill the notch between its arms.
+  const outline = new Shape()
+    .moveTo(0, 0)
+    .lineTo(1, 0)
+    .lineTo(1, 0.4)
+    .lineTo(0.4, 0.4)
+    .lineTo(0.4, 1)
+    .lineTo(0, 1)
+    .closePath();
+  const body = new RigidBody();
+  body.add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(
+      new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false }),
+    ),
+  );
+  const world = await createWorld(earth);
+  const forward = new Vector3(0, 0, -1);
+  expect(world.raycast(new Vector3(0.7, 0.7, 3), forward, 6)).toBeNull();
+  expect(world.raycast(new Vector3(0.2, 0.7, 3), forward, 6)).toMatchObject({
+    kind: "body",
+    body,
+  });
+  for (let i = 0; i < 30; i++) world.update(1 / 60);
+  expect(body.position.y).toBeLessThan(-0.5);
 });

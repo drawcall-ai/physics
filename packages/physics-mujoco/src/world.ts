@@ -33,7 +33,6 @@ import { applyBodyForces, wrench } from "./forces.js";
 import { Scene } from "./scene.js";
 import { applyDrives } from "./drives.js";
 import { sample, raycast } from "./queries.js";
-import { Meshes } from "./model/meshes.js";
 
 export interface MujocoOptions extends PhysicsOptions {
   /**
@@ -61,7 +60,6 @@ export class MujocoWorld extends SteppedWorld {
   constructor(
     private readonly api: MainModule,
     options: MujocoOptions = {},
-    meshes = new Meshes(),
   ) {
     super(options);
     const frictionImpedanceRatio = options.frictionImpedanceRatio ?? 1;
@@ -73,7 +71,6 @@ export class MujocoWorld extends SteppedWorld {
         "frictionImpedanceRatio above 1 needs elliptic friction cones; set frictionCone",
       );
     this.scene = new Scene(api, {
-      meshes,
       fixedDelta: this.fixedDelta,
       gravity: this.gravity,
       solverIterations: this.solverIterations ?? 50,

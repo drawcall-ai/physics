@@ -85,7 +85,7 @@ cat > "$build/output/README.md" <<EOF
 # Generated CoACD WASM
 
 Built by scripts/build-coacd.sh with Emscripten 5.0.2.
-src/model/coacd.ts embeds its WASM and is compiled to dist/model/coacd.js.
+src/coacd.ts embeds its WASM and is compiled to dist/coacd.js.
 No external asset is required.
 
 Source revisions:
@@ -100,6 +100,6 @@ EOF
 
 # Publish a complete build only after compilation and packaging succeed.
 mkdir -p "$(dirname "$output")"
-mv "$build/output/coacd.ts" "$package/src/model/coacd.ts"
+mv "$build/output/coacd.ts" "$package/src/coacd.ts"
 rm -rf "$output"
 mv "$build/output" "$output"

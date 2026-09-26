@@ -23,6 +23,7 @@ export { constructLike } from "./construct.js";
 export { cleanup, rollback } from "./cleanup.js";
 export { Interactions } from "./interactions.js";
 export { SteppedWorld } from "./stepped.js";
+export { prepareConvexParts, convexParts } from "./decomposition.js";
 export {
   snapshotGeometry,
   matchesGeometry,

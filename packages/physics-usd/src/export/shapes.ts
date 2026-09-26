@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { Shape } from "@drawcall/physics";
+import type { RigidBodyType, Shape } from "@drawcall/physics";
 import { Prim } from "./prim.js";
 
 export function tuple(values: readonly number[]): string {
@@ -21,7 +21,13 @@ function transform(
   );
 }
 
-export function shapePrim(name: string, shape: Shape, matrix: Matrix4): Prim {
+/** A collider shape as a USD prim; a triangle mesh on a moving body is a convex decomposition. */
+export function shapePrim(
+  name: string,
+  shape: Shape,
+  matrix: Matrix4,
+  body: RigidBodyType,
+): Prim {
   const prim = new Prim(name);
   let scale: readonly number[] = [1, 1, 1];
   switch (shape.kind) {
@@ -54,7 +60,7 @@ export function shapePrim(name: string, shape: Shape, matrix: Matrix4): Prim {
       prim.type = "Mesh";
       prim.schemas.push("PhysicsMeshCollisionAPI");
       prim.properties.push(
-        `uniform token physics:approximation = "${shape.approximation === "trimesh" ? "none" : "convexHull"}"`,
+        `uniform token physics:approximation = "${shape.approximation === "convexHull" ? "convexHull" : body === "static" ? "none" : "convexDecomposition"}"`,
       );
       const positions = shape.geometry.getAttribute("position");
       if (!positions)

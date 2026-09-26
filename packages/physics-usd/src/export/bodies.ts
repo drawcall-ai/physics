@@ -90,7 +90,12 @@ function colliderPrim(
     );
   const materialPath = materials.path(body, collider);
   const resolved = resolveCollider(body, collider);
-  const prim = shapePrim(`Collider${index}`, resolved.shape, resolved.matrix);
+  const prim = shapePrim(
+    `Collider${index}`,
+    resolved.shape,
+    resolved.matrix,
+    body.bodyType,
+  );
   prim.schemas.push("PhysicsCollisionAPI", "MaterialBindingAPI");
   prim.properties.push(
     "bool physics:collisionEnabled = true",

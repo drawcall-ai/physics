@@ -115,37 +115,11 @@ responsibility. Distance limits use spatial tendons. Revolute readings track ful
 - Scalar limits require a nonzero interval. Use fixed joints or locked generic
   degrees of freedom for a locked coordinate. An infinite distance maximum
   requires a zero minimum.
-- MuJoCo collides mesh convex hulls. Initial `trimesh` colliders are prepared by
-  CoACD into compound convex meshes. Complete regular height grids with planar
-  cells use native heightfields with a 1 mm base. Explicit `convexHull` colliders
-  always use one hull. Mesh colliders added after building, or geometry changed
-  afterward, use one hull; no asynchronous optimization runs during simulation.
-- CoACD requires closed, consistently wound manifold surfaces. Render seams are
-  welded before decomposition. Unsupported open surfaces fail the build; use
-  explicit `convexHull` when that approximation is acceptable. Coplanar meshes
-  cannot form a volumetric convex hull. Decomposition is approximate, not exact
-  triangle-mesh collision.
-
-CoACD 1.0.11 embeds its WASM as base64 in a single JavaScript module for Node,
-browsers, and workers. It needs no separate asset hosting or URL configuration.
-The WASM is initialized only when an initial mesh needs decomposition. Computation
-runs on the calling thread, so build before starting the game loop. The source
-archive and notices in `generated/coacd/` accompany the binary for its LGPL/MPL
-components; they are not included in application bundles. MuJoCo's own `wasmUrl`
-option is separate and unchanged.
-
-Only `scripts/build-coacd.sh` is maintained in git for the native build. Run
-`pnpm build:coacd` in this package before building a fresh checkout. It downloads
-pinned CoACD and CDT sources and Chitin's WASM bridge into a temporary directory,
-installs Emscripten 5.0.2 when needed, and generates gitignored `src/model/coacd.ts`
-beside `meshes.ts`. This embeds the compiler-generated JavaScript and public API
-types in one module; only its generated internals are exempt from type checking.
-The normal TypeScript build emits it into `dist/model/coacd.js`. The source archive
-and notices are generated separately in gitignored `generated/coacd/`.
-Bash, curl, tar, CMake, Node.js, and Python 3 are prerequisites.
-Both check and publish workflows run this step; npm consumers receive the built
-module and need no compiler. No downloaded source or native build output is
-committed to this repository.
+- MuJoCo collides mesh convex hulls, so a `trimesh` collider collides as the convex
+  parts the core decomposes when the world is built, or as one hull if it was added
+  or edited later. Complete regular height grids with planar cells on static bodies
+  use native heightfields with a 1 mm base. Explicit `convexHull` colliders always
+  use one hull.
 
 The adapter validates heap-view types at the WASM boundary and frees owned native
 objects explicitly. MuJoCo simulation warnings surface as errors instead of

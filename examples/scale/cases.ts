@@ -115,13 +115,12 @@ for (const geometry of ["sphere", "capsule"] as const) {
   });
 }
 cases.push({
-  name: "Dynamic triangle mesh rejected",
+  name: "Dynamic triangle mesh",
   kind: "triangle mesh",
   type: "dynamic",
   placement: "body",
   scale: [2, 2, 2],
   explicit: true,
-  error: "Triangle mesh colliders require static bodies",
 });
 for (const kind of [
   "box",
