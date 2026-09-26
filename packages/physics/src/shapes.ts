@@ -162,6 +162,18 @@ function autoShape(mesh: Mesh, body: RigidBody): Shape {
     throw new Error("Deformed and instanced meshes require explicit colliders");
   const geometry = mesh.geometry;
   validateRange(geometry);
+  // The geometry is read again only after it is replaced or marked edited.
+  const key = `${geometryVersion(geometry)}/${body.options.colliders}/${body.bodyType}`;
+  const known = autoShapes.get(geometry);
+  if (known?.key === key) return known.shape;
+  const shape = geometryShape(geometry, body);
+  autoShapes.set(geometry, { key, shape });
+  return shape;
+}
+
+const autoShapes = new WeakMap<BufferGeometry, { key: string; shape: Shape }>();
+
+function geometryShape(geometry: BufferGeometry, body: RigidBody): Shape {
   if (body.options.colliders === "box") {
     geometry.computeBoundingBox();
     const bounds = geometry.boundingBox;
@@ -286,14 +298,15 @@ function validateRange(geometry: BufferGeometry): void {
   }
 }
 
-const validated = new WeakMap<BufferGeometry, string>();
+const validated = new WeakMap<BufferGeometry, Map<string, string>>();
 
 export function validateShape(shape: Shape): void {
   if (shape.kind === "mesh") {
     validateRange(shape.geometry);
     // Vertices are checked again only after the geometry is replaced or marked edited.
     const version = geometryVersion(shape.geometry);
-    if (validated.get(shape.geometry) === version) return;
+    const known = validated.get(shape.geometry);
+    if (known?.get(shape.approximation) === version) return;
     const position = shape.geometry.getAttribute("position");
     if (!position || position.count < 3 || position.itemSize !== 3)
       throw new Error("Mesh collider requires position geometry");
@@ -323,7 +336,10 @@ export function validateShape(shape: Shape): void {
         }
       }
     }
-    validated.set(shape.geometry, version);
+    validated.set(
+      shape.geometry,
+      new Map(known).set(shape.approximation, version),
+    );
     return;
   }
   const dimensions =

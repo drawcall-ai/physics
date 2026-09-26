@@ -68,7 +68,8 @@ Callbacks, disposal, forces, impulses, world-space teleports, kinematic targets,
 raycasts, triggers, collision groups, and contact transitions use the core API.
 
 MuJoCo compiles a whole articulated model. Adding/removing bodies, changing
-colliders, or attaching/disabling joints rebuilds it transactionally and preserves
+colliders (including geometry marked with `needsUpdate`), or attaching/disabling
+joints rebuilds it transactionally and preserves
 current poses and joint velocities. Drive targets update native actuators without
 recompilation. Rebuilds are more expensive than Rapier's incremental edits.
 Raycasts use a temporary model so a read never captures permanent authoring state.

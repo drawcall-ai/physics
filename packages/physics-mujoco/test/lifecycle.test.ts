@@ -19,7 +19,7 @@ async function createWorld() {
   return world;
 }
 
-test("unchanged mesh steps and target edits reuse collision geometry; raw vertex edits rebuild it", async () => {
+test("unchanged mesh steps and target edits reuse collision geometry; marked vertex edits rebuild it", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
   const geometry = new BoxGeometry();

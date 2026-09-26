@@ -1,7 +1,7 @@
-import {
+import type {
+  BufferAttribute,
+  BufferGeometry,
   InterleavedBufferAttribute,
-  type BufferAttribute,
-  type BufferGeometry,
 } from "three";
 
 export interface GeometrySnapshot {
@@ -28,8 +28,8 @@ export function geometryVersion(geometry: BufferGeometry): string {
   ) =>
     !value
       ? "-"
-      : value instanceof InterleavedBufferAttribute
-        ? `${id(value)}.${id(value.data)}.${value.data.version}`
+      : "isInterleavedBufferAttribute" in value
+        ? `${id(value)}.${id(value.data)}.${value.data.version}.${value.offset}.${value.itemSize}`
         : `${id(value)}.${value.version}`;
   return `${id(geometry)}/${attribute(geometry.getAttribute("position"))}/${attribute(geometry.index)}`;
 }
