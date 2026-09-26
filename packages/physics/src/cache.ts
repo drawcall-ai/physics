@@ -1,19 +1,20 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID, createHash } from "node:crypto";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
  * Convex parts kept across runs in Node, as physics engines cache cooked collision meshes:
- * one file per mesh and decomposition settings under the conventional
- * `node_modules/.cache` directory of the working directory.
+ * one file per key under the working directory's `node_modules/.cache`. Without a
+ * `node_modules` there, nothing is cached; reads that fail are misses and writes that fail
+ * are skipped, so the cache never breaks a build.
  */
-const directory = join(
-  process.cwd(),
-  "node_modules",
-  ".cache",
-  "@drawcall",
-  "physics",
-);
+async function directory(): Promise<string | undefined> {
+  const modules = join(process.cwd(), "node_modules");
+  const found = await stat(modules).catch(() => undefined);
+  return found?.isDirectory()
+    ? join(modules, ".cache", "@drawcall", "physics")
+    : undefined;
+}
 
 export function key(...inputs: (ArrayBufferView | string)[]): string {
   const hash = createHash("sha256");
@@ -26,19 +27,27 @@ export function key(...inputs: (ArrayBufferView | string)[]): string {
   return hash.digest("hex");
 }
 
-export async function read(name: string): Promise<number[][] | undefined> {
+export async function read(name: string): Promise<unknown> {
+  const folder = await directory();
+  if (!folder) return undefined;
   try {
-    return JSON.parse(await readFile(join(directory, `${name}.json`), "utf8"));
+    return JSON.parse(await readFile(join(folder, `${name}.json`), "utf8"));
   } catch {
     return undefined;
   }
 }
 
 export async function write(name: string, parts: number[][]): Promise<void> {
-  await mkdir(directory, { recursive: true });
+  const folder = await directory();
+  if (!folder) return;
+  const file = join(folder, `${name}.json`);
   // Written aside and renamed, so a concurrent reader never sees half a file.
-  const file = join(directory, `${name}.json`);
-  const partial = `${file}.${process.pid}.tmp`;
-  await writeFile(partial, JSON.stringify(parts));
-  await rename(partial, file);
+  const partial = `${file}.${randomUUID()}.tmp`;
+  try {
+    await mkdir(folder, { recursive: true });
+    await writeFile(partial, JSON.stringify(parts));
+    await rename(partial, file);
+  } catch {
+    await rm(partial, { force: true }).catch(() => {});
+  }
 }

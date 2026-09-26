@@ -169,9 +169,10 @@ collides as convex parts that CoACD decomposes when the world is built. CoACD ne
 closed, consistently wound manifold surfaces; render seams are welded first, and open
 surfaces fail the build, so use an explicit `convexHull` where one hull is acceptable.
 Coplanar meshes cannot form a volumetric hull, and decomposition approximates the
-shape rather than colliding it exactly. In Node, as engines cache cooked collision meshes, the parts
-of each mesh persist in `node_modules/.cache/@drawcall/physics` of the working directory,
-keyed by the mesh and the decomposition settings; delete it to decompose afresh.
+shape rather than colliding it exactly. In Node, as engines cache cooked collision
+meshes, the parts of each mesh persist in `node_modules/.cache/@drawcall/physics` of
+the working directory, keyed by the decomposer, its settings and the mesh; delete it
+to decompose afresh. Without a `node_modules` there, nothing is cached.
 
 CoACD 1.0.11 is embedded as a single JavaScript module for Node, browsers, and
 workers, needs no asset hosting, and is imported only when a mesh needs decomposing,

@@ -1,4 +1,7 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   BoxGeometry,
   ExtrudeGeometry,
@@ -13,6 +16,13 @@ import {
   prepareConvexParts,
   registry,
 } from "../src/index.js";
+
+// Without node_modules in the working directory, every test decomposes afresh.
+beforeEach(async () => {
+  vi.spyOn(process, "cwd").mockReturnValue(
+    await mkdtemp(join(tmpdir(), "physics-decomposition-")),
+  );
+});
 
 afterEach(() => {
   registry.clear();
