@@ -39,12 +39,6 @@ export function colliderOf(source: Collider | Mesh, body: RigidBody): Collider {
     source instanceof Collider ? source : autoCollider(source, body);
   const shape = collider.shape();
   validateShape(shape);
-  if (
-    shape.kind === "mesh" &&
-    shape.approximation === "trimesh" &&
-    body.bodyType !== "static"
-  )
-    throw new Error("Triangle mesh colliders require static bodies");
   return collider;
 }
 

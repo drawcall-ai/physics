@@ -1,28 +1,57 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import { resolveCollider, resolveCollisionGroups } from "@drawcall/physics";
+import {
+  convexParts,
+  resolveCollider,
+  resolveCollisionGroups,
+} from "@drawcall/physics";
 import type { RigidBody, Shape } from "@drawcall/physics";
 import { Quaternion, Vector3 } from "three";
 
-export function colliderDesc(
+/**
+ * Rapier colliders for one authored collider. Rapier keeps real triangle meshes for static
+ * bodies; on a moving body a triangle mesh collides as the convex parts prepared when the
+ * world was built, or as one hull without them.
+ */
+export function colliderDescs(
   api: typeof Rapier,
   resolved: ReturnType<typeof resolveCollider>,
   body: RigidBody,
-): Rapier.ColliderDesc {
-  const { collider, shape, matrix } = resolved;
+): Rapier.ColliderDesc[] {
+  const { collider, shape, matrix, scale } = resolved;
   const material = body.getMaterial(collider);
   const position = new Vector3().setFromMatrixPosition(matrix);
   const quaternion = new Quaternion().setFromRotationMatrix(matrix);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction");
-  const result = descriptor(api, shape);
   const { membership, filter } = resolveCollisionGroups(collider, body);
-  result.setCollisionGroups(((membership << 16) | filter) >>> 0);
-  return result
-    .setTranslation(position.x, position.y, position.z)
-    .setRotation(quaternion)
-    .setDensity(material.density)
-    .setFriction(material.dynamicFriction)
-    .setRestitution(material.restitution);
+  const moving =
+    shape.kind === "mesh" &&
+    shape.approximation === "trimesh" &&
+    body.bodyType !== "static";
+  const parts = moving ? convexParts(collider, scale) : undefined;
+  const descriptors = parts
+    ? parts.map((part) => hull(api, new Float32Array(part)))
+    : [
+        descriptor(
+          api,
+          moving ? { ...shape, approximation: "convexHull" } : shape,
+        ),
+      ];
+  return descriptors.map((result) =>
+    result
+      .setCollisionGroups(((membership << 16) | filter) >>> 0)
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(quaternion)
+      .setDensity(material.density)
+      .setFriction(material.dynamicFriction)
+      .setRestitution(material.restitution),
+  );
+}
+
+function hull(api: typeof Rapier, vertices: Float32Array): Rapier.ColliderDesc {
+  const result = api.ColliderDesc.convexHull(vertices);
+  if (!result) throw new Error("Rapier could not construct the convex hull");
+  return result;
 }
 
 export function descriptor(
@@ -52,12 +81,7 @@ export function descriptor(
           [positions.getX(i), positions.getY(i), positions.getZ(i)],
           i * 3,
         );
-      if (shape.approximation === "convexHull") {
-        const hull = factory.convexHull(vertices);
-        if (!hull)
-          throw new Error("Rapier could not construct the convex hull");
-        return hull;
-      }
+      if (shape.approximation === "convexHull") return hull(api, vertices);
       const index = shape.geometry.getIndex();
       const indices = new Uint32Array(index ? index.count : positions.count);
       for (let i = 0; i < indices.length; i++)

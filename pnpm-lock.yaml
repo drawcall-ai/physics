@@ -127,6 +127,10 @@ importers:
       three:
         specifier: ">=0.185.0"
         version: 0.185.1
+    devDependencies:
+      "@types/node":
+        specifier: ^24.13.6
+        version: 24.13.6
 
   packages/physics-mujoco:
     dependencies:

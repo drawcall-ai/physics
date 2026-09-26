@@ -51,14 +51,15 @@ export function readShape(
     if (!(object instanceof Mesh))
       throw new Error(`Missing collider mesh geometry: ${path}`);
     const approximation = token(layer, path, "physics:approximation", "none");
-    if (approximation !== "none" && approximation !== "convexHull")
+    // A triangle mesh collides as its convex decomposition wherever it cannot as triangles.
+    if (!["none", "convexDecomposition", "convexHull"].includes(approximation))
       throw new Error(
         `Unsupported collision approximation ${approximation}: ${path}`,
       );
     const geometry = object.geometry.clone();
     geometry.scale(scale.x, scale.y, scale.z);
     collider = new MeshCollider({
-      approximation: approximation === "none" ? "trimesh" : "convexHull",
+      approximation: approximation === "convexHull" ? "convexHull" : "trimesh",
     }).setGeometry(geometry);
   } else throw new Error(`Unsupported collision shape ${type}: ${path}`);
   collider.setMaterial(material);

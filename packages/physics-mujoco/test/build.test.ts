@@ -40,9 +40,11 @@ test("decomposes initial meshes and preserves concavities with ancestor scale", 
     body,
   });
   expect(world.raycast(new Vector3(-4.6, 0.3, 3), forward, 6)).toBeNull();
+  // A later body reusing a mesh decomposed at build keeps its concavity.
   const later = mesh(geometry);
   later.position.x = 5;
-  expect(world.raycast(new Vector3(5.4, 0.3, 3), forward, 6)).toMatchObject({
+  expect(world.raycast(new Vector3(5.4, 0.3, 3), forward, 6)).toBeNull();
+  expect(world.raycast(new Vector3(4.8, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body: later,
   });
@@ -119,3 +121,19 @@ test("changed initial geometry never reuses stale decompositions", async () => {
   });
   expect(world.raycast(new Vector3(-0.3, 0.3, 3), forward, 6)).toBeNull();
 });
+
+test("collides a triangle mesh on a moving body as its convex parts", async () => {
+  const body = new RigidBody();
+  body.add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(concave()),
+  );
+  const world = await buildWorld({ gravity: [0, -9.81, 0] });
+  // The notch of the L stays empty, which a single convex hull would fill.
+  expect(world.raycast(new Vector3(0.4, 0.4, 3), forward, 6)).toBeNull();
+  expect(world.raycast(new Vector3(-0.2, 0.4, 3), forward, 6)).toMatchObject({
+    kind: "body",
+    body,
+  });
+  for (let i = 0; i < 50; i++) world.update(0.01);
+  expect(body.position.y).toBeLessThan(-0.5);
+}, 15000);

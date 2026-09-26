@@ -17,10 +17,7 @@ import {
 } from "./joints.js";
 import { name, placement } from "../values.js";
 
-import type { Meshes } from "./meshes.js";
-
 export interface ModelOptions {
-  meshes?: Meshes;
   fixedDelta: number;
   gravity: readonly number[];
   solverIterations: number;
@@ -41,7 +38,7 @@ export function modelXml(
   const { sites, tendons, equalities } = distanceXml(joints);
   const contact = contacts(bodies, options.fixedDelta);
   function contents(owner: RigidBody | Trigger): string {
-    const result = shapes(owner, contact, options.meshes);
+    const result = shapes(owner, contact);
     assets.push(...result.assets);
     geometries.push(...result.geometries);
     return result.xml;

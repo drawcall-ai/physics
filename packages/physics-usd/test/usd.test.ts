@@ -269,6 +269,31 @@ def Cube "Crate" (
     expect(result.getObjectByName("Camera")).toBeInstanceOf(PerspectiveCamera);
   });
 
+  it("roundtrips triangle mesh colliders on static and moving bodies", async () => {
+    const scene = new Scene();
+    for (const type of ["static", "dynamic"] as const) {
+      const body = new RigidBody({ type, colliders: false });
+      body.name = type;
+      body.add(
+        new MeshCollider({ approximation: "trimesh" }).setGeometry(
+          new BoxGeometry(),
+        ),
+      );
+      scene.add(body);
+    }
+    const result = new PhysicsUSDLoader().parse(
+      await new PhysicsUSDExporter().parseAsync(scene),
+    );
+    for (const type of ["static", "dynamic"]) {
+      const body = result.getObjectByName(type);
+      if (!(body instanceof RigidBody)) throw new Error(`Missing ${type} body`);
+      expect(body.getColliders()[0]?.shape()).toMatchObject({
+        kind: "mesh",
+        approximation: "trimesh",
+      });
+    }
+  });
+
   it("roundtrips every V1 joint and explicit primitive shape", async () => {
     const scene = new Scene();
     const body = new RigidBody({ colliders: false });

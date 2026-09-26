@@ -61,9 +61,10 @@ The returned world is ready for queries and simulation; building does not advanc
 
 Building before scene construction also works. Subsequent registrations and
 disposals are forwarded to the attached backend, which prepares changes before
-stepping. Initial building gives backends an opportunity to optimize the full
-scene: MuJoCo decomposes initial triangle meshes into convex parts, while later
-mesh additions use one convex hull. There is no background decomposition.
+stepping. Initial building decomposes the initial triangle meshes a backend cannot collide as
+triangles into convex parts: all of them in MuJoCo, those on moving bodies in Rapier.
+A mesh that was not decomposed at build, because it was added or edited later, uses one
+convex hull there. There is no background decomposition.
 
 Only one world may be built or building at a time. Failed builds leave authored
 objects registered so they can be corrected and the build retried.
@@ -162,9 +163,23 @@ scale is supported for compatible shapes.
 Automatic colliders are generated per visual mesh: unchanged primitives retain their shapes;
 other dynamic geometry uses a convex hull and other static geometry uses triangles.
 
+An explicit `trimesh` collider keeps the mesh's concave shape. Where a backend
+cannot collide it as triangles, on moving bodies and everywhere in MuJoCo, it
+collides as convex parts that CoACD decomposes when the world is built. CoACD needs
+closed, consistently wound manifold surfaces; render seams are welded first, and open
+surfaces fail the build, so use an explicit `convexHull` where one hull is acceptable.
+Coplanar meshes cannot form a volumetric hull, and decomposition approximates the
+shape rather than colliding it exactly.
+
+CoACD 1.0.11 is embedded as a single JavaScript module for Node, browsers, and
+workers, needs no asset hosting, and is imported only when a mesh needs decomposing,
+so bundlers split it into its own chunk. It runs on the calling thread, so build
+before starting the game loop. Its module imports `node:module` for Node; browser
+bundlers externalize that import, which Vite reports as a warning. The notices in
+`generated/coacd/` accompany the binary for its LGPL/MPL components.
+
 Physics rejects zero/negative scale, shear, nested bodies, partial draw ranges,
-and automatic colliders on instanced, skinned, or morph-deformed meshes. Triangle
-colliders require static bodies. Explicit colliders take precedence over meshes; removing them restores automatic generation
+and automatic colliders on instanced, skinned, or morph-deformed meshes. Explicit colliders take precedence over meshes; removing them restores automatic generation
 unless `colliders: false` disables it. Standalone collision geometry requires a static body wrapper.
 
 Bodies and joints support Three.js `.clone()` and `.copy()`, which preserve
@@ -201,14 +216,17 @@ Scene code calls physics methods directly on bodies and joints.
 
 ```sh
 pnpm install
-pnpm --filter @drawcall/physics-mujoco build:coacd
+pnpm --filter @drawcall/physics build:coacd
 pnpm check
 ```
 
-The CoACD build downloads pinned native sources and installs Emscripten 5.0.2
-if needed. It requires Bash, curl, tar, CMake, Node.js, and Python 3. Its inputs
-are temporary and its output is gitignored; rerun it after cleaning generated
-files or changing the build script. CI runs it before checks and publishing.
+The CoACD build downloads pinned CoACD and CDT sources and Chitin's WASM bridge,
+installs Emscripten 5.0.2 if needed, and writes the gitignored `src/coacd.ts` (the
+compiler-generated JavaScript with embedded WASM and its API types; only the generated
+internals skip type checking) and `generated/coacd/` (source archive and notices) in
+`packages/physics`. It requires Bash, curl, tar, CMake, Node.js, and Python 3; rerun it
+after cleaning generated files or changing the build script. CI runs it before checks
+and publishing, so npm consumers need no compiler.
 
 Run `pnpm --filter @drawcall/example-ragdoll dev` or
 `pnpm --filter @drawcall/example-car dev`, then open the Vite URL.

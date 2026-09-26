@@ -1,12 +1,12 @@
 import {
   RigidBody,
+  convexParts,
   resolveCollider,
   resolveCollisionGroups,
   type Trigger,
   type CollisionGroups,
 } from "@drawcall/physics";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
-import type { Meshes } from "./meshes.js";
 import { heightfield } from "./heightfield.js";
 import { placement, name } from "../values.js";
 
@@ -26,7 +26,6 @@ interface Shapes {
 export function shapes(
   owner: RigidBody | Trigger,
   contact: (geometry: Geometry) => string,
-  meshes?: Meshes,
 ): Shapes {
   const assets: string[] = [],
     geometries: Geometry[] = [],
@@ -86,13 +85,15 @@ export function shapes(
           matrix,
         );
       } else {
-        const prepared = meshes?.get(owner, collider)?.shape;
-        if (prepared?.kind === "heightfield") {
-          const field = heightfield(shape.geometry, prefix);
-          if (!field)
-            throw new Error(
-              "Prepared heightfield is not supported at this scale",
-            );
+        // A static height grid is a native height field; any other triangle mesh collides
+        // as the convex parts prepared when the world was built, or one hull without them.
+        const field =
+          shape.approximation === "trimesh" &&
+          owner instanceof RigidBody &&
+          owner.bodyType === "static"
+            ? heightfield(shape.geometry, prefix)
+            : undefined;
+        if (field) {
           assets.push(field.asset);
           add(
             "",
@@ -101,23 +102,12 @@ export function shapes(
           );
           continue;
         }
-        const hulls: number[][] = [];
-        if (prepared?.kind === "compound") {
-          for (const hull of prepared.hulls)
-            hulls.push(
-              hull.map((value, i) => value * part.scale.getComponent(i % 3)),
-            );
-        } else {
-          const positions = shape.geometry.getAttribute("position");
-          const vertices: number[] = [];
-          for (let i = 0; i < positions.count; i++)
-            vertices.push(
-              positions.getX(i),
-              positions.getY(i),
-              positions.getZ(i),
-            );
-          hulls.push(vertices);
-        }
+        const positions = shape.geometry.getAttribute("position");
+        const hulls = convexParts(collider, part.scale) ?? [
+          Array.from({ length: positions.count * 3 }, (_, i) =>
+            positions.getComponent(Math.floor(i / 3), i % 3),
+          ),
+        ];
         for (const [index, hull] of hulls.entries()) {
           const key = `${prefix}h${index}`;
           assets.push(`<mesh name="${key}" vertex="${hull.join(" ")}"/>`);

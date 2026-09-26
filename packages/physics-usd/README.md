@@ -23,7 +23,7 @@ A temporary visual copy receives deterministic unique prim names. The original h
 Supported mapping:
 
 - Static, dynamic, and kinematic bodies; total or complete explicit mass/COM/inertia; linear/angular velocity.
-- Compound boxes, spheres, capsules, cylinders, convex hull meshes, and static triangle meshes.
+- Compound boxes, spheres, capsules, cylinders, convex hull meshes, and triangle meshes (`none` when static, `convexDecomposition` when moving).
 - Friction, restitution, and density through USD physics materials.
 - Fixed, revolute, prismatic, unrestricted spherical, distance, and generic joints. USD's unlimited (negative) maximum distance is `Infinity`. A generic joint is the base `PhysicsJoint` prim with `PhysicsLimitAPI:<axis>` per axis: no limit means free, and a lower limit above the upper one means locked.
 - Both body-local joint frames, world anchoring through `body0`, enable state, connected-body collision state.

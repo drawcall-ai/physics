@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build CoACD WASM
-        run: pnpm --filter @drawcall/physics-mujoco build:coacd
+        run: pnpm --filter @drawcall/physics build:coacd
       - name: Build, typecheck, and test
         run: pnpm check
       - name: Set release versions

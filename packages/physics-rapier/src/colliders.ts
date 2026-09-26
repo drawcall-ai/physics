@@ -7,7 +7,7 @@ import {
 } from "@drawcall/physics";
 import { Quaternion, Vector3, type Object3D } from "three";
 import type { BodyBinding } from "./body.js";
-import { colliderDesc } from "./shapes.js";
+import { colliderDescs } from "./shapes.js";
 
 /** Rebuilds the body's colliders when their authored shapes, placement, materials, or settings changed. */
 export function refreshColliders(
@@ -34,17 +34,17 @@ export function refreshColliders(
   );
   assertCapturedScales(object, binding, resolved);
   const completeMass = options.centerOfMass !== undefined;
-  const descriptors = resolved.map((part) => {
-    const desc = colliderDesc(api, part, object);
-    return completeMass ? desc.setDensity(0) : desc;
-  });
-  const created = createColliders(
-    backend,
-    object,
-    body,
-    descriptors,
-    completeMass,
+  // Each authored collider becomes one or more Rapier colliders.
+  const parts = resolved.flatMap((part) =>
+    colliderDescs(api, part, object).map(
+      (desc) =>
+        [
+          completeMass ? desc.setDensity(0) : desc,
+          part.collider.source,
+        ] as const,
+    ),
   );
+  const created = createColliders(backend, object, body, parts, completeMass);
   for (const handle of binding.sources.keys()) {
     const collider = backend.getCollider(handle);
     if (collider) backend.removeCollider(collider, true);
@@ -60,11 +60,7 @@ export function refreshColliders(
   }
   body.recomputeMassPropertiesFromColliders();
   binding.sources = new Map(
-    created.map((collider, index) => {
-      const source = colliders[index];
-      if (!source) throw new Error("Missing authored collider");
-      return [collider.handle, source.source];
-    }),
+    created.map(([collider, source]) => [collider.handle, source]),
   );
   body.wakeUp();
   binding.shapeKey = shapeKey;
@@ -90,19 +86,23 @@ function assertCapturedScales(
   }
 }
 
-/** Creates the colliders with their mass settled, or none of them. */
+/** Creates the colliders, each with its authored source, and their mass settled, or none. */
 function createColliders(
   backend: Rapier.World,
   object: RigidBody,
   body: Rapier.RigidBody,
-  descriptors: Rapier.ColliderDesc[],
+  parts: readonly (readonly [Rapier.ColliderDesc, Object3D])[],
   completeMass: boolean,
-): Rapier.Collider[] {
+): [Rapier.Collider, Object3D][] {
   const { options } = object;
+  const pairs: [Rapier.Collider, Object3D][] = [];
   const created: Rapier.Collider[] = [];
   try {
-    for (const desc of descriptors)
-      created.push(backend.createCollider(desc, body));
+    for (const [desc, source] of parts) {
+      const collider = backend.createCollider(desc, body);
+      created.push(collider);
+      pairs.push([collider, source]);
+    }
     if (options.mass !== undefined && created.length && !completeMass)
       distributeMass(created, options.mass);
     if (
@@ -111,7 +111,7 @@ function createColliders(
       totalMass(created) <= 0
     )
       throw new Error("Dynamic body requires positive mass and inertia");
-    return created;
+    return pairs;
   } catch (error) {
     for (const collider of created) backend.removeCollider(collider, true);
     throw error;
