@@ -1,22 +1,15 @@
 import {
   RigidBody,
   splitTransform,
-  snapshotGeometry,
-  matchesGeometry,
-  type GeometrySnapshot,
+  geometryVersion,
   type Joint,
   type Trigger,
 } from "@drawcall/physics";
-import { type BufferGeometry, type Object3D, Vector3 } from "three";
+import { type Object3D, Vector3 } from "three";
 
 /** Compare authored data without constructing scaled collision geometry. */
 export class Changes {
-  private readonly meshes = new WeakMap<
-    BufferGeometry,
-    GeometrySnapshot & { version: number }
-  >();
   private scales = new Map<Object3D, Vector3>();
-  private version = 0;
 
   scan(
     bodies: Iterable<RigidBody>,
@@ -54,7 +47,7 @@ export class Changes {
               ? [
                   shape.kind,
                   shape.approximation,
-                  this.meshVersion(shape.geometry),
+                  geometryVersion(shape.geometry),
                 ]
               : shape,
             part.pose.elements.map((value) => Math.round(value * 1e8) / 1e8),
@@ -83,13 +76,5 @@ export class Changes {
   }
   clear(): void {
     this.scales.clear();
-  }
-  private meshVersion(geometry: BufferGeometry): number {
-    const previous = this.meshes.get(geometry);
-    if (previous && matchesGeometry(previous, geometry))
-      return previous.version;
-    const snapshot = { ...snapshotGeometry(geometry), version: ++this.version };
-    this.meshes.set(geometry, snapshot);
-    return snapshot.version;
   }
 }

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { createWorld } from "./fixtures.js";
-import { Group, Matrix4, Quaternion, Vector3 } from "three";
+import { BoxGeometry, Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
   RigidBody,
@@ -9,6 +9,7 @@ import {
   DistanceJoint,
   PrismaticJoint,
   JointDrive,
+  MeshCollider,
 } from "@drawcall/physics";
 
 const setup = () => createWorld({ fixedDelta: 1 / 60 });
@@ -268,4 +269,25 @@ it("preserves staged sleep, wake and impulse ordering", async () => {
   expect(body.getVelocity().linear.x).toBeCloseTo(1);
   world.update(world.fixedDelta);
   expect(body.position.x).toBeCloseTo(world.fixedDelta);
+});
+
+it("rebuilds a mesh collider only for geometry edits marked with needsUpdate", async () => {
+  const world = await setup();
+  const geometry = new BoxGeometry();
+  const body = new RigidBody({ type: "static" });
+  body.add(
+    new MeshCollider({ approximation: "convexHull" }).setGeometry(geometry),
+  );
+  world.update(world.fixedDelta);
+  const hits = () =>
+    world.raycast(new Vector3(5, 5, 0), new Vector3(0, -1, 0), 10) !== null;
+  expect(hits()).toBe(false);
+  const position = geometry.getAttribute("position");
+  for (let i = 0; i < position.count; i++)
+    position.setX(i, position.getX(i) + 5);
+  world.update(world.fixedDelta);
+  expect(hits()).toBe(false);
+  position.needsUpdate = true;
+  world.update(world.fixedDelta);
+  expect(hits()).toBe(true);
 });

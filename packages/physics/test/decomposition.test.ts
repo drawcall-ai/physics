@@ -65,7 +65,9 @@ it("forgets the parts of a mesh edited after decomposition", async () => {
   const geometry = ell();
   const collider = trimesh(geometry);
   await prepareConvexParts([new RigidBody().add(collider)], () => true);
-  geometry.getAttribute("position").setX(0, 5);
+  const position = geometry.getAttribute("position");
+  position.setX(0, 5);
+  position.needsUpdate = true;
   expect(convexParts(collider, new Vector3(1, 1, 1))).toBeUndefined();
 });
 

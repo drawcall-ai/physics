@@ -2,7 +2,7 @@ import type { BufferGeometry, Vector3 } from "three";
 import { RigidBody } from "./body.js";
 import type { Collider } from "./colliders.js";
 import {
-  matchesGeometry,
+  geometryVersion,
   snapshotGeometry,
   type GeometrySnapshot,
 } from "./geometry.js";
@@ -16,7 +16,7 @@ import type { MainModule } from "./coacd.js";
  */
 const prepared = new WeakMap<
   BufferGeometry,
-  GeometrySnapshot & { parts: number[][] }
+  { version: string; parts: number[][] }
 >();
 let coacd: Promise<MainModule> | undefined;
 const inNode =
@@ -42,8 +42,8 @@ export async function prepareConvexParts(
       const { geometry } = shape;
       if (current(geometry) || !needs(body, geometry)) continue;
       try {
-        const data = snapshotGeometry(geometry);
-        const { positions, indices } = manifold(data);
+        const version = geometryVersion(geometry);
+        const { positions, indices } = manifold(snapshotGeometry(geometry));
         // In Node the parts persist across runs, keyed by the decomposer, its settings and
         // the mesh.
         const cache = inNode ? await import("./cache.js") : undefined;
@@ -67,7 +67,7 @@ export async function prepareConvexParts(
             throw new Error("CoACD produced invalid convex parts");
           if (entry) await cache?.write(entry, parts);
         }
-        prepared.set(geometry, { ...data, parts });
+        prepared.set(geometry, { version, parts });
       } catch (error) {
         const name = `${body.name || body.type}/${collider.source.name || collider.source.type}`;
         throw new Error(
@@ -111,7 +111,7 @@ function valid(parts: unknown): parts is number[][] {
 
 function current(geometry: BufferGeometry) {
   const entry = prepared.get(geometry);
-  return entry && matchesGeometry(entry, geometry) ? entry : undefined;
+  return entry?.version === geometryVersion(geometry) ? entry : undefined;
 }
 
 function decompose(

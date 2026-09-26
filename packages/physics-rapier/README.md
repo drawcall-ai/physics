@@ -20,7 +20,7 @@ world.update(deltaSeconds);
 
 Dynamic bodies need colliders or complete explicit mass properties; static and kinematic bodies may be colliderless. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
 
-New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry changes, collider properties and materials. Body damping and gravity scale update through methods; body type and `canSleep` are immutable.
+New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry replaced or marked with `needsUpdate`, collider properties and materials. Body damping and gravity scale update through methods; body type and `canSleep` are immutable.
 
 Body and collider scale are captured once; later scale edits throw and require disposing and recreating the affected bodies and joints. New colliders capture their scale when added. Explicit body mass stays fixed; density-derived mass and inertia follow the scaled shapes.
 

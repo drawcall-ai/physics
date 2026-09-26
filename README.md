@@ -66,6 +66,11 @@ triangles into convex parts: all of them in MuJoCo, those on moving bodies in Ra
 A mesh that was not decomposed at build, because it was added or edited later, uses one
 convex hull there. There is no background decomposition.
 
+Backends notice a geometry edit as three.js renderers do: when the position or index
+attribute is replaced, or marked with `needsUpdate = true` after an in-place edit. Unmarked
+edits are not seen, and a marked edit rebuilds the colliders that use the geometry, even if
+the values did not change.
+
 Only one world may be built or building at a time. Failed builds leave authored
 objects registered so they can be corrected and the build retried.
 
