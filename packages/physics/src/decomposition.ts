@@ -19,6 +19,15 @@ const prepared = new WeakMap<
   GeometrySnapshot & { parts: number[][] }
 >();
 let coacd: Promise<MainModule> | undefined;
+const inNode =
+  typeof process === "object" && typeof process.versions?.node === "string";
+/** The CoACD build; bump it with the pins in scripts/build-coacd.sh to renew cached parts. */
+const DECOMPOSER = "coacd-b678aa0/cdt-ec03b30/chitin-5a96998/emscripten-5.0.2";
+/**
+ * CoACD settings: concavity threshold, no limit on the number of parts, preprocessing and
+ * sampling resolution, MCTS nodes, iterations and depth, vertices per part, and merging.
+ */
+const SETTINGS = [0.05, -1, 50, 2000, 20, 150, 3, 256, true] as const;
 
 /** Decomposes the triangle mesh colliders of the initial bodies that `needs` selects. */
 export async function prepareConvexParts(
@@ -35,23 +44,29 @@ export async function prepareConvexParts(
       try {
         const data = snapshotGeometry(geometry);
         const { positions, indices } = manifold(data);
-        coacd ??= import("./coacd.js")
-          .then((module) => module.default())
-          .catch((error: unknown) => {
-            coacd = undefined;
-            throw error;
-          });
-        const parts = decompose(await coacd, positions, indices);
-        if (
-          !parts.length ||
-          parts.some(
-            (part) =>
-              part.length < 12 ||
-              part.length % 3 !== 0 ||
-              !part.every(Number.isFinite),
-          )
-        )
-          throw new Error("CoACD produced invalid convex parts");
+        // In Node the parts persist across runs, keyed by the decomposer, its settings and
+        // the mesh.
+        const cache = inNode ? await import("./cache.js") : undefined;
+        const entry = cache?.key(
+          DECOMPOSER,
+          JSON.stringify(SETTINGS),
+          `${positions.length}/${indices.length}`,
+          positions,
+          indices,
+        );
+        let parts = entry ? await cache?.read(entry) : undefined;
+        if (!valid(parts)) {
+          coacd ??= import("./coacd.js")
+            .then((module) => module.default())
+            .catch((error: unknown) => {
+              coacd = undefined;
+              throw error;
+            });
+          parts = decompose(await coacd, positions, indices);
+          if (!valid(parts))
+            throw new Error("CoACD produced invalid convex parts");
+          if (entry) await cache?.write(entry, parts);
+        }
         prepared.set(geometry, { ...data, parts });
       } catch (error) {
         const name = `${body.name || body.type}/${collider.source.name || collider.source.type}`;
@@ -79,6 +94,21 @@ export function convexParts(
   );
 }
 
+/** Convex parts as flat lists of at least four finite points each. */
+function valid(parts: unknown): parts is number[][] {
+  return (
+    Array.isArray(parts) &&
+    parts.length > 0 &&
+    parts.every(
+      (part) =>
+        Array.isArray(part) &&
+        part.length >= 12 &&
+        part.length % 3 === 0 &&
+        part.every(Number.isFinite),
+    )
+  );
+}
+
 function current(geometry: BufferGeometry) {
   const entry = prepared.get(geometry);
   return entry && matchesGeometry(entry, geometry) ? entry : undefined;
@@ -89,19 +119,7 @@ function decompose(
   positions: Float64Array,
   indices: Int32Array,
 ): number[][] {
-  const result = api.decompose(
-    positions,
-    indices,
-    0.05,
-    -1,
-    50,
-    2000,
-    20,
-    150,
-    3,
-    256,
-    true,
-  );
+  const result = api.decompose(positions, indices, ...SETTINGS);
   try {
     const parts: number[][] = [];
     for (const hull of result.hulls) {

@@ -6,6 +6,7 @@ output="$package/generated/coacd"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 
+# Changing a pin changes the decomposer: bump DECOMPOSER in src/decomposition.ts too.
 coacd=b678aa0802996fa03e1ec0e68bd05acf8cd20cf9
 cdt=ec03b309fd18102ab1da069f2edf3b37be5d1fb3
 bridge=5a969983b1a1280c07b2c7cdf44c16a681fc3384
