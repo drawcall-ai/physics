@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,15 +18,16 @@ import {
 } from "../src/index.js";
 
 // Without node_modules in the working directory, every test decomposes afresh.
+let root: string;
 beforeEach(async () => {
-  vi.spyOn(process, "cwd").mockReturnValue(
-    await mkdtemp(join(tmpdir(), "physics-decomposition-")),
-  );
+  root = await mkdtemp(join(tmpdir(), "physics-decomposition-"));
+  vi.spyOn(process, "cwd").mockReturnValue(root);
 });
 
-afterEach(() => {
+afterEach(async () => {
   registry.clear();
   vi.restoreAllMocks();
+  await rm(root, { recursive: true, force: true });
 });
 
 /** An L-shaped prism: concave, so it decomposes into more than one part. */

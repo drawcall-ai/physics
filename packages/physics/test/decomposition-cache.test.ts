@@ -75,11 +75,15 @@ it("decomposes again when a cached entry is not valid parts", async () => {
   expect(decompose).toHaveBeenCalledTimes(2);
 });
 
-it("still builds when the cache cannot be written", async () => {
-  await mkdir(join(root, "node_modules"), { mode: 0o500 });
-  await prepare(box());
-  expect(decompose).toHaveBeenCalledTimes(1);
-});
+// Permissions do not stop root, nor apply on Windows.
+it.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
+  "still builds when the cache cannot be written",
+  async () => {
+    await mkdir(join(root, "node_modules"), { mode: 0o500 });
+    await prepare(box());
+    expect(decompose).toHaveBeenCalledTimes(1);
+  },
+);
 
 it("caches nothing without a node_modules directory", async () => {
   await prepare(box());
