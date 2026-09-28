@@ -15,7 +15,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "bench": "node bench/contacts.ts"
+    "bench": "node bench/contacts.ts",
+    "bench:arm": "node bench/arm.ts"
   },
   "dependencies": {
     "@mujoco/mujoco": "3.13.0"

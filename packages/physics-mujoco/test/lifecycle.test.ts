@@ -5,8 +5,16 @@ import {
   RigidBody,
   JointDrive,
   RevoluteJoint,
+  Trigger,
 } from "@drawcall/physics";
-import { BoxGeometry, Vector3 } from "three";
+import {
+  BoxGeometry,
+  Group,
+  Matrix4,
+  Mesh,
+  PerspectiveCamera,
+  Vector3,
+} from "three";
 import { buildWorld, type MujocoWorld } from "../src/index.js";
 
 const worlds: MujocoWorld[] = [];
@@ -44,7 +52,73 @@ test("unchanged mesh steps and target edits reuse collision geometry; marked ver
   expect(clone.mock.calls.length).toBeGreaterThan(initialCopies);
   const hit = world.raycast(new Vector3(3, 0, 0), new Vector3(-1, 0, 0), 5);
   expect(hit?.distance).toBeCloseTo(1.5, 2);
+  geometry.setDrawRange(0, 3);
+  expect(() => world.update(world.fixedDelta)).toThrow("full draw range");
   geometry.dispose();
+});
+
+test("unchanged steps skip the change scan; moved and added colliders are still picked up", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({ mass: 1 });
+  const holder = new Group();
+  holder.add(new BoxCollider());
+  body.add(holder);
+  const joint = new RevoluteJoint({ body0: null, body1: body });
+  const drive = new JointDrive({ stiffness: 1, damping: 1 });
+  joint.setDrive(drive);
+  world.update(0);
+  const scan = vi.spyOn(body, "getColliders");
+  for (let i = 0; i < 10; i++) {
+    drive.setTarget({ position: i * 0.01 });
+    world.update(world.fixedDelta);
+  }
+  expect(scan).not.toHaveBeenCalled();
+  holder.position.x = 1;
+  world.update(0);
+  expect(scan).toHaveBeenCalled();
+  const right = world.raycast(new Vector3(3, 0, 0), new Vector3(-1, 0, 0), 5);
+  expect(right?.distance).toBeCloseTo(1.5, 2);
+  const added = new BoxCollider();
+  added.position.x = -2;
+  body.add(added);
+  world.update(0);
+  const left = world.raycast(new Vector3(-4, 0, 0), new Vector3(1, 0, 0), 5);
+  expect(left?.distance).toBeCloseTo(1.5, 2);
+});
+
+test("a body without explicit colliders picks up its moved mesh", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({ type: "static" });
+  const mesh = new Mesh(new BoxGeometry());
+  body.add(mesh);
+  world.update(0);
+  const scan = vi.spyOn(body, "getColliders");
+  world.update(world.fixedDelta);
+  expect(scan).not.toHaveBeenCalled();
+  mesh.position.x = 2;
+  world.update(world.fixedDelta);
+  expect(scan).toHaveBeenCalled();
+  const hit = world.raycast(new Vector3(4, 0, 0), new Vector3(-1, 0, 0), 5);
+  expect(hit?.distance).toBeCloseTo(1.5, 2);
+  mesh.geometry.dispose();
+});
+
+test("moving a child trigger or camera does not rescan its body", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({ type: "kinematic" });
+  const trigger = new Trigger();
+  trigger.add(new BoxCollider());
+  const camera = new PerspectiveCamera();
+  body.add(new BoxCollider(), trigger, camera);
+  world.update(0);
+  const scan = vi.spyOn(body, "getColliders");
+  for (let i = 1; i <= 10; i++) {
+    trigger.position.x = i;
+    camera.lookAt(i, 0, 1);
+    body.setKinematicTarget(new Matrix4().makeTranslation(i * 0.01, 0, 0));
+    world.update(world.fixedDelta);
+  }
+  expect(scan).not.toHaveBeenCalled();
 });
 
 test("a failed rebuild keeps live state and retries after correction", async () => {

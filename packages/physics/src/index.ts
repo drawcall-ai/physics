@@ -5,6 +5,7 @@ export {
   type RigidBodyOptions,
   RigidBody,
   ancestorBody,
+  colliderSources,
 } from "./body.js";
 export {
   type Vec3,
