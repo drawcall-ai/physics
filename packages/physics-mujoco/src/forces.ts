@@ -110,7 +110,6 @@ export function applyBodyForces(
   const { model, data } = compiled;
   for (const [body, id] of compiled.bodies) {
     if (body.bodyType !== "dynamic") continue;
-    array(model.body_gravcomp)[id] = 1 - body.gravityScale;
     if (!body.linearDamping && !body.angularDamping) continue;
     const v = velocity(api, compiled, id);
     const force = v.linear.multiplyScalar(
