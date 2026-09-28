@@ -34,7 +34,6 @@ export class Scene {
   private readonly triggers = new Set<Trigger>();
   private readonly changes = new Changes();
   private current?: Compiled;
-  private key = "";
   get compiled(): Compiled | undefined {
     return this.current;
   }
@@ -51,7 +50,6 @@ export class Scene {
     else this.triggers.add(object);
   }
   unregister(object: RigidBody | Joint | Trigger): void {
-    this.key = "";
     if (object instanceof Joint) {
       this.jointObjects.delete(object);
       this.records.delete(object);
@@ -100,10 +98,11 @@ export class Scene {
     );
   }
   prepare(time: number, read: (joint: Joint) => JointReading): Compiled {
+    // Change detection validates every body and trigger first.
+    const change = this.changed();
     const bodies = new Map(this.bodies);
     const joints = new Map(this.records);
     for (const body of this.objects) {
-      body.validate();
       if (!bodies.has(body))
         bodies.set(body, {
           initialPose: splitTransform(body.matrixWorld).pose,
@@ -125,9 +124,7 @@ export class Scene {
         joints.set(joint, { frames, angle, sampled: angle });
       }
     }
-    const change = this.scan();
-    const key = change.key;
-    if (this.compiled && key === this.key) return this.compiled;
+    if (this.compiled && !change) return this.compiled;
     const previous = this.compiled;
     const restoreState = captureState(
       this.api,
@@ -153,18 +150,17 @@ export class Scene {
     for (const [body, record] of bodies) this.bodies.set(body, record);
     for (const [joint, record] of joints) this.records.set(joint, record);
     this.current = next;
-    this.key = key;
-    this.changes.commit(change.scales);
+    if (change) this.changes.commit(change);
     previous?.free();
     return next;
   }
   /** The live model when it still matches the authored scene; queries reuse it instead of compiling. */
   matching(): Compiled | undefined {
     if (!this.current) return undefined;
-    return this.scan().key === this.key ? this.current : undefined;
+    return this.changed() ? undefined : this.current;
   }
-  private scan() {
-    return this.changes.scan(this.objects, this.jointObjects, this.triggers);
+  private changed() {
+    return this.changes.changed(this.objects, this.jointObjects, this.triggers);
   }
   /** Compiles the authored scene without committing it, so queries leave the live scene editable. */
   preview(time: number, read: (joint: Joint) => JointReading): Compiled {
@@ -191,6 +187,5 @@ export class Scene {
   free(): void {
     this.compiled?.free();
     this.current = undefined;
-    this.key = "";
   }
 }

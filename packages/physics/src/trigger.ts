@@ -1,6 +1,6 @@
 import { disposeClonedPhysics } from "./clone.js";
 import { Group, type Object3D, type Object3DEventMap } from "three";
-import { RigidBody } from "./body.js";
+import { RigidBody, colliderSources } from "./body.js";
 import { Collider, validateGroups, type CollisionGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
 import { cleanup, rollback } from "./cleanup.js";
@@ -72,15 +72,16 @@ export class Trigger extends Group<TriggerEventMap> {
   }
   getColliders(): Collider[] {
     this.validate();
-    const colliders: Collider[] = [];
-    this.traverse((object) => {
-      if (
-        object !== this &&
-        (object instanceof Trigger || object instanceof RigidBody)
+    const colliders = colliderSources(this).filter(
+      (source) => source instanceof Collider,
+    );
+    for (const object of colliders) {
+      for (
+        let node: Object3D | null = object;
+        node && node !== this;
+        node = node.parent
       )
-        throw new Error("Triggers cannot contain triggers or rigid bodies");
-      assertPositiveScale(object, "Trigger shape");
-      if (!(object instanceof Collider)) return;
+        assertPositiveScale(node, "Trigger shape");
       assertScaledTransform(object.matrixWorld, object.name || object.type);
       if (object.material !== undefined)
         throw new Error("Trigger colliders cannot have physics materials");
@@ -88,8 +89,7 @@ export class Trigger extends Group<TriggerEventMap> {
       validateShape(shape);
       if (shape.kind === "mesh" && shape.approximation === "trimesh")
         throw new Error("Triangle meshes are not supported as trigger volumes");
-      colliders.push(object);
-    });
+    }
     return colliders;
   }
   override clone(recursive = true): this {
