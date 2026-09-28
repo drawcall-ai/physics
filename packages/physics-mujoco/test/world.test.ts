@@ -73,6 +73,18 @@ test("force lasts one step, impulses act at the COM or at a world point", async 
   expect(box.getVelocity().angular.z).toBeGreaterThan(1);
 });
 
+test("a gravity scale change acts on the very next step", async () => {
+  const value = await world({ gravity: [0, -10, 0] });
+  const box = body();
+  steps(value, 2);
+  box.setGravityScale(0);
+  steps(value, 1);
+  expect(box.getVelocity().linear.y).toBeCloseTo(-0.2);
+  box.setGravityScale(1);
+  steps(value, 1);
+  expect(box.getVelocity().linear.y).toBeCloseTo(-0.3);
+});
+
 test("queries exact primitives and collision masks, including triggers", async () => {
   const value = await world();
   const box = body();

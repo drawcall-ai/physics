@@ -114,8 +114,10 @@ export class MujocoWorld extends SteppedWorld {
       (joint) => this.readJoint(joint),
       this.fixedDelta,
     );
-    this.api.mj_step(compiled.model, compiled.data);
-    this.api.mj_forward(compiled.model, compiled.data);
+    // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
+    // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
+    this.api.mj_step2(compiled.model, compiled.data);
+    this.api.mj_step1(compiled.model, compiled.data);
     validateState(this.api, compiled);
     array(compiled.data.qfrc_applied).fill(0);
     synchronize(compiled, setWorldPose);
