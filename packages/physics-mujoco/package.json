@@ -23,7 +23,7 @@
   },
   "peerDependencies": {
     "@drawcall/physics": "^0.1.0",
-    "three": ">=0.180.0"
+    "three": ">=0.177.0"
   },
   "devDependencies": {
     "@drawcall/physics": "workspace:*",

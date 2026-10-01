@@ -125,7 +125,7 @@ importers:
   packages/physics:
     dependencies:
       three:
-        specifier: ">=0.185.0"
+        specifier: ">=0.177.0"
         version: 0.185.1
     devDependencies:
       "@types/node":
@@ -138,7 +138,7 @@ importers:
         specifier: 3.13.0
         version: 3.13.0
       three:
-        specifier: ">=0.180.0"
+        specifier: ">=0.177.0"
         version: 0.185.1
     devDependencies:
       "@drawcall/physics":
@@ -154,7 +154,7 @@ importers:
         specifier: ^0.20.0
         version: 0.20.0
       three:
-        specifier: ">=0.180.0"
+        specifier: ">=0.177.0"
         version: 0.185.1
     devDependencies:
       "@drawcall/physics":
