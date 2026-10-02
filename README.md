@@ -174,16 +174,17 @@ collides as convex parts that CoACD decomposes when the world is built. CoACD ne
 closed, consistently wound manifold surfaces; render seams are welded first, and open
 surfaces fail the build, so use an explicit `convexHull` where one hull is acceptable.
 Coplanar meshes cannot form a volumetric hull, and decomposition approximates the
-shape rather than colliding it exactly. In Node, as engines cache cooked collision
-meshes, the parts of each mesh persist in `node_modules/.cache/@drawcall/physics` of
-the working directory, keyed by the decomposer, its settings and the mesh; delete it
-to decompose afresh. Without a `node_modules` there, nothing is cached.
+shape rather than colliding it exactly. In Node 20.16 or later, as engines cache cooked
+collision meshes, the parts of each mesh persist in `node_modules/.cache/@drawcall/physics`
+of the working directory, keyed by the decomposer, its settings and the mesh; delete it
+to decompose afresh. Without a `node_modules` there, or in browsers, nothing is cached.
 
 CoACD 1.0.11 is embedded as a single JavaScript module for Node, browsers, and
 workers, needs no asset hosting, and is imported only when a mesh needs decomposing,
 so bundlers split it into its own chunk. It runs on the calling thread, so build
-before starting the game loop. Its module imports `node:module` for Node; browser
-bundlers externalize that import, which Vite reports as a warning. The notices in
+before starting the game loop. The core imports no Node modules, so bundlers need no
+configuration: CoACD is built for the web, which runs in Node as well, and the cache
+reaches the file system through `process.getBuiltinModule`. The notices in
 `generated/coacd/` accompany the binary for its LGPL/MPL components.
 
 Physics rejects zero/negative scale, shear, nested bodies, partial draw ranges,

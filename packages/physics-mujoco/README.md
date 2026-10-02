@@ -51,6 +51,8 @@ chased the measured speed did not survive. Distance joints and free generic join
 which MuJoCo drives by generalized force, brake by the same damping.
 
 Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
+`@mujoco/mujoco` imports Node's `module` builtin for Node; webpack fails on that import
+in browser builds unless told to leave it out with `resolve: { fallback: { module: false } }`.
 The examples demonstrate both development and production asset loading.
 `buildWorld` prepares registered colliders, attaches to the single physics registry,
 and compiles the initial model without advancing time. MuJoCo modules are shared;

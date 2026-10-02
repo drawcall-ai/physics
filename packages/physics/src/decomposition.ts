@@ -7,6 +7,7 @@ import {
   type GeometrySnapshot,
 } from "./geometry.js";
 import type { MainModule } from "./coacd.js";
+import * as cache from "./cache.js";
 
 /**
  * Convex parts of closed triangle meshes, for backends that cannot collide a concave mesh:
@@ -19,8 +20,6 @@ const prepared = new WeakMap<
   { version: string; parts: number[][] }
 >();
 let coacd: Promise<MainModule> | undefined;
-const inNode =
-  typeof process === "object" && typeof process.versions?.node === "string";
 /** The CoACD build; bump it with the pins in scripts/build-coacd.sh to renew cached parts. */
 const DECOMPOSER = "coacd-b678aa0/cdt-ec03b30/chitin-5a96998/emscripten-5.0.2";
 /**
@@ -46,15 +45,14 @@ export async function prepareConvexParts(
         const { positions, indices } = manifold(snapshotGeometry(geometry));
         // In Node the parts persist across runs, keyed by the decomposer, its settings and
         // the mesh.
-        const cache = inNode ? await import("./cache.js") : undefined;
-        const entry = cache?.key(
+        const entry = cache.key(
           DECOMPOSER,
           JSON.stringify(SETTINGS),
           `${positions.length}/${indices.length}`,
           positions,
           indices,
         );
-        let parts = entry ? await cache?.read(entry) : undefined;
+        let parts = entry ? await cache.read(entry) : undefined;
         if (!valid(parts)) {
           coacd ??= import("./coacd.js")
             .then((module) => module.default())
@@ -65,7 +63,7 @@ export async function prepareConvexParts(
           parts = decompose(await coacd, positions, indices);
           if (!valid(parts))
             throw new Error("CoACD produced invalid convex parts");
-          if (entry) await cache?.write(entry, parts);
+          if (entry) await cache.write(entry, parts);
         }
         prepared.set(geometry, { version, parts });
       } catch (error) {
