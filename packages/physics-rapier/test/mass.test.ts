@@ -29,6 +29,7 @@ for (const c of [
     });
     b.position.x = c.offset;
     body.add(a, b);
+    world.root.add(body);
     world.update(0);
     body.applyImpulse(new Vector3(0, c.mass, 0), new Vector3(c.center, 0, 0));
     expect(body.getVelocity().linear.y).toBeCloseTo(1, 5);
@@ -48,6 +49,7 @@ it("reads inferred COM immediately and honors later assembly transforms", async 
   collider.position.x = 2;
   body.add(collider);
   parent.add(body);
+  world.root.add(parent);
   const options = {
     body0: null,
     body1: body,
@@ -80,6 +82,7 @@ it("keeps explicit COM and inertia authoritative across geometry changes", async
   });
   const mesh = new Mesh(new BoxGeometry(1, 1, 1));
   body.add(mesh);
+  world.root.add(body);
   for (const size of [1, 4]) {
     mesh.geometry = new BoxGeometry(size, size, size);
     body.setVelocity({ linear: new Vector3(), angular: new Vector3() });
@@ -94,19 +97,23 @@ it("requires dynamic inertia, permits colliderless anchors, and ignores surface 
   const world = await createWorld();
   for (const mass of [undefined, 1]) {
     const body = new RigidBody({ colliders: false, mass });
+    world.root.add(body);
     expect(() => world.update(0)).toThrow(/mass|inertia/);
     body.dispose();
   }
-  new RigidBody({ type: "static", colliders: false });
-  new RigidBody({ type: "kinematic", colliders: false });
-  inertialBody({ type: "static" }).add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(
-      new PlaneGeometry(1, 1),
+  world.root.add(
+    new RigidBody({ type: "static", colliders: false }),
+    new RigidBody({ type: "kinematic", colliders: false }),
+    inertialBody({ type: "static" }).add(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(
+        new PlaneGeometry(1, 1),
+      ),
     ),
   );
   expect(() => world.update(0)).not.toThrow();
   const invalid = new RigidBody().setMaterial({ density: 0 });
   invalid.add(new BoxCollider());
+  world.root.add(invalid);
   expect(() => world.update(0)).toThrow("positive mass");
   invalid.setMaterial({ density: 1 });
   world.update(0);
@@ -127,6 +134,7 @@ it("rotates the principal inertia axes used for angular response", async () => {
     diagonalInertia: [1, 2, 3],
     principalAxes: [axes.x, axes.y, axes.z, axes.w],
   });
+  world.root.add(ordinary, rotated);
   world.update(0);
   for (const body of [ordinary, rotated])
     body.applyImpulse(new Vector3(0, 0, 1), new Vector3(0, 1, 0));

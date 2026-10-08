@@ -13,16 +13,22 @@ import {
   Matrix4,
   Mesh,
   PerspectiveCamera,
+  Scene,
   Vector3,
 } from "three";
 import { buildWorld, type MujocoWorld } from "../src/index.js";
 
 const worlds: MujocoWorld[] = [];
+let scene = new Scene();
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
+  scene = new Scene();
 });
 async function createWorld() {
-  const world = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const world = await buildWorld(scene, {
+    gravity: [0, 0, 0],
+    fixedDelta: 0.01,
+  });
   worlds.push(world);
   return world;
 }
@@ -30,6 +36,7 @@ async function createWorld() {
 test("unchanged mesh steps and target edits reuse collision geometry; marked vertex edits rebuild it", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   const geometry = new BoxGeometry();
   body.add(new MeshCollider().setGeometry(geometry));
   const clone = vi.spyOn(geometry, "clone");
@@ -60,6 +67,7 @@ test("unchanged mesh steps and target edits reuse collision geometry; marked ver
 test("unchanged steps skip the change scan; moved and added colliders are still picked up", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   const holder = new Group();
   holder.add(new BoxCollider());
   body.add(holder);
@@ -89,6 +97,7 @@ test("unchanged steps skip the change scan; moved and added colliders are still 
 test("a body without explicit colliders picks up its moved mesh", async () => {
   const world = await createWorld();
   const body = new RigidBody({ type: "static" });
+  scene.add(body);
   const mesh = new Mesh(new BoxGeometry());
   body.add(mesh);
   world.update(0);
@@ -106,6 +115,7 @@ test("a body without explicit colliders picks up its moved mesh", async () => {
 test("moving a child trigger or camera does not rescan its body", async () => {
   const world = await createWorld();
   const body = new RigidBody({ type: "kinematic" });
+  scene.add(body);
   const trigger = new Trigger();
   trigger.add(new BoxCollider());
   const camera = new PerspectiveCamera();
@@ -124,6 +134,7 @@ test("moving a child trigger or camera does not rescan its body", async () => {
 test("a failed rebuild keeps live state and retries after correction", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   body.add(new BoxCollider());
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.update(world.fixedDelta);
@@ -144,6 +155,7 @@ test("a failed rebuild keeps live state and retries after correction", async () 
 test("failed initial compilation and queries do not capture reset poses or scale", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   body.add(new BoxCollider());
   body.position.x = 1;
   body.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.8 });

@@ -9,7 +9,7 @@ import {
   PrismaticJoint,
   RigidBody,
 } from "@drawcall/physics";
-import { BufferGeometry, Float32BufferAttribute, Matrix4 } from "three";
+import { BufferGeometry, Float32BufferAttribute, Matrix4, Scene } from "three";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
@@ -55,12 +55,14 @@ const piece = new BufferGeometry()
   .setIndex(faces);
 const material = { staticFriction: 0.8, dynamicFriction: 0.8 };
 
+const scene = new Scene();
 const desk = new RigidBody({ type: "static" });
 desk.add(new BoxCollider({ size: [1, 0.7, 1] }));
 desk.position.y = 0.35;
 const board = new RigidBody({ type: "static" });
 board.add(new BoxCollider({ size: [0.42, 0.02, 0.42] }));
 board.position.y = 0.71;
+scene.add(desk, board);
 const top = 0.72;
 const pieces: RigidBody[] = [];
 for (let i = 0; i < 32; i++) {
@@ -74,6 +76,7 @@ for (let i = 0; i < 32; i++) {
       : 0.125 + Math.floor((i - 16) / 8) * 0.05,
   );
   pieces.push(body);
+  scene.add(body);
 }
 const held = pieces[0]!;
 for (const side of [-1, 1]) {
@@ -81,6 +84,7 @@ for (const side of [-1, 1]) {
   pad.add(new BoxCollider({ size: [0.01, 0.01, 0.03] }));
   const x = held.position.x + side * 0.02;
   pad.position.set(x, top + 0.02, held.position.z);
+  scene.add(pad);
   new PrismaticJoint({
     body0: null,
     body1: pad,
@@ -95,7 +99,7 @@ for (const side of [-1, 1]) {
   );
 }
 
-const world = await buildWorld({
+const world = await buildWorld(scene, {
   fixedDelta: 1 / 500,
   solverIterations: 50,
   frictionCone: "elliptic",

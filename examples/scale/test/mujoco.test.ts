@@ -1,5 +1,6 @@
 import { RigidBody } from "@drawcall/physics";
 import { expect, test } from "vitest";
+import { Scene } from "three";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { cases } from "../cases";
 import { specimen, verify } from "../specimen";
@@ -7,7 +8,7 @@ import { specimen, verify } from "../specimen";
 test.each(cases)(
   "MuJoCo: $name",
   async (spec) => {
-    const world = await buildWorld();
+    const world = await buildWorld(new Scene());
     try {
       expect(verify(world, spec)).toContain("PASS");
       expect(verify(world, spec)).toContain("PASS");
@@ -26,7 +27,9 @@ test.each([1 / 60, 1 / 120])(
     );
     if (!spec) throw new Error("Missing lift case");
     const item = specimen(spec, true);
-    const world = await buildWorld({ fixedDelta });
+    const world = await buildWorld(new Scene().add(item.root), {
+      fixedDelta,
+    });
     const stop = world.onAfterStep(item.step);
     const passenger = item.root.children.find(
       (child) => child instanceof RigidBody && child.bodyType === "dynamic",

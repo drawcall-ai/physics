@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { BoxGeometry, Matrix4, Mesh, Vector3 } from "three";
+import { BoxGeometry, Matrix4, Mesh, Scene, Vector3 } from "three";
 import {
   DistanceJoint,
   FixedJoint,
@@ -12,10 +12,12 @@ it("adds bodies after stepping without resetting existing velocities or poses", 
   const world = await createWorld({ fixedDelta: 1 / 60 });
   const first = box();
   first.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.root.add(first);
   world.update(world.fixedDelta);
   const previous = first.position.x;
   const second = box();
   second.position.y = 4;
+  world.root.add(second);
   world.update(world.fixedDelta);
   expect(first.position.x).toBeGreaterThan(previous);
   expect(first.getVelocity().linear.x).toBeCloseTo(2);
@@ -26,6 +28,7 @@ it("adds joints after bodies are already simulating", async () => {
   const world = await createWorld(earth);
   const body = box();
   body.position.y = 4;
+  world.root.add(body);
   world.update(world.fixedDelta);
   const anchor = body.position.y;
   const joint = new FixedJoint({ body0: null, body1: body });
@@ -45,6 +48,7 @@ it("updates collider geometry without resetting the body", async () => {
   floor.add(mesh);
   const body = box();
   body.position.x = 3;
+  world.root.add(floor, body);
   world.update(world.fixedDelta);
   mesh.geometry = new BoxGeometry(8, 1, 1);
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
@@ -54,6 +58,7 @@ it("updates collider geometry without resetting the body", async () => {
 it("allows one attached world and disposes pending joints with their body", async () => {
   const first = await createWorld(earth);
   const body = box();
+  first.root.add(body);
   await expect(createWorld(earth)).rejects.toThrow("already built");
   const joint = new FixedJoint({ body0: null, body1: body });
   body.dispose();
@@ -61,7 +66,7 @@ it("allows one attached world and disposes pending joints with their body", asyn
   expect(joint.disposed).toBe(true);
   first.dispose();
   const next = box();
-  const second = await createWorld(earth);
+  const second = await createWorld(earth, new Scene().add(next));
   second.update(second.fixedDelta);
   expect(next.position.y).toBeLessThan(0);
 });
@@ -72,6 +77,7 @@ it("materializes bodies created by before-step callbacks", async () => {
   const stop = world.onBeforeStep(() => {
     body = box();
     body.position.y = 2;
+    world.root.add(body);
     stop();
   });
   world.update(world.fixedDelta);
@@ -84,6 +90,7 @@ it("keeps creation options immutable while damping and gravity settings update l
   const body = new RigidBody(options);
   body.add(new Mesh(new BoxGeometry()));
   options.mass = 9;
+  world.root.add(body);
   world.update(0);
   body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(1);
@@ -103,6 +110,7 @@ it("removes automatic colliders when geometry is removed", async () => {
   floor.add(mesh, distant);
   const body = box();
   body.position.y = 2;
+  world.root.add(floor, body);
   for (let i = 0; i < 90; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeCloseTo(1, 1);
   floor.remove(mesh);
@@ -113,6 +121,7 @@ it("removes automatic colliders when geometry is removed", async () => {
 it("copies caller-owned joint frames", async () => {
   const world = await createWorld(earth);
   const body = box();
+  world.root.add(body);
   const frame = new Matrix4();
   new FixedJoint({ body0: null, body1: body, frame0: frame, frame1: frame });
   world.update(world.fixedDelta);
@@ -125,6 +134,7 @@ it("copies immutable distance limits without changing a prepared joint", async (
   const world = await createWorld(earth);
   const body = box();
   body.position.y = -2;
+  world.root.add(body);
   const limits: [number, number] = [0, 2];
   const joint = new DistanceJoint({
     body0: null,
@@ -144,6 +154,7 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   const world = await createWorld(earth);
   const body = box();
   body.position.y = 3;
+  world.root.add(body);
   const joint = new FixedJoint({ body0: null, body1: body });
   joint.position.y = 3;
   world.update(world.fixedDelta);
@@ -158,6 +169,7 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
 it("uses world matrices for teleport and rejects nonrigid transforms", async () => {
   const world = await createWorld(earth);
   const body = box();
+  world.root.add(body);
   const matrix = new Matrix4().makeTranslation(2, 3, 4);
   world.update(world.fixedDelta);
   body.teleport(matrix);
@@ -175,6 +187,7 @@ it("rejects copying joint identity and preserves the live constraint", async () 
   first.position.set(0, 4, 0);
   const second = box();
   second.position.set(3, 4, 0);
+  world.root.add(first, second);
   const joint = new FixedJoint({ body0: null, body1: first });
   world.update(0);
   const source = new FixedJoint({ body0: null, body1: second });
@@ -191,6 +204,7 @@ it("uses one update path for preparation, fractional time, catch-up and explicit
   const world = await createWorld({ fixedDelta: 0.125, maxSubsteps: 2 });
   const body = box();
   body.setVelocity({ linear: new Vector3(1, 0, 0) });
+  world.root.add(body);
   const steps: number[] = [];
   world.onAfterStep((delta) => steps.push(delta));
   world.update(0);
@@ -214,6 +228,7 @@ it("teleports a body together with the assembly jointed to it", async () => {
   const root = box();
   const child = box();
   child.position.x = 2;
+  world.root.add(root, child);
   const joint = new RevoluteJoint({ body0: root, body1: child, axis: "X" });
   joint.position.x = 1;
   child.setVelocity({ angular: new Vector3(8, 0, 0) });

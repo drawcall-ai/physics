@@ -4,7 +4,7 @@ import { view } from "../view";
 import { cases } from "./cases";
 import { specimen, verify } from "./specimen";
 
-const root = new THREE.Group();
+const scene = new THREE.Scene();
 function controls() {
   const select = document.querySelector<HTMLSelectElement>(
     'select[aria-label="Scale case"]',
@@ -23,8 +23,8 @@ let current: ReturnType<typeof specimen> | undefined = specimen(
   initialCase,
   true,
 );
-root.add(current.root);
-const world = await buildWorld();
+scene.add(current.root);
+const world = await buildWorld(scene);
 world.onAfterStep((delta) => current?.step(delta));
 let checking = false;
 let status = "";
@@ -46,7 +46,7 @@ function show() {
     return;
   }
   current = specimen(spec, true);
-  root.add(current.root);
+  scene.add(current.root);
   added++;
   status =
     spec.type === "kinematic"
@@ -64,7 +64,7 @@ const demo = view(
       world.dispose();
     },
   },
-  root,
+  scene,
   new THREE.Vector3(0, 2, 0),
 );
 async function checkAll() {

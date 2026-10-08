@@ -1,10 +1,11 @@
 import { expect, it } from "vitest";
+import { Scene } from "three";
 import { buildWorld } from "@drawcall/physics-rapier";
 import { cases } from "../cases";
 import { specimen, verify } from "../specimen";
 
 it.each(cases)("$name, including removal and recreation", async (spec) => {
-  const world = await buildWorld();
+  const world = await buildWorld(new Scene());
   try {
     expect(verify(world, spec)).toMatch(/^PASS:/);
     expect(verify(world, spec)).toMatch(/^PASS:/);
@@ -14,7 +15,7 @@ it.each(cases)("$name, including removal and recreation", async (spec) => {
 });
 
 it("creates one triangle collider per transformed mesh child", async () => {
-  const world = await buildWorld();
+  const world = await buildWorld(new Scene());
   const spec = cases.find(
     (spec) =>
       spec.kind === "triangle mesh" &&
@@ -24,6 +25,7 @@ it("creates one triangle collider per transformed mesh child", async () => {
   );
   if (!spec) throw new Error("Missing compound triangle mesh case");
   const item = specimen(spec);
+  world.root.add(item.root);
   world.onAfterStep(item.step);
   try {
     expect(item.target.children.map((child) => child.type)).toEqual([
@@ -47,10 +49,11 @@ it("creates one triangle collider per transformed mesh child", async () => {
 });
 
 it("moves the scaled kinematic lift and carries its falling cube", async () => {
-  const world = await buildWorld();
+  const world = await buildWorld(new Scene());
   const spec = cases.find((spec) => spec.type === "kinematic" && !spec.error);
   if (!spec) throw new Error("Missing kinematic case");
   const item = specimen(spec);
+  world.root.add(item.root);
   world.onAfterStep(item.step);
   let low = Infinity;
   let high = -Infinity;
@@ -70,10 +73,11 @@ it("moves the scaled kinematic lift and carries its falling cube", async () => {
 });
 
 it("drops and rotates one body with three automatically generated convex colliders", async () => {
-  const world = await buildWorld();
+  const world = await buildWorld(new Scene());
   const spec = cases.find((spec) => spec.compound);
   if (!spec) throw new Error("Missing compound case");
   const item = specimen(spec, true);
+  world.root.add(item.root);
   try {
     for (let step = 0; step < 30; step++) world.update(world.fixedDelta);
     expect(item.target.position.y).toBeLessThan(-0.5);

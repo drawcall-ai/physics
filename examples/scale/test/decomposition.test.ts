@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { registry } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
-import { Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import { decomposition } from "../decomposition";
 
 afterEach(() => {
@@ -16,8 +16,8 @@ test.each([
 ])(
   "$backend: the example preserves the opening on the right, including replay",
   async ({ build }) => {
-    const { lanes } = decomposition();
-    const world = await build();
+    const { root, lanes } = decomposition();
+    const world = await build(new Scene().add(root));
     for (let replay = 0; replay < 2; replay++) {
       for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
       const [left, right] = lanes;
@@ -40,8 +40,9 @@ test.each([
 );
 
 test("the same right frame blocks the opening if added after building", async () => {
-  const world = await buildWorld();
-  const { lanes } = decomposition();
+  const world = await buildWorld(new Scene());
+  const { root, lanes } = decomposition();
+  world.root.add(root);
   for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
   for (const { cube } of lanes) expect(cube.position.y).toBeCloseTo(2.45, 2);
 });

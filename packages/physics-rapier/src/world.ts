@@ -17,7 +17,7 @@ import {
   ancestorBody,
   cleanup,
 } from "@drawcall/physics";
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
   synchronize,
   createBody,
@@ -51,34 +51,34 @@ export class RapierWorld extends SteppedWorld {
 
   constructor(
     private readonly api: typeof Rapier,
+    root: Object3D,
     options: RapierOptions = {},
   ) {
-    super(options);
+    super(root, options);
     this.backend = new api.World(new Vector3(...this.gravity));
     if (this.solverIterations !== undefined)
       this.backend.numSolverIterations = this.solverIterations;
     this.backend.timestep = this.fixedDelta;
     this.pending = new Pending(api, this.bodies);
   }
-  register(object: RigidBody | Joint | Trigger): void {
-    assertOwned(this, object);
+  protected add(object: RigidBody | Joint | Trigger): void {
     if (object instanceof RigidBody) this.objects.add(object);
     else if (object instanceof Trigger) {
       if (!this.triggers.has(object)) this.triggers.set(object, undefined);
     } else if (!this.joints.has(object)) this.joints.set(object, undefined);
   }
-  unregister(object: RigidBody | Joint | Trigger): void {
+  protected remove(object: RigidBody | Joint | Trigger): void {
     if (object instanceof RigidBody)
       for (const trigger of this.triggers.keys())
         if (ancestorBody(trigger) === object) this.interactions.remove(trigger);
     if (object instanceof RigidBody || object instanceof Trigger)
       this.interactions.remove(object);
     cleanup(
-      [() => this.remove(object), () => this.dispatch()],
+      [() => this.release(object), () => this.dispatch()],
       "Physics object removal failed",
     );
   }
-  private remove(object: RigidBody | Joint | Trigger): void {
+  private release(object: RigidBody | Joint | Trigger): void {
     if (object instanceof Trigger) {
       const binding = this.triggers.get(object);
       if (binding) removeTrigger(this.backend, binding);
@@ -250,7 +250,7 @@ export class RapierWorld extends SteppedWorld {
       );
     });
   }
-  raycast(
+  protected cast(
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,

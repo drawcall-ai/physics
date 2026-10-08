@@ -12,7 +12,7 @@ import {
   DistanceJoint,
   JointDrive,
 } from "@drawcall/physics";
-import { Matrix4, Vector3 } from "three";
+import { Matrix4, Scene as ThreeScene, Vector3 } from "three";
 import {
   buildWorld,
   type MujocoWorld,
@@ -20,11 +20,13 @@ import {
 } from "../src/index.js";
 import { Scene } from "../src/scene.js";
 const worlds: MujocoWorld[] = [];
+let scene = new ThreeScene();
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
+  scene = new ThreeScene();
 });
 async function world(options: MujocoOptions = {}) {
-  const value = await buildWorld({
+  const value = await buildWorld(scene, {
     gravity: [0, 0, 0],
     fixedDelta: 0.01,
     ...options,
@@ -35,6 +37,7 @@ async function world(options: MujocoOptions = {}) {
 function body(type: "dynamic" | "static" | "kinematic" = "dynamic") {
   const result = new RigidBody({ type, mass: 2 });
   result.add(new BoxCollider());
+  scene.add(result);
   return result;
 }
 function steps(value: MujocoWorld, count: number) {
@@ -92,6 +95,7 @@ test("queries exact primitives and collision masks, including triggers", async (
   const trigger = new Trigger();
   trigger.position.x = 1;
   trigger.add(new SphereCollider({ radius: 0.4 }));
+  scene.add(trigger);
   const ray = () => value.raycast(new Vector3(), new Vector3(1, 0, 0), 10);
   expect(ray()?.distance).toBeCloseTo(2.5);
   expect(
@@ -119,6 +123,7 @@ test("triggers emit aggregate enter/exit events without contact forces", async (
   const box = body();
   const trigger = new Trigger();
   trigger.add(new BoxCollider({ size: [2, 2, 2] }));
+  scene.add(trigger);
   const events: string[] = [];
   trigger.addEventListener("enter", () => events.push("enter"));
   trigger.addEventListener("exit", () => events.push("exit"));
@@ -234,7 +239,9 @@ test("generic joint exposes a driven linear degree of freedom", async () => {
 });
 
 test("validates options, ownership, scales, and unsupported closed joint chains", async () => {
-  await expect(buildWorld({ fixedDelta: 0 })).rejects.toThrow("fixedDelta");
+  await expect(buildWorld(scene, { fixedDelta: 0 })).rejects.toThrow(
+    "fixedDelta",
+  );
   const a = await world();
   const box = body();
   await expect(world()).rejects.toThrow("already built");
@@ -406,6 +413,7 @@ test("a stiffer friction impedance slows resting creep without raising the slide
     box.add(new BoxCollider({ size: [0.05, 0.05, 0.05] }));
     box.position.y = 0.076;
     box.applyMatrix4(tilt);
+    scene.add(slope, box);
     for (const object of [slope, box])
       object.setMaterial({
         staticFriction: 0.5,
@@ -549,6 +557,7 @@ test("collision groups collide only where each admits the other", async () => {
   floor.add(new BoxCollider({ size: [10, 1, 10] }));
   floor.position.y = -0.5;
   floor.setCollisionGroups({ membership: 1, filter: 7 });
+  scene.add(floor);
   const drop = (membership: number, filter: number, x: number, y = 1) => {
     const box = body();
     box.position.set(x, y, 0);
@@ -574,6 +583,7 @@ test("builds scenes of many colliders in time linear in their number", async () 
     const box = new RigidBody({ mass: 1 });
     box.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
     box.position.set((i % 30) * 0.2, Math.floor(i / 30) * 0.2, 0);
+    scene.add(box);
   }
   const started = performance.now();
   await world();

@@ -14,7 +14,7 @@ it("cleans every world registration after a removed listener throws", async () =
   const body = new RigidBody().add(new BoxCollider());
   const trigger = new Trigger().add(new BoxCollider());
   const second = new RigidBody({ type: "static" }).add(new BoxCollider());
-  new Group().add(body, trigger, second);
+  world.root.add(new Group().add(body, trigger, second));
   world.update(world.fixedDelta);
   const error = new Error("removed listener failed");
   trigger.addEventListener("removed", () => {
@@ -36,7 +36,7 @@ it("removes a body and all connected joints after a joint scene listener throws"
   const body = new RigidBody().add(new BoxCollider());
   const first = new FixedJoint({ body0: null, body1: body });
   const second = new FixedJoint({ body0: null, body1: body });
-  new Group().add(body, first, second);
+  world.root.add(new Group().add(body, first, second));
   world.update(world.fixedDelta);
   const error = new Error("joint removed listener failed");
   first.addEventListener("removed", () => {

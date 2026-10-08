@@ -5,14 +5,13 @@ import "./style.css";
 
 export function view(
   world: { update(delta: number): void; dispose(): void },
-  root: THREE.Object3D,
+  scene: THREE.Scene,
   target = new THREE.Vector3(0, 1, 0),
 ) {
   const canvas = document.querySelector("canvas");
   const status = document.querySelector("output");
   if (!canvas || !status) throw new Error("Missing canvas or status output");
-  const scene = new THREE.Scene();
-  scene.add(root, new THREE.HemisphereLight(0xffffff, 0x667788, 3));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 3));
   const light = new THREE.DirectionalLight(0xffffff, 3);
   scene.add(light, light.target);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });

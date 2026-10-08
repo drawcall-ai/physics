@@ -8,6 +8,7 @@ it("captures scale at initialization, including bodies added and removed during 
   const floor = new RigidBody({ type: "static" });
   floor.add(new Mesh(new BoxGeometry(30, 1, 30)));
   floor.position.y = -0.5;
+  world.root.add(floor);
   const spawn = (x: number, factor: number) => {
     const body = new RigidBody({ mass: 2 });
     expect(body.getVelocity().linear.length()).toBe(0);
@@ -20,6 +21,7 @@ it("captures scale at initialization, including bodies added and removed during 
     body.position.set(x / factor, 5 / factor, 0);
     const root = new Group().add(body);
     root.scale.setScalar(factor);
+    world.root.add(root);
     return { body, root };
   };
   const first = spawn(-4, 2);
@@ -45,6 +47,7 @@ it("keeps explicit mass and derives density mass and inertia from scaled geometr
     const body = new RigidBody({ mass }).setMaterial({ density: 1 });
     body.add(new Mesh(new BoxGeometry()));
     body.scale.setScalar(2);
+    world.root.add(body);
     world.update(world.fixedDelta);
     body.applyImpulse(new Vector3(8, 0, 0));
     expect(body.getVelocity().linear.x).toBeCloseTo(mass ? 4 : 1);
@@ -67,6 +70,7 @@ it("captures scaled joints added during simulation and preserves scale through t
   body.position.y = 3;
   body.add(new Mesh(new BoxGeometry()));
   root.add(body);
+  world.root.add(root);
   const joint = new FixedJoint({
     body0: null,
     body1: body,
@@ -89,6 +93,7 @@ it("captures new collider scale while rejecting edits to an existing collider's 
   const mesh = new Mesh(new BoxGeometry());
   body.add(mesh);
   mesh.scale.setScalar(2);
+  world.root.add(body);
   world.update(world.fixedDelta / 2);
   mesh.scale.setScalar(3);
   expect(() => world.update(world.fixedDelta)).toThrow(
@@ -108,11 +113,13 @@ it("preserves scale authored directly in a manual body matrix", async () => {
   const floor = new RigidBody({ type: "static" });
   floor.add(new Mesh(new BoxGeometry(20, 1, 20)));
   floor.position.y = -0.5;
+  world.root.add(floor);
   const body = new RigidBody();
   body.add(new Mesh(new BoxGeometry()));
   body.matrixAutoUpdate = false;
   body.matrix.makeScale(2, 2, 2).setPosition(0, 5, 0);
   body.matrixWorldNeedsUpdate = true;
+  world.root.add(body);
   for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
   expect(
     body.getWorldScale(new Vector3()).distanceTo(new Vector3(2, 2, 2)),

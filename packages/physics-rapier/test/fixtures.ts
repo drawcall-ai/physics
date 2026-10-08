@@ -1,7 +1,8 @@
 import { afterEach } from "vitest";
-import { BoxGeometry, Mesh } from "three";
+import { BoxGeometry, Mesh, Scene, type Object3D } from "three";
 import {
   RigidBody,
+  registry,
   type PhysicsWorld,
   type RigidBodyOptions,
   type RigidBodyType,
@@ -15,10 +16,16 @@ import {
 const worlds: RapierWorld[] = [];
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
+  // Objects a test never placed under a root outlive its world.
+  registry.clear();
 });
 
-export async function createWorld(options: RapierOptions = {}) {
-  const world = await buildWorld({
+/** Builds a world over `root`; tests add what it simulates to `world.root`. */
+export async function createWorld(
+  options: RapierOptions = {},
+  root: Object3D = new Scene(),
+) {
+  const world = await buildWorld(root, {
     gravity: [0, 0, 0],
     fixedDelta: 0.01,
     ...options,

@@ -24,6 +24,7 @@ it("queries authored and simulated surfaces, exits, source identity and multiple
     });
     body.position.x = x;
     body.add(new Mesh(new BoxGeometry(2, 2, 2)));
+    world.root.add(body);
     return body;
   });
   const [first, second, third] = bodies;
@@ -67,6 +68,7 @@ it("filters triggers/groups and rejects invalid ray inputs", async () => {
   trigger.add(
     new BoxCollider().setCollisionGroups({ membership: 2, filter: 4 }),
   );
+  world.root.add(trigger);
   world.update(0);
   const origin = new Vector3(-3, 0, 0),
     direction = new Vector3(1, 0, 0);
@@ -108,6 +110,7 @@ it("queries unprepared and attached triggers without capturing scale or aliasing
   trigger.position.x = 3;
   trigger.add(collider);
   body.add(trigger);
+  world.root.add(body);
   const origin = new Vector3(1, 0, 0),
     direction = new Vector3(1, 0, 0);
   const options = { includeTriggers: true, excludeBodies: [body] };
@@ -139,6 +142,7 @@ it("excludes disposed owners from raycasts inside event dispatch", async () => {
   const world = await createWorld();
   const body = new RigidBody({ type: "kinematic" }).add(new BoxCollider());
   const trigger = new Trigger().add(new BoxCollider());
+  world.root.add(body, trigger);
   trigger.addEventListener("enter", () => {
     body.dispose();
     trigger.dispose();
@@ -163,8 +167,10 @@ it("refreshes mesh collision when an interleaved position attribute changes its 
     "position",
     new InterleavedBufferAttribute(data, 3, 0),
   );
-  new RigidBody({ type: "static" }).add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+  world.root.add(
+    new RigidBody({ type: "static" }).add(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+    ),
   );
   world.update(0);
   const ray = () =>

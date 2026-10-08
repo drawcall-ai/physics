@@ -38,7 +38,7 @@ const hinge = new RevoluteJoint({
 hinge.position.x = 0.06;
 scene.add(frame, door, hinge);
 
-const world = await buildWorld({ gravity: [0, -9.81, 0] });
+const world = await buildWorld(scene, { gravity: [0, -9.81, 0] });
 
 // Call from your render loop with elapsed time in seconds.
 world.update(1 / 60);
@@ -54,15 +54,20 @@ changing it restarts the simulation.
 
 ## Building a world
 
-Bodies, joints, and triggers register immediately in the core's single `registry`.
 No engine is required to construct, clone, import, or export a scene. Finish the
-initial scene, then call `await buildWorld(options)` from your chosen backend.
+initial scene, then call `await buildWorld(root, options)` from your chosen backend.
 The returned world is ready for queries and simulation; building does not advance time.
 
-Building before scene construction also works. Subsequent registrations and
-disposals are forwarded to the attached backend, which prepares changes before
-stepping. Initial building decomposes the initial triangle meshes a backend cannot collide as
-triangles into convex parts: all of them in MuJoCo, those on moving bodies in Rapier.
+A world simulates the bodies and triggers under `root`, and the joints whose bodies
+are under it. A joint takes part wherever it sits in the hierarchy. The world
+updates its members at the start of every `update()` and before every step: adding
+an object under `root` brings it in, and removing it takes it out without disposing
+it. Objects outside `root` keep their authored state, so a hierarchy can be built
+in full before it is attached, and simulation commands on them throw.
+
+Building before scene construction also works. Initial building decomposes the
+triangle meshes under `root` a backend cannot collide as triangles into convex
+parts: all of them in MuJoCo, those on moving bodies in Rapier.
 A mesh that was not decomposed at build, because it was added or edited later, uses one
 convex hull there. There is no background decomposition.
 
@@ -72,7 +77,7 @@ edits are not seen, and a marked edit rebuilds the colliders that use the geomet
 the values did not change.
 
 Only one world may be built or building at a time. Failed builds leave authored
-objects registered so they can be corrected and the build retried.
+objects intact so they can be corrected and the build retried.
 
 Constructor options are copied and typed readonly: body type/mass, collider dimensions,
 joint bodies/frames/limits/dofs, and drive gains. `options` carries the resolved
@@ -83,10 +88,11 @@ and a drive's `setTarget`.
 Private state and readonly configuration use TypeScript; numeric physics and
 external-input constraints are checked at runtime.
 
-`body.dispose()` unregisters it and disposes connected joints and attached triggers.
-Removing a body from its Three.js parent does not dispose it. `world.dispose()`
-releases its objects, native resources, and registry attachment. `registry.clear()`
-disposes registered scene objects, including when no world has been built.
+`body.dispose()` removes it from the simulation and disposes connected joints and
+attached triggers. Removing a body from under the root only stops simulating it.
+`world.dispose()` disposes the objects it simulates and releases native resources
+and its registry attachment. `registry.objects` holds every live body, joint, and
+trigger; `registry.clear()` disposes them, including when no world has been built.
 
 ## Objects
 
@@ -197,7 +203,7 @@ joint body references. For a complete mechanism, use `clone(root)` from
 hierarchy and reconnects internal joint references to cloned bodies. External
 body references remain external. Copy requires matching immutable configuration;
 cloning recreates drives through their own constructors, so subclasses survive. Geometry and materials remain shared,
-application-owned resources. Clones register in their source world.
+application-owned resources. Clones join a world once they are added under its root.
 
 Explicit colliders use `setMaterial(...)` and
 `setCollisionGroups({ membership, filter })` with unsigned 16-bit masks.
@@ -372,7 +378,7 @@ and rigid bodies beneath them. Supported convex shapes depend on the adapter.
 ```ts
 import { BoxCollider, Trigger } from "@drawcall/physics";
 
-const goal = new Trigger(); // registers with the scene registry
+const goal = new Trigger(); // simulated once it is under the world's root
 goal.position.set(0.5, 0.8, 0);
 goal.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
 scene.add(goal);
@@ -411,7 +417,8 @@ completed-step observations. Returned arrays are snapshots. Reads do not run
 fresh geometry tests or guarantee sampling at final integrated poses. Before the
 first step the set is empty; `update(0)` does not populate it. Events dispatch
 after transforms and overlap state synchronize, before `onAfterStep`. Late listeners
-receive no replay. Triggers can be authored before building; overlap reads require a built world.
+receive no replay. Triggers can be authored before building; overlap reads require a built world
+with the trigger under its root.
 
 For a robot evaluation, require the gripper to occupy the region and remain
 nearly stationary for half a simulated second, within ten simulated seconds:

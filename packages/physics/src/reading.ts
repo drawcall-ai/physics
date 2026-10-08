@@ -107,5 +107,7 @@ export function wrapAngle(angle: number): number {
 
 export function readJoint(object: Joint): JointReading {
   registry.assertRegistered(object);
-  return registry.world?.readJoint(object) ?? sceneJointReading(object);
+  return (
+    registry.worldOf(object)?.readJoint(object) ?? sceneJointReading(object)
+  );
 }

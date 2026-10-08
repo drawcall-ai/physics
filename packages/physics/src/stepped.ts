@@ -1,11 +1,11 @@
-import type { Matrix4, Vector3 } from "three";
-import type { RigidBody } from "./body.js";
-import type { Joint } from "./joint.js";
-import type { Trigger } from "./trigger.js";
+import type { Matrix4, Object3D, Vector3 } from "three";
+import { RigidBody } from "./body.js";
+import { Joint } from "./joint.js";
+import { Trigger } from "./trigger.js";
 import type { Vec3 } from "./colliders.js";
 import { cleanup } from "./cleanup.js";
 import { Interactions } from "./interactions.js";
-import { registry, assertOwned } from "./registry.js";
+import { registry, assertOwned, inside } from "./registry.js";
 import {
   assertLive,
   type JointReading,
@@ -18,10 +18,11 @@ import {
 
 /**
  * The fixed-step clock, step callbacks, event dispatch and lifecycle every backend shares.
- * A backend supplies the simulation: what to reconcile before a step, the step itself, and how
- * its state is restored, released and freed.
+ * A backend supplies the simulation: how objects enter and leave it, what to reconcile before a
+ * step, the step itself, and how its state is restored, released and freed.
  */
 export abstract class SteppedWorld implements PhysicsWorld {
+  readonly root: Object3D;
   readonly fixedDelta: number;
   protected readonly gravity: Vec3;
   /** Undefined leaves the backend's own default in place. */
@@ -30,12 +31,14 @@ export abstract class SteppedWorld implements PhysicsWorld {
   private readonly maxSubsteps: number;
   private readonly before = new Set<(delta: number) => void>();
   private readonly after = new Set<(delta: number) => void>();
+  private readonly members = new Set<RigidBody | Joint | Trigger>();
   private elapsed = 0;
   private completed = 0;
   private updating = false;
   private isDisposed = false;
 
-  constructor(options: PhysicsOptions) {
+  constructor(root: Object3D, options: PhysicsOptions) {
+    this.root = root;
     this.fixedDelta = options.fixedDelta ?? 1 / 60;
     this.maxSubsteps = options.maxSubsteps ?? 5;
     this.gravity = [...(options.gravity ?? [0, -9.81, 0])];
@@ -59,9 +62,25 @@ export abstract class SteppedWorld implements PhysicsWorld {
     return this.isDisposed;
   }
 
-  abstract register(object: RigidBody | Joint | Trigger): void;
-  abstract unregister(object: RigidBody | Joint | Trigger): void;
-  abstract raycast(
+  unregister(object: RigidBody | Joint | Trigger): void {
+    if (this.members.delete(object)) this.remove(object);
+  }
+  /** Adds an object that entered the root; a joint arrives after its bodies. */
+  protected abstract add(object: RigidBody | Joint | Trigger): void;
+  /** Removes an object that left the root or was disposed; a joint leaves before its bodies. */
+  protected abstract remove(object: RigidBody | Joint | Trigger): void;
+  raycast(
+    origin: Vector3,
+    direction: Vector3,
+    maxDistance: number,
+    options?: RaycastOptions,
+  ): RaycastHit | null {
+    assertLive(this);
+    this.sync();
+    return this.cast(origin, direction, maxDistance, options);
+  }
+  /** Raycasts against the current members; objects added since the last update included. */
+  protected abstract cast(
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,
@@ -100,6 +119,7 @@ export abstract class SteppedWorld implements PhysicsWorld {
       throw new Error("delta must be finite and nonnegative");
     this.updating = true;
     try {
+      this.sync();
       this.prepare();
       this.elapsed = Math.min(
         this.elapsed + delta,
@@ -110,6 +130,7 @@ export abstract class SteppedWorld implements PhysicsWorld {
           callback(this.fixedDelta);
           if (this.isDisposed) return;
         }
+        this.sync();
         this.step();
         this.elapsed -= this.fixedDelta;
         this.completed += this.fixedDelta;
@@ -166,6 +187,29 @@ export abstract class SteppedWorld implements PhysicsWorld {
     return () => {
       this.after.delete(callback);
     };
+  }
+  /** Adds the objects now inside the root and removes those that left it. */
+  private sync(): void {
+    const current = new Set<RigidBody | Joint | Trigger>();
+    this.root.traverse((object) => {
+      if (object instanceof RigidBody || object instanceof Trigger)
+        current.add(object);
+    });
+    for (const object of registry.objects)
+      if (object instanceof Joint && inside(this.root, object))
+        current.add(object);
+    const leaving = [...this.members]
+      .filter((object) => !current.has(object))
+      .sort((a, b) => Number(b instanceof Joint) - Number(a instanceof Joint));
+    cleanup(
+      leaving.map((object) => () => this.unregister(object)),
+      "Physics object removal failed",
+    );
+    for (const object of current) {
+      if (this.members.has(object)) continue;
+      this.add(object);
+      this.members.add(object);
+    }
   }
   protected assertIdle(): void {
     if (this.updating || this.interactions.dispatching)

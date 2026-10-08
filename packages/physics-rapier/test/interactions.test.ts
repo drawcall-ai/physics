@@ -11,6 +11,7 @@ it("samples initial overlaps once per step, returns snapshots, and dispatches be
   const world = await createWorld();
   const goal = region();
   const body = box("static");
+  world.root.add(goal, body);
   const order: string[] = [];
   goal.addEventListener("enter", (event) => {
     expect(event.target).toBe(goal);
@@ -44,6 +45,7 @@ it("aggregates compound body and trigger shapes without shape-handoff noise", as
   const body = new RigidBody({ type: "kinematic" });
   body.add(new BoxCollider(), new BoxCollider());
   body.position.x = -1.5;
+  world.root.add(goal, body);
   const enter = vi.fn(),
     exit = vi.fn();
   goal.addEventListener("enter", enter);
@@ -63,6 +65,7 @@ it("does not equate scene detachment with disposal and clears disposed occupants
   const goal = region();
   const body = box("static");
   const scene = new Group().add(goal, body);
+  world.root.add(scene);
   const exit = vi.fn();
   goal.addEventListener("exit", ({ body: other }) => {
     expect(other.disposed).toBe(true);
@@ -70,18 +73,27 @@ it("does not equate scene detachment with disposal and clears disposed occupants
     exit();
   });
   world.update(world.fixedDelta);
-  scene.remove(body, goal);
+  // Detached from their scene but still under the root, both stay simulated.
+  world.root.add(body, goal);
   world.update(world.fixedDelta);
   expect(goal.overlaps(body)).toBe(true);
   body.dispose();
   expect(exit).toHaveBeenCalledTimes(1);
   expect(goal.getOverlappingBodies()).toEqual([]);
+  // Leaving the root removes the trigger from the simulation without disposing it.
+  world.root.remove(goal);
+  world.update(world.fixedDelta);
+  expect(goal.disposed).toBe(false);
+  expect(() => goal.getOverlappingBodies()).toThrow(
+    "Physics object is outside the world's root",
+  );
 });
 
 it("resets overlap samples silently and establishes fresh enters on the next step", async () => {
   const world = await createWorld();
   const goal = region();
   const body = box("static");
+  world.root.add(goal, body);
   const enter = vi.fn(),
     exit = vi.fn();
   goal.addEventListener("enter", enter);
@@ -99,8 +111,8 @@ it.each(["static", "kinematic", "dynamic"] as const)(
   async (type) => {
     const world = await createWorld();
     const goal = region();
-    region();
     const body = box(type);
+    world.root.add(goal, region(), body);
     world.update(world.fixedDelta);
     expect(goal.getOverlappingBodies()).toEqual([body]);
   },
@@ -110,6 +122,7 @@ it("detects initially sleeping occupants and preserves their overlap while aslee
   const world = await createWorld();
   const goal = region();
   const body = box();
+  world.root.add(goal, body);
   body.sleep();
   const enter = vi.fn(),
     exit = vi.fn();
@@ -129,6 +142,7 @@ it("attaches to body motion, excludes its parent, and detects a joint neighbor",
   const goal = region();
   goal.position.x = 1;
   parent.add(new Group().add(goal));
+  world.root.add(parent, other);
   new FixedJoint({ body0: parent, body1: other });
   world.update(world.fixedDelta);
   expect(goal.overlaps(parent)).toBe(false);
@@ -151,6 +165,7 @@ it.each(["inferred", "normalized", "explicit"])(
     const goal = region(10);
     goal.position.x = 10;
     body.add(goal);
+    world.root.add(body);
     world.update(0);
     body.applyImpulse(new Vector3(0, 2, 0), new Vector3());
     expect(body.getVelocity().linear.y).toBeCloseTo(1, 5);
@@ -173,6 +188,7 @@ it("applies owner masks, complete collider overrides, and live filter changes", 
   });
   const shape = new BoxCollider();
   body.add(shape);
+  world.root.add(goal, body);
   const enter = vi.fn(),
     exit = vi.fn();
   goal.addEventListener("enter", enter);
@@ -196,6 +212,7 @@ it("keeps overlap state through unrelated material and body setting rebuilds", a
   const world = await createWorld();
   const goal = region();
   const body = box();
+  world.root.add(goal, body);
   const enter = vi.fn(),
     exit = vi.fn();
   goal.addEventListener("enter", enter);
@@ -215,6 +232,7 @@ it("aggregates compound solid contacts and notifies both bodies", async () => {
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider(), new BoxCollider());
   body.position.y = 0.9;
+  world.root.add(floor, body);
   const bodyBegin = vi.fn(),
     floorBegin = vi.fn(),
     bodyEnd = vi.fn(),
@@ -240,6 +258,7 @@ it("defers disposal exits until the current dispatch completes", async () => {
   const world = await createWorld();
   const goal = region();
   const body = box("kinematic");
+  world.root.add(goal, body);
   const order: string[] = [];
   goal.addEventListener("enter", () => {
     order.push("enter");
@@ -256,6 +275,7 @@ it("rejects reentrant simulation and propagates listener errors without replay",
   const world = await createWorld();
   const goal = region();
   const body = box("kinematic");
+  world.root.add(goal, body);
   const after = vi.fn();
   world.onAfterStep(after);
   const listener = () => {
@@ -280,6 +300,7 @@ it("keeps resting solid contacts through sleep without duplicate transitions", a
   const floor = box("static");
   const body = box();
   body.position.y = 1;
+  world.root.add(floor, body);
   const begin = vi.fn(),
     end = vi.fn();
   body.addEventListener("contactbegin", begin);
@@ -296,9 +317,10 @@ it("keeps resting solid contacts through sleep without duplicate transitions", a
 
 it("filters solid response as well as events and permits live owner-mask changes", async () => {
   const world = await createWorld();
-  box("static").setCollisionGroups({ membership: 1, filter: 2 });
+  const floor = box("static").setCollisionGroups({ membership: 1, filter: 2 });
   const body = box().setCollisionGroups({ membership: 2, filter: 0 });
   body.position.y = 0.9;
+  world.root.add(floor, body);
   const begin = vi.fn();
   body.addEventListener("contactbegin", begin);
   steps(world, 3);
@@ -313,7 +335,7 @@ it("filters solid response as well as events and permits live owner-mask changes
 it("does not dispatch teardown exits while disposing the world", async () => {
   const world = await createWorld();
   const goal = region();
-  box("static");
+  world.root.add(goal, box("static"));
   const exit = vi.fn();
   goal.addEventListener("exit", exit);
   world.update(world.fixedDelta);
@@ -329,6 +351,7 @@ it("finishes body disposal even when its exit listener throws", async () => {
   const attached = region();
   body.add(attached);
   const parent = new Group().add(body);
+  world.root.add(goal, parent);
   const fail = () => {
     throw new Error("exit failed");
   };
@@ -352,6 +375,7 @@ it("detects separate static bodies from a static attachment while excluding its 
   const other = box("static");
   const goal = region();
   parent.add(goal);
+  world.root.add(parent, other);
   world.update(world.fixedDelta);
   expect(goal.getOverlappingBodies()).toEqual([other]);
   expect(goal.overlaps(parent)).toBe(false);
@@ -366,9 +390,10 @@ it("does not retain invalid native trigger handles after unregistering their par
   const trigger = new Trigger().add(new BoxCollider());
   parent.add(trigger);
   const target = box("static");
+  world.root.add(parent, target);
   world.update(world.fixedDelta);
   world.unregister(parent);
-  world.register(parent);
+  // The parent is still under the root, so the next update adds it back.
   world.update(world.fixedDelta);
   expect(trigger.overlaps(target)).toBe(true);
 });
@@ -381,6 +406,7 @@ it("delivers the whole batch of contact events even when a listener throws", asy
   const floor = box("static");
   const body = box();
   body.position.y = 1;
+  world.root.add(floor, body);
   const floorBegin = vi.fn();
   body.addEventListener("contactbegin", () => {
     throw new Error("listener failed");

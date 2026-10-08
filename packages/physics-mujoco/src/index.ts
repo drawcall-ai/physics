@@ -1,4 +1,5 @@
 import loadMujoco, { type MainModule } from "@mujoco/mujoco";
+import type { Object3D } from "three";
 import {
   RigidBody,
   buildRegistered,
@@ -9,10 +10,12 @@ import { MujocoWorld, type MujocoOptions } from "./world.js";
 export type { MujocoWorld, MujocoOptions } from "./world.js";
 
 const modules = new Map<string | undefined, Promise<MainModule>>();
+/** Builds the world that simulates the bodies and triggers under `root`, and the joints between them. */
 export async function buildWorld(
+  root: Object3D,
   options: MujocoOptions = {},
 ): Promise<MujocoWorld> {
-  return buildRegistered(async (initial) => {
+  return buildRegistered(root, async (initial) => {
     const url = options.wasmUrl;
     let loading = modules.get(url);
     if (!loading) {
@@ -30,6 +33,6 @@ export async function buildWorld(
           body.bodyType !== "static" || !heightfield(geometry, "grid"),
       ),
     ]);
-    return new MujocoWorld(api, options);
+    return new MujocoWorld(api, root, options);
   });
 }

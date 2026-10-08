@@ -6,6 +6,7 @@ import { createWorld, inertialBody } from "./fixtures.js";
 it("prepares before observers and applies the effort held at step time for one substep", async () => {
   const world = await createWorld();
   const body = inertialBody();
+  world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const other = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const effort = new JointDrive({}).setTarget({ effort: 5 });
@@ -46,6 +47,7 @@ for (const Joint of [RevoluteJoint, PrismaticJoint])
     const first = inertialBody(),
       second = inertialBody();
     parent.add(first, second);
+    world.root.add(parent);
     const frame = new Matrix4().makeRotationY(Math.PI / 2).setPosition(0, 1, 0);
     const joint = new Joint({
       body0: first,
@@ -76,6 +78,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     angular: new Vector3(0, 0, 3),
   });
   second.position.set(2, 1, 0);
+  world.root.add(first, second);
   const slider = new PrismaticJoint({
     body0: first,
     body1: second,
@@ -106,6 +109,7 @@ for (const speed of [8, -8])
     const body = inertialBody().setVelocity({
       angular: new Vector3(0, 0, speed),
     });
+    world.root.add(body);
     const hinge = new RevoluteJoint({
       body0: null,
       body1: body,
@@ -125,6 +129,7 @@ it("applies runtime damping/gravity settings while preserving the initialized ve
   const body = inertialBody()
     .setVelocity({ linear: new Vector3(2, 0, 0) })
     .setGravityScale(0);
+  world.root.add(body);
   world.update(0.01);
   expect(body.getVelocity().linear.toArray()).toEqual([2, 0, 0]);
   body

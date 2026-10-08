@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { buildWorld } from "../backend";
 import { createCar, simulationOptions } from "./model";
 import { createRoad } from "./road";
@@ -8,10 +9,10 @@ import { view } from "../view";
 const car = createCar();
 const road = createRoad();
 const goal = createGoal(car.chassis);
-road.add(car.root, goal.trigger);
-const world = await buildWorld(simulationOptions);
+const scene = new THREE.Scene().add(road, car.root, goal.trigger);
+const world = await buildWorld(scene, simulationOptions);
 const driver = driveCar(world, car);
-const demo = view(world, road, car.chassis.position);
+const demo = view(world, scene, car.chassis.position);
 const keys = new Set<string>();
 window.addEventListener(
   "keydown",

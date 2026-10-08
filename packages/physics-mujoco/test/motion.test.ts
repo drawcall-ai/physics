@@ -7,14 +7,19 @@ import {
   jointDofs,
   PrismaticJoint,
 } from "@drawcall/physics";
-import { Matrix4, Vector3 } from "three";
+import { Matrix4, Scene, Vector3 } from "three";
 import { buildWorld, type MujocoWorld } from "../src/index.js";
 const worlds: MujocoWorld[] = [];
+let scene = new Scene();
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
+  scene = new Scene();
 });
 async function world() {
-  const value = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+  const value = await buildWorld(scene, {
+    gravity: [0, 0, 0],
+    fixedDelta: 0.01,
+  });
   worlds.push(value);
   return value;
 }
@@ -42,6 +47,7 @@ test("angular-only velocity updates preserve center-of-mass linear velocity", as
     diagonalInertia: [1, 1, 1],
   });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   body.setVelocity({ linear: new Vector3(2, 3, 4) });
   body.setVelocity({ angular: new Vector3(0, 0, 1) });
@@ -56,6 +62,7 @@ test("velocity updates copy both caller-owned vectors", async () => {
     diagonalInertia: [1, 1, 1],
   });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   const linear = new Vector3(4, 5, 6);
   const angular = new Vector3(1, 2, 3);
@@ -73,6 +80,7 @@ test.each(jointDofs)(
     const value = await world();
     const body = new RigidBody({ mass: 1 });
     body.add(new BoxCollider());
+    scene.add(body);
     body.scale.set(0.1, 0.2, 0.3);
     const joint = free(body);
     joint.setDrive(
@@ -89,8 +97,10 @@ test("a free drive accounts for both moving endpoints", async () => {
   const value = await world();
   const a = new RigidBody({ mass: 1 });
   a.add(new BoxCollider());
+  scene.add(a);
   const b = new RigidBody({ mass: 3 });
   b.add(new BoxCollider());
+  scene.add(b);
   b.position.x = 2;
   const joint = free(b, a);
   joint.setDrive(
@@ -108,6 +118,7 @@ test("free spring predicts motion and includes effort in the implicit solve", as
   const value = await world();
   const body = new RigidBody({ mass: 2 });
   body.add(new BoxCollider());
+  scene.add(body);
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   const joint = free(body);
   joint.setDrive(
@@ -132,12 +143,14 @@ test("frame-relative translation applies its reaction at the driven anchor", asy
     diagonalInertia: [1, 1, 1],
   });
   a.add(new BoxCollider());
+  scene.add(a);
   const b = new RigidBody({
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
   b.add(new BoxCollider());
+  scene.add(b);
   b.position.x = 2;
   free(b, a).setDrive("transY", new JointDrive({}).setTarget({ effort: 1 }));
   value.update(value.fixedDelta);
@@ -151,6 +164,7 @@ test("free acceleration drive between static endpoints has no response", async (
   const value = await world();
   const body = new RigidBody({ type: "static" });
   body.add(new BoxCollider());
+  scene.add(body);
   free(body).setDrive(
     "transX",
     new JointDrive({ damping: 1, model: "acceleration" }).setTarget({
@@ -165,6 +179,7 @@ test("kinematic target and motion survive rebuilding, teleport, and reset", asyn
   const value = await world();
   const body = new RigidBody({ type: "kinematic", mass: 2 });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   const target = new Matrix4().makeRotationZ(0.3).setPosition(0, 1, 0);
   body.setKinematicTarget(target);
@@ -175,6 +190,7 @@ test("kinematic target and motion survive rebuilding, teleport, and reset", asyn
   expect(velocity.angular.z).toBeGreaterThan(0);
   const extra = new RigidBody({ type: "static" });
   extra.add(new BoxCollider());
+  scene.add(extra);
   extra.position.x = 10;
   value.update(0);
   expect(body.position.distanceTo(position)).toBeLessThan(1e-10);
@@ -200,6 +216,7 @@ test("kinematic target and motion survive rebuilding, teleport, and reset", asyn
 test("colliderless kinematic targets remain valid moving anchors", async () => {
   const value = await world();
   const body = new RigidBody({ type: "kinematic", colliders: false });
+  scene.add(body);
   value.update(0);
   body.setKinematicTarget(new Matrix4().makeTranslation(1, 2, 3));
   for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
@@ -222,6 +239,7 @@ test.each([false, true])(
     const collider = new BoxCollider();
     collider.position.x = 1;
     body.add(collider);
+    scene.add(body);
     body.setVelocity({ angular: new Vector3(0, 0, 2) });
     const joint = new PrismaticJoint({
       body0: null,

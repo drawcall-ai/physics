@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { ancestorBody } from "@drawcall/physics";
 import { buildWorld } from "../backend";
 import { forwardHtmlEvents } from "@pmndrs/pointer-events";
@@ -5,8 +6,10 @@ import { createRagdoll, simulationOptions } from "./model";
 import { grab } from "./grab";
 import { view } from "../view";
 
-const scene = createRagdoll();
-const world = await buildWorld(simulationOptions);
+const scene = new THREE.Scene();
+const ragdoll = createRagdoll();
+scene.add(ragdoll);
+const world = await buildWorld(scene, simulationOptions);
 const demo = view(world, scene);
 const pointer = forwardHtmlEvents(demo.canvas, demo.camera, scene, {
   batchEvents: false,

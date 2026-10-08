@@ -217,6 +217,7 @@ export function specimen(spec: Case, spin = false) {
 
 export function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(spec);
+  world.root.add(item.root);
   const stop = world.onAfterStep(item.step);
   try {
     try {

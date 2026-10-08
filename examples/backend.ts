@@ -1,3 +1,4 @@
+import type { Object3D } from "three";
 import type { PhysicsOptions } from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
@@ -29,8 +30,8 @@ window.addEventListener("unhandledrejection", (event) => {
   if (status) status.textContent = String(event.reason);
 });
 
-export function buildWorld(options: PhysicsOptions = {}) {
+export function buildWorld(root: Object3D, options: PhysicsOptions = {}) {
   return backend === "mujoco"
-    ? buildMujoco({ ...options, wasmUrl })
-    : buildRapier(options);
+    ? buildMujoco(root, { ...options, wasmUrl })
+    : buildRapier(root, options);
 }

@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { Scene } from "three";
 import { RigidBody } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-rapier";
 import { createRagdoll, simulationOptions } from "../model";
@@ -6,9 +7,11 @@ import { createRagdoll, simulationOptions } from "../model";
 it.each([15, 30, 60])(
   "falls forward without rebounding upright at %i FPS",
   async (fps) => {
-    const world = await buildWorld(simulationOptions);
+    const root = new Scene();
+    const world = await buildWorld(root, simulationOptions);
     try {
       const scene = createRagdoll();
+      root.add(scene);
       const bodies = scene.children.filter(
         (object): object is RigidBody =>
           object instanceof RigidBody && object.bodyType === "dynamic",

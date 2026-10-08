@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import { RigidBody, BoxCollider } from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
@@ -20,8 +20,11 @@ describe.each([
     "both front wheels steer and recenter at rest with brake=$brake and dt=$fixedDelta",
     async ({ brake, fixedDelta }) => {
       const car = createCar();
-      createRoad();
-      const world = await buildWorld({ ...simulationOptions, fixedDelta });
+      const scene = new Scene().add(car.root, createRoad());
+      const world = await buildWorld(scene, {
+        ...simulationOptions,
+        fixedDelta,
+      });
       const driver = driveCar(world, car);
       driver.input.automatic = false;
       driver.input.brake = brake;
@@ -74,13 +77,15 @@ describe.each([
   ])(
     "tracks steering reversals without wobble with throttle=$throttle and brake=$brake",
     async ({ throttle, brake }) => {
-      const world = await buildWorld(simulationOptions);
+      const scene = new Scene();
+      const world = await buildWorld(scene, simulationOptions);
       const car = createCar();
       const floor = new RigidBody({ type: "static" });
       floor.position.y = -0.15;
       const collider = new BoxCollider({ size: [200, 0.3, 200] });
       collider.setCollisionGroups({ membership: 1, filter: 2 });
       floor.add(collider);
+      scene.add(car.root, floor);
       const driver = driveCar(world, car);
       driver.input.automatic = false;
       driver.input.brake = brake;

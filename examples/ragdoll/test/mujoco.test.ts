@@ -1,14 +1,16 @@
 import { expect, test } from "vitest";
 import { RigidBody } from "@drawcall/physics";
-import { Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { createRagdoll, simulationOptions } from "../model";
 import { grab } from "../grab";
 
 test("MuJoCo ragdoll falls, can be grabbed and released, and resets", async () => {
-  const world = await buildWorld(simulationOptions);
+  const root = new Scene();
+  const world = await buildWorld(root, simulationOptions);
   try {
     const scene = createRagdoll();
+    root.add(scene);
     const pelvis = scene.getObjectByName("Pelvis");
     if (!(pelvis instanceof RigidBody)) throw new Error("Missing pelvis");
     for (let i = 0; i < 240; i++) world.update(world.fixedDelta);

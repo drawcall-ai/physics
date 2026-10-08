@@ -17,7 +17,7 @@ import {
   type PhysicsVelocity,
   type RaycastOptions,
 } from "@drawcall/physics";
-import { Matrix4, Vector3 } from "three";
+import { Matrix4, Vector3, type Object3D } from "three";
 import { type Compiled } from "./model/compile.js";
 import { array, at, pose, vector } from "./values.js";
 import {
@@ -59,9 +59,10 @@ export class MujocoWorld extends SteppedWorld {
   private readonly targets = new Map<RigidBody, Matrix4>();
   constructor(
     private readonly api: MainModule,
+    root: Object3D,
     options: MujocoOptions = {},
   ) {
-    super(options);
+    super(root, options);
     const frictionImpedanceRatio = options.frictionImpedanceRatio ?? 1;
     const frictionCone = options.frictionCone ?? "pyramidal";
     if (!Number.isFinite(frictionImpedanceRatio) || frictionImpedanceRatio < 1)
@@ -78,11 +79,10 @@ export class MujocoWorld extends SteppedWorld {
       frictionCone,
     });
   }
-  register(object: RigidBody | Joint | Trigger): void {
-    assertOwned(this, object);
+  protected add(object: RigidBody | Joint | Trigger): void {
     this.scene.register(object);
   }
-  unregister(object: RigidBody | Joint | Trigger): void {
+  protected remove(object: RigidBody | Joint | Trigger): void {
     if (!(object instanceof Joint)) this.interactions.remove(object);
     if (object instanceof RigidBody) this.targets.delete(object);
     cleanup(
@@ -259,7 +259,7 @@ export class MujocoWorld extends SteppedWorld {
     if (record) reading.angle = record.angle;
     return reading;
   }
-  raycast(
+  protected cast(
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,

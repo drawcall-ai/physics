@@ -10,13 +10,13 @@ import { BoxGeometry, Mesh, Vector3 } from "three";
 const body = new RigidBody({ mass: 1 });
 body.add(new Mesh(new BoxGeometry(1, 1, 1)));
 scene.add(body);
-const world = await buildWorld({ gravity: [0, -9.81, 0] });
+const world = await buildWorld(scene, { gravity: [0, -9.81, 0] });
 world.update(deltaSeconds);
 ```
 
-`buildWorld()` initializes Rapier, attaches to the single physics registry, and prepares all registered objects without advancing time. Create the initial scene first; building an empty world and adding objects later also works. Only one world can be attached at a time.
+`buildWorld(root)` initializes Rapier, attaches to the single physics registry, and prepares the objects under `root` without advancing time. It simulates the bodies and triggers under `root` and the joints between them; objects added under `root` later join at the next update, and objects removed from it leave without being disposed. Create the initial scene first; building an empty world and adding objects later also works. Only one world can be attached at a time.
 
-`buildWorld({ solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
+`buildWorld(root, { solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
 
 Dynamic bodies need colliders or complete explicit mass properties; static and kinematic bodies may be colliderless. Construction and registration never create a backend body. Complete geometry, scale, and parenting before the next `world.update(delta)`. Even `update(0)` and sub-timestep updates prepare bodies, colliders, mass properties, and joints without advancing simulation time. Pending objects are also prepared before before-step callbacks; changes and objects created in those callbacks are synchronized before the solver runs.
 
@@ -50,7 +50,7 @@ Axis `joint.getState()` returns position/velocity immediately, including rotatin
 
 This is a breaking API change: release the packages together under a new minor version and migrate scene consumers before deploying that release.
 
-`body.dispose()` unregisters its physics resources and connected joints. Removing a visual from its parent does not dispose physics. `world.dispose()` disposes all registered physics objects and frees Rapier. Geometry and materials remain owned by the application.
+`body.dispose()` releases its physics resources and connected joints. Removing a body from under the root stops simulating it without disposing it. `world.dispose()` disposes the physics objects it simulates and frees Rapier. Geometry and materials remain owned by the application.
 
 Rapier's own limits are tested in `test/rapier.test.ts`: equal static/dynamic friction, distance joints with a zero minimum, revolute position targets within π of the current angle, and positive integer solver iterations. Distance joints are Rapier spring joints: a finite maximum becomes their rope limit, and a `JointDrive` acts on the spring's coupled linear axis. Generic joints map to Rapier generic joints with per-axis limits and motors. Unsupported authored data fails visibly.
 

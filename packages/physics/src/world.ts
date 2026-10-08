@@ -61,7 +61,9 @@ export type RaycastHit = RaycastGeometry &
 
 export interface PhysicsWorld {
   readonly disposed: boolean;
-  register(object: RigidBody | Joint | Trigger): void;
+  /** The world simulates the bodies and triggers under this root, and the joints between them. */
+  readonly root: Object3D;
+  /** Backend integration: removes a disposed object from the simulation. */
   unregister(object: RigidBody | Joint | Trigger): void;
   readonly fixedDelta: number;
   readonly time: number;

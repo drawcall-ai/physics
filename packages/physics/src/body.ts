@@ -179,14 +179,15 @@ export class RigidBody extends Group<RigidBodyEventMap> {
 
   getVelocity(): PhysicsVelocity {
     this.assertLive();
-    return registry.world?.getVelocity(this) ?? authoredVelocity(this);
+    return registry.worldOf(this)?.getVelocity(this) ?? authoredVelocity(this);
   }
   setVelocity(value: Partial<PhysicsVelocity>): this {
     if (value.linear) validateVector(value.linear);
     if (value.angular) validateVector(value.angular);
     this.assertLive();
     this.assertDynamic("Velocity");
-    if (registry.world) registry.world.setVelocity(this, value);
+    const world = registry.worldOf(this);
+    if (world) world.setVelocity(this, value);
     else setAuthoredVelocity(this, value);
     return this;
   }
@@ -211,7 +212,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       }),
     );
     for (const [member, pose] of poses) setWorldPose(member, pose);
-    registry.world?.teleport(this);
+    registry.worldOf(this)?.teleport(this);
     return this;
   }
   setKinematicTarget(matrix: Matrix4): void {

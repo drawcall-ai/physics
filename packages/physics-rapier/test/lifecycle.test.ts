@@ -17,6 +17,7 @@ const setup = () => createWorld({ fixedDelta: 1 / 60 });
 it("reads and queries construction state without capturing unfinished scale or replaying impulses", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 2 });
+  world.root.add(body);
   const input = new Vector3(1, 0, 0);
   body.setVelocity({ linear: input });
   input.x = 99;
@@ -33,6 +34,7 @@ it("reads and queries construction state without capturing unfinished scale or r
   body.applyImpulse(new Vector3(2, 0, 0));
   body.position.set(1, 3, 0);
   const parent = new Group().add(body);
+  world.root.add(parent);
   parent.scale.setScalar(2);
   expect(body.getVelocity().linear.x).toBeCloseTo(3);
   world.update(world.fixedDelta);
@@ -47,6 +49,7 @@ it("reads and queries construction state without capturing unfinished scale or r
 it("initializes on a short update without advancing time and prepares before observers", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 2 });
+  world.root.add(body);
   body.add(new BoxCollider());
   body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.update(world.fixedDelta / 2);
@@ -55,6 +58,7 @@ it("initializes on a short update without advancing time and prepares before obs
   const next = new RigidBody({ mass: 2 });
   next.add(new BoxCollider());
   next.position.x = 10;
+  world.root.add(next);
   world.onBeforeStep(() => next.applyImpulse(new Vector3(2, 0, 0)));
   world.update(world.fixedDelta / 2);
   expect(body.position.x).toBeCloseTo(2 * world.fixedDelta);
@@ -65,6 +69,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
   const world = await setup();
   const body = new RigidBody({ mass: 2 });
   const parent = new Group().add(body);
+  world.root.add(parent);
   parent.position.set(3, 4, 5);
   parent.rotation.y = 0.4;
   parent.scale.setScalar(2);
@@ -98,6 +103,7 @@ for (const axis of ["X", "Y", "Z"] as const)
     body.position.set(2, 3, 4);
     body.scale.setScalar(2);
     body.add(new BoxCollider());
+    world.root.add(body);
     const joint = new RevoluteJoint({
       body0: null,
       body1: body,
@@ -121,6 +127,7 @@ for (const axis of ["X", "Y", "Z"] as const)
 it("rejects disposed, foreign and invalid operations while accepting staged commands", async () => {
   const world = await setup();
   const body = new RigidBody({ type: "kinematic" });
+  world.root.add(body);
   expect(() => body.setVelocity({ linear: new Vector3(NaN, 0, 0) })).toThrow(
     "finite",
   );
@@ -142,6 +149,7 @@ for (const kind of ["spherical", "distance"] as const)
     body.add(new BoxCollider());
     body.position.y = 2;
     body.rotation.z = 0.3;
+    world.root.add(body);
     const options = {
       body0: null,
       body1: body,
@@ -162,6 +170,7 @@ it("preserves world scale through static teleport and reset under a nonuniform p
   const body = new RigidBody({ type: "static" });
   body.add(new BoxCollider());
   const parent = new Group().add(body);
+  world.root.add(parent);
   parent.scale.set(2, 3, 4);
   world.update(0);
   const scale = body.getWorldScale(new Vector3());
@@ -195,6 +204,7 @@ it("applies staged forces once and keeps replacing the drive effort held at each
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
+  world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const drive = new JointDrive({});
   joint.setDrive(drive);
@@ -218,14 +228,17 @@ it("clears staged commands on reset and disposal, and replaces kinematic targets
   const world = await setup();
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider());
+  world.root.add(body);
   body.applyImpulse(new Vector3(5, 0, 0));
   body.applyForce(new Vector3(5, 0, 0));
   body.sleep();
   body.wake();
   const discarded = new RigidBody({ mass: 1 });
+  world.root.add(discarded);
   discarded.applyForce(new Vector3(1, 0, 0));
   discarded.dispose();
   const kinematic = new RigidBody({ type: "kinematic", colliders: false });
+  world.root.add(kinematic);
   kinematic.setKinematicTarget(new Matrix4().makeTranslation(5, 0, 0));
   world.reset();
   expect(body.getVelocity().linear.x).toBe(0);
@@ -246,6 +259,7 @@ it("recomputes rotating slider reads after construction edits without capturing 
   collider.position.x = 1;
   body.add(collider);
   body.setVelocity({ angular: new Vector3(0, 0, 2) });
+  world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "Y" });
   expect(joint.getState().velocity).toBeCloseTo(-2);
   collider.position.x = 2;
@@ -261,6 +275,7 @@ it("preserves staged sleep, wake and impulse ordering", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider());
+  world.root.add(body);
   body.applyImpulse(new Vector3(5, 0, 0));
   body.sleep();
   expect(body.getVelocity().linear.x).toBe(0);
@@ -278,6 +293,7 @@ it("rebuilds a mesh collider only for geometry edits marked with needsUpdate", a
   body.add(
     new MeshCollider({ approximation: "convexHull" }).setGeometry(geometry),
   );
+  world.root.add(body);
   world.update(world.fixedDelta);
   const hits = () =>
     world.raycast(new Vector3(5, 5, 0), new Vector3(0, -1, 0), 10) !== null;

@@ -14,11 +14,14 @@ In Node.js the engine loads its packaged WASM automatically:
 ```ts
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { RigidBody, BoxCollider } from "@drawcall/physics";
+import { Scene } from "three";
 
+const scene = new Scene();
 const box = new RigidBody({ mass: 1 });
 box.position.y = 2;
 box.add(new BoxCollider());
-const world = await buildWorld({ fixedDelta: 1 / 120 });
+scene.add(box);
+const world = await buildWorld(scene, { fixedDelta: 1 / 120 });
 world.update(world.fixedDelta);
 console.log(box.position.y);
 world.dispose();
@@ -31,7 +34,7 @@ as a direct dependency when importing this asset from application code:
 import { buildWorld } from "@drawcall/physics-mujoco";
 import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 
-const world = await buildWorld({ wasmUrl, solverIterations: 50 });
+const world = await buildWorld(scene, { wasmUrl, solverIterations: 50 });
 ```
 
 `frictionCone` selects MuJoCo's friction model. The default `"pyramidal"` is what MuJoCo
@@ -54,8 +57,9 @@ Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 `@mujoco/mujoco` imports Node's `module` builtin for Node; webpack fails on that import
 in browser builds unless told to leave it out with `resolve: { fallback: { module: false } }`.
 The examples demonstrate both development and production asset loading.
-`buildWorld` prepares registered colliders, attaches to the single physics registry,
-and compiles the initial model without advancing time. MuJoCo modules are shared;
+`buildWorld(root)` prepares the colliders under `root`, attaches to the single physics
+registry, and compiles the initial model without advancing time. Like every world, it
+simulates the bodies and triggers under `root` and the joints between them. MuJoCo modules are shared;
 each world owns and frees its model and simulation data. Build after authoring the
 initial scene to enable mesh optimization. Building first is also supported.
 
@@ -135,5 +139,5 @@ To see decomposition in action, run `pnpm --filter @drawcall/example-scale dev`
 and open **Convex vs decomposed** (`?demo=decomposition&backend=mujoco`).
 Two identical frame meshes use different collision approximations: the left
 cube rests on a single hull spanning the opening; the right cube falls through
-an opening preserved by CoACD. Both frames are authored before `buildWorld()`.
+an opening preserved by CoACD. Both frames are authored before `buildWorld(root)`.
 **Replay drops** resets the world and reuses the prepared colliders.

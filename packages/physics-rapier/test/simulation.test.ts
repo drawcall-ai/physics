@@ -5,6 +5,7 @@ import {
   Group,
   Matrix4,
   Mesh,
+  Scene,
   Shape,
   Vector3,
 } from "three";
@@ -23,7 +24,7 @@ import { createWorld, box, earth, steps } from "./fixtures.js";
 
 it("updates manual body matrices when synchronizing simulated poses", async () => {
   const world = await createWorld(earth);
-  const scene = new Group(),
+  const scene = world.root,
     body = box();
   body.position.y = 2;
   body.updateMatrix();
@@ -38,8 +39,8 @@ it("updates manual body matrices when synchronizing simulated poses", async () =
 });
 
 it("rejects invalid drive targets before stepping", async () => {
-  await createWorld(earth);
-  const scene = new Group(),
+  const world = await createWorld(earth);
+  const scene = world.root,
     body = box();
   const hinge = new RevoluteJoint({ body0: null, body1: body });
   scene.add(body, hinge);
@@ -51,7 +52,7 @@ it("rejects invalid drive targets before stepping", async () => {
 
 it("distributes explicit mass over compound colliders", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = new Group(),
+  const scene = world.root,
     body = new RigidBody({ mass: 20 });
   const a = new Mesh(new BoxGeometry(1, 1, 1));
   a.position.x = -1;
@@ -70,7 +71,7 @@ it("distributes explicit mass over compound colliders", async () => {
 
 it("honors collision membership and filter masks", async () => {
   const world = await createWorld(earth);
-  const scene = new Group();
+  const scene = world.root;
   const floor = new RigidBody({ colliders: false, type: "static" });
   floor.add(
     new BoxCollider({ size: [10, 1, 10] }).setCollisionGroups({
@@ -90,7 +91,7 @@ it("honors collision membership and filter masks", async () => {
 
 it("keeps the opening of a compound frame empty", async () => {
   const world = await createWorld(earth);
-  const scene = new Group(),
+  const scene = world.root,
     frame = new RigidBody({ type: "static" }),
     falling = box();
   for (const x of [-2, 2]) {
@@ -110,6 +111,7 @@ it("keeps the opening of a compound frame empty", async () => {
 it("releases disposed bodies and rejects further operations", async () => {
   const world = await createWorld(earth);
   const body = box();
+  world.root.add(body);
   body.dispose();
   world.update(world.fixedDelta);
   expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow("disposed");
@@ -117,7 +119,7 @@ it("releases disposed bodies and rejects further operations", async () => {
 
 it("drops a body onto a floor, resets its pose, and rejects disposed access", async () => {
   const world = await createWorld(earth);
-  const scene = new Group();
+  const scene = world.root;
   const floor = box("static"),
     falling = box();
   floor.position.y = -0.5;
@@ -133,7 +135,7 @@ it("drops a body onto a floor, resets its pose, and rejects disposed access", as
 
 it("drives a hinge under rotated parents while preserving its anchor", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = new Group(),
+  const scene = world.root,
     assembly = new Group();
   assembly.position.set(5, 2, 3);
   assembly.rotation.z = 0.4;
@@ -168,7 +170,7 @@ it("drives a hinge under rotated parents while preserving its anchor", async () 
 
 it("drives a slider to its target and applies live material edits", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = new Group(),
+  const scene = world.root,
     body = box();
   scene.add(body);
   const slider = new PrismaticJoint({
@@ -198,7 +200,7 @@ it("drives a slider to its target and applies live material edits", async () => 
 it("holds bodies with fixed, spherical, and distance constraints", async () => {
   for (const kind of ["fixed", "spherical", "distance"]) {
     const world = await createWorld(earth);
-    const scene = new Group(),
+    const scene = world.root,
       body = box();
     body.position.y = -2;
     scene.add(body);
@@ -223,7 +225,7 @@ it("holds bodies with fixed, spherical, and distance constraints", async () => {
 
 it("applies forces for one step and accepts kinematic targets", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = new Group(),
+  const scene = world.root,
     body = box(),
     kinematic = box("kinematic");
   kinematic.position.x = 5;
@@ -255,7 +257,7 @@ it("collides a triangle mesh on a moving body as its convex parts", async () => 
       new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false }),
     ),
   );
-  const world = await createWorld(earth);
+  const world = await createWorld(earth, new Scene().add(body));
   const forward = new Vector3(0, 0, -1);
   expect(world.raycast(new Vector3(0.7, 0.7, 3), forward, 6)).toBeNull();
   expect(world.raycast(new Vector3(0.2, 0.7, 3), forward, 6)).toMatchObject({
