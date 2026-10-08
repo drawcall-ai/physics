@@ -5,7 +5,7 @@ export {
   resolveCollisionGroups,
 } from "./colliders.js";
 export { assertLive } from "./world.js";
-export { assertOwned, buildRegistered } from "./registry.js";
+export { assertOwned, buildRooted, worldOf } from "./worlds.js";
 export {
   validateVector,
   assertRigidTransform,

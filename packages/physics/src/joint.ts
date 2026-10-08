@@ -1,11 +1,8 @@
-import { disposeClonedPhysics } from "./clone.js";
 import { Object3D, Matrix4, Vector3 } from "three";
 import { JointDrive, bindDrive } from "./drive.js";
 import { RigidBody } from "./body.js";
 import { constructLike } from "./construct.js";
-import { cleanup, rollback } from "./cleanup.js";
 import { assertRigidTransform, splitTransform } from "./transforms.js";
-import { registry } from "./registry.js";
 
 export type JointOptions = {
   readonly body0: RigidBody | null;
@@ -25,7 +22,6 @@ export abstract class Joint<
       frame1: this.config.frame1?.clone(),
     };
   }
-  private isDisposed = false;
   private currentEnabled = true;
   private currentCollideConnected = false;
   private version = 0;
@@ -38,21 +34,16 @@ export abstract class Joint<
   get settingsVersion(): number {
     return this.version;
   }
-  protected assertLive(): void {
-    if (this.disposed) throw new Error("Joint has been disposed");
-  }
   /** Marks a settings change for backends to reconcile before the next step. */
   protected touch(): void {
     this.version++;
   }
   setEnabled(value: boolean): this {
-    this.assertLive();
     this.currentEnabled = value;
     this.touch();
     return this;
   }
   setCollideConnected(value: boolean): this {
-    this.assertLive();
     this.currentCollideConnected = value;
     this.touch();
     return this;
@@ -71,33 +62,13 @@ export abstract class Joint<
     }
     if (options.body0 === options.body1)
       throw new Error("Joint must connect distinct bodies");
-    if (options.body0?.disposed || options.body1.disposed)
-      throw new Error("Joint cannot connect disposed bodies");
-    registry.register(this);
   }
 
-  get disposed(): boolean {
-    return this.isDisposed;
-  }
   /** Whether `body` is either side of this joint. */
   connects(body: RigidBody): boolean {
     return this.config.body0 === body || this.config.body1 === body;
   }
 
-  dispose(): void {
-    if (this.isDisposed) return;
-    this.isDisposed = true;
-    cleanup(
-      [
-        () => this.releaseDrives(),
-        () => registry.unregister(this),
-        () => this.removeFromParent(),
-      ],
-      "Joint disposal failed",
-    );
-  }
-  /** Detaches every drive; joints with drive slots override. */
-  protected releaseDrives(): void {}
   /** Clones the source's drives into this joint's slots; joints with drive slots override. */
   protected copyDrives(_source: this): void {}
   /** Immutable options beyond bodies and frames that a copy must share. */
@@ -113,7 +84,6 @@ export abstract class Joint<
     objects: ReadonlyMap<Object3D, Object3D>,
     recursive = true,
   ): this {
-    if (this.disposed) throw new Error("Cannot clone a disposed joint");
     const target = constructLike(this, [
       {
         ...this.config,
@@ -123,23 +93,13 @@ export abstract class Joint<
         body1: mappedBody(this.config.body1, objects),
       },
     ]);
-    try {
-      return objects.size
-        ? target.copyState(this, recursive)
-        : target.copy(this, recursive);
-    } catch (error) {
-      rollback(
-        error,
-        [() => disposeClonedPhysics(target)],
-        "Joint clone failed",
-      );
-    }
+    return objects.size
+      ? target.copyState(this, recursive)
+      : target.copy(this, recursive);
   }
 
   override copy(source: this, recursive = true): this {
     if (source === this) return this;
-    if (this.disposed || source.disposed)
-      throw new Error("Cannot copy a disposed joint");
     const a = this.config,
       b = source.config;
     if (
@@ -163,12 +123,6 @@ export abstract class Joint<
   }
 
   validate(): void {
-    if (
-      this.disposed ||
-      this.config.body0?.disposed ||
-      this.config.body1.disposed
-    )
-      throw new Error("Cannot validate a disposed joint or body");
     this.config.body0?.updateWorldMatrix(true, false);
     this.config.body1.updateWorldMatrix(true, false);
     this.updateWorldMatrix(true, false);
@@ -223,8 +177,8 @@ function mappedBody(
   objects: ReadonlyMap<Object3D, Object3D>,
 ): RigidBody {
   const target = objects.get(body) ?? body;
-  if (!(target instanceof RigidBody) || target.disposed)
-    throw new Error("Joint copy requires live bodies");
+  if (!(target instanceof RigidBody))
+    throw new Error("Joint copy requires bodies");
   return target;
 }
 

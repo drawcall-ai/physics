@@ -45,13 +45,15 @@ for (let i = 0; i < 6; i++) {
   );
   link.add(new BoxCollider({ size: [0.03, 0.01, 0.03] }));
   const drive = new JointDrive({ stiffness: 500, damping: 2, maxForce: 3 });
-  new RevoluteJoint({
-    body0: parent,
-    body1: link,
-    frame0: new Matrix4().makeTranslation(0, 0.06, 0),
-    frame1: new Matrix4(),
-    axis: i % 2 ? "X" : "Y",
-  }).setDrive(drive);
+  scene.add(
+    new RevoluteJoint({
+      body0: parent,
+      body1: link,
+      frame0: new Matrix4().makeTranslation(0, 0.06, 0),
+      frame1: new Matrix4(),
+      axis: i % 2 ? "X" : "Y",
+    }).setDrive(drive),
+  );
   drives.push(drive);
   parent = link;
 }

@@ -1,4 +1,4 @@
-import { registry } from "./registry.js";
+import { worldOf } from "./worlds.js";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "./body.js";
 import { AxisJoint, DistanceJoint, PrismaticJoint } from "./joints.js";
@@ -106,8 +106,5 @@ export function wrapAngle(angle: number): number {
 }
 
 export function readJoint(object: Joint): JointReading {
-  registry.assertRegistered(object);
-  return (
-    registry.worldOf(object)?.readJoint(object) ?? sceneJointReading(object)
-  );
+  return worldOf(object)?.readJoint(object) ?? sceneJointReading(object);
 }

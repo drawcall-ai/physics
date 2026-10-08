@@ -1,14 +1,7 @@
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { Group } from "three";
-import {
-  registry,
-  JointDrive,
-  RevoluteJoint,
-  RigidBody,
-} from "@drawcall/physics";
+import { JointDrive, RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
-
-afterEach(() => registry.clear());
 
 it("rejects untargeted and effort-driven export instead of changing actuation", async () => {
   const body = new RigidBody({ type: "static" });

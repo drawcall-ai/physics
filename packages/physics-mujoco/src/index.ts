@@ -1,21 +1,17 @@
 import loadMujoco, { type MainModule } from "@mujoco/mujoco";
 import type { Object3D } from "three";
-import {
-  RigidBody,
-  buildRegistered,
-  prepareConvexParts,
-} from "@drawcall/physics";
+import { RigidBody, buildRooted, prepareConvexParts } from "@drawcall/physics";
 import { heightfield } from "./model/heightfield.js";
 import { MujocoWorld, type MujocoOptions } from "./world.js";
 export type { MujocoWorld, MujocoOptions } from "./world.js";
 
 const modules = new Map<string | undefined, Promise<MainModule>>();
-/** Builds the world that simulates the bodies and triggers under `root`, and the joints between them. */
+/** Builds the world that simulates the bodies, joints and triggers under `root`. */
 export async function buildWorld(
   root: Object3D,
   options: MujocoOptions = {},
 ): Promise<MujocoWorld> {
-  return buildRegistered(root, async (initial) => {
+  return buildRooted(root, async () => {
     const url = options.wasmUrl;
     let loading = modules.get(url);
     if (!loading) {
@@ -28,7 +24,7 @@ export async function buildWorld(
     const [api] = await Promise.all([
       loading,
       prepareConvexParts(
-        initial,
+        root,
         (body: RigidBody, geometry) =>
           body.bodyType !== "static" || !heightfield(geometry, "grid"),
       ),

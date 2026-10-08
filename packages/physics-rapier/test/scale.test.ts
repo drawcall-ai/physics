@@ -28,15 +28,19 @@ it("captures scale at initialization, including bodies added and removed during 
   for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
   expect(first.body.getWorldPosition(new Vector3()).y).toBeCloseTo(1, 1);
   expect(first.body.scale.distanceTo(new Vector3(2, 2, 2))).toBeLessThan(1e-6);
-  first.body.dispose();
-  expect(() => first.body.getVelocity()).toThrow("disposed");
+  first.body.removeFromParent();
+  expect(() => first.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
+    "Add the object under a built world's root",
+  );
   const second = spawn(4, 3);
   for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
   expect(second.body.getWorldPosition(new Vector3()).y).toBeCloseTo(1.5, 1);
   const pending = spawn(0, 4);
-  pending.body.dispose();
+  pending.body.removeFromParent();
   world.update(world.fixedDelta);
-  expect(() => pending.body.getVelocity()).toThrow("disposed");
+  expect(() => pending.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
+    "Add the object under a built world's root",
+  );
   second.root.scale.setScalar(4);
   expect(() => world.update(world.fixedDelta)).toThrow("scale cannot change");
 });
@@ -55,7 +59,7 @@ it("keeps explicit mass and derives density mass and inertia from scaled geometr
     expect(body.getVelocity().angular.z).toBeCloseTo(
       1 / (((mass ?? 8) * 2) / 3),
     );
-    body.dispose();
+    body.removeFromParent();
   }
 });
 
@@ -77,9 +81,10 @@ it("captures scaled joints added during simulation and preserves scale through t
     frame0: new Matrix4().makeTranslation(0, 10, 0),
     frame1: new Matrix4().makeTranslation(0, 1, 0),
   });
+  world.root.add(joint);
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
   expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(6);
-  joint.dispose();
+  joint.removeFromParent();
   body.teleport(new Matrix4().makeTranslation(0, 2, 0));
   expect(body.scale.distanceTo(new Vector3(1, 2, 1))).toBeLessThan(1e-6);
   world.reset();

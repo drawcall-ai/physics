@@ -1,4 +1,3 @@
-import { disposeClonedPhysics } from "./clone.js";
 import {
   Group,
   Matrix4,
@@ -9,7 +8,6 @@ import {
 } from "three";
 import { Collider, validateMaterial, validateGroups } from "./colliders.js";
 import { constructLike } from "./construct.js";
-import { cleanup, rollback } from "./cleanup.js";
 import {
   assertPositiveScale,
   assertRigidTransform,
@@ -25,8 +23,8 @@ import type {
   PhysicsMaterial,
   CollisionGroups,
 } from "./colliders.js";
-import { registry } from "./registry.js";
-import { assembly } from "./assembly.js";
+import { requireWorld, worldOf } from "./worlds.js";
+import { assembly, hierarchyJoints } from "./assembly.js";
 import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
 import { setWorldPose } from "./transforms.js";
 import type { PhysicsVelocity } from "./world.js";
@@ -61,7 +59,6 @@ export interface RigidBodyEventMap extends Object3DEventMap {
   contactend: { readonly otherBody: RigidBody };
 }
 export class RigidBody extends Group<RigidBodyEventMap> {
-  private isDisposed = false;
   readonly options: NormalizedOptions;
   readonly bodyType: RigidBodyType;
   private currentLinearDamping = 0;
@@ -93,7 +90,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
         }
       : { ...options, ...defaults };
     validateMass(this.options);
-    registry.register(this);
   }
   get settingsVersion(): number {
     return this.version;
@@ -110,29 +106,23 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   get material(): PhysicsMaterial | undefined {
     return this.currentMaterial;
   }
-  private assertLive(): void {
-    if (this.disposed) throw new Error("Rigid body has been disposed");
-  }
   private assertDynamic(subject: string): void {
     if (this.bodyType !== "dynamic")
       throw new Error(`${subject} requires a dynamic body`);
   }
   setLinearDamping(value: number): this {
-    this.assertLive();
     validateDamping(value);
     this.currentLinearDamping = value;
     this.version++;
     return this;
   }
   setAngularDamping(value: number): this {
-    this.assertLive();
     validateDamping(value);
     this.currentAngularDamping = value;
     this.version++;
     return this;
   }
   setGravityScale(value: number): this {
-    this.assertLive();
     if (!Number.isFinite(value))
       throw new Error("Gravity scale must be finite");
     this.currentGravityScale = value;
@@ -140,7 +130,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     return this;
   }
   setMaterial(value: PhysicsMaterial | undefined): this {
-    this.assertLive();
     if (value) validateMaterial(value);
     this.currentMaterial = value && { ...value };
     this.materialEdits++;
@@ -150,43 +139,19 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     return this.currentGroups;
   }
   setCollisionGroups(value: CollisionGroups | undefined): this {
-    this.assertLive();
     if (value) validateGroups(value);
     this.currentGroups = value && { ...value };
     this.version++;
     return this;
   }
-  get disposed(): boolean {
-    return this.isDisposed;
-  }
-
-  dispose(): void {
-    if (this.isDisposed) return;
-    this.isDisposed = true;
-    const triggers: Trigger[] = [];
-    this.traverse((object) => {
-      if (object instanceof Trigger) triggers.push(object);
-    });
-    cleanup(
-      [
-        ...triggers.map((trigger) => () => trigger.dispose()),
-        () => registry.unregister(this),
-        () => this.removeFromParent(),
-      ],
-      "Rigid body disposal failed",
-    );
-  }
-
   getVelocity(): PhysicsVelocity {
-    this.assertLive();
-    return registry.worldOf(this)?.getVelocity(this) ?? authoredVelocity(this);
+    return worldOf(this)?.getVelocity(this) ?? authoredVelocity(this);
   }
   setVelocity(value: Partial<PhysicsVelocity>): this {
     if (value.linear) validateVector(value.linear);
     if (value.angular) validateVector(value.angular);
-    this.assertLive();
     this.assertDynamic("Velocity");
-    const world = registry.worldOf(this);
+    const world = worldOf(this);
     if (world) world.setVelocity(this, value);
     else setAuthoredVelocity(this, value);
     return this;
@@ -202,7 +167,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       .clone()
       .multiply(splitTransform(this.matrixWorld).pose.invert());
     const poses = new Map(
-      [...assembly(this, registry.objects)].map((member) => {
+      [...assembly(this, hierarchyJoints(this))].map((member) => {
         if (member === this) return [member, matrix];
         member.validate();
         return [
@@ -212,51 +177,39 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       }),
     );
     for (const [member, pose] of poses) setWorldPose(member, pose);
-    registry.worldOf(this)?.teleport(this);
+    worldOf(this)?.teleport(this);
     return this;
   }
   setKinematicTarget(matrix: Matrix4): void {
     if (this.bodyType !== "kinematic")
       throw new Error("Kinematic targets require a kinematic body");
     assertRigidTransform(matrix);
-    registry.requireWorld(this).setKinematicTarget(this, matrix);
+    requireWorld(this).setKinematicTarget(this, matrix);
   }
   applyImpulse(impulse: Vector3, point?: Vector3): void {
     validateVector(impulse);
     if (point) validateVector(point);
     this.assertDynamic("An impulse");
-    registry.requireWorld(this).applyImpulse(this, impulse, point);
+    requireWorld(this).applyImpulse(this, impulse, point);
   }
   applyForce(force: Vector3, point?: Vector3): void {
     validateVector(force);
     if (point) validateVector(point);
     this.assertDynamic("A force");
-    registry.requireWorld(this).applyForce(this, force, point);
+    requireWorld(this).applyForce(this, force, point);
   }
   wake(): void {
-    registry.requireWorld(this).wake(this);
+    requireWorld(this).wake(this);
   }
   sleep(): void {
-    registry.requireWorld(this).sleep(this);
+    requireWorld(this).sleep(this);
   }
 
   override clone(recursive = true): this {
-    this.assertLive();
-    const target = constructLike(this, [this.options]);
-    try {
-      return target.copy(this, recursive);
-    } catch (error) {
-      rollback(
-        error,
-        [() => disposeClonedPhysics(target)],
-        "Physics operation and cleanup failed",
-      );
-    }
+    return constructLike(this, [this.options]).copy(this, recursive);
   }
 
   override copy(source: this, recursive = true): this {
-    this.assertLive();
-    source.assertLive();
     if (!sameOptions(this.options, source.options))
       throw new Error("Rigid body copy requires matching immutable options");
     super.copy(source, recursive);
@@ -285,7 +238,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   validate(): void {
-    this.assertLive();
     this.updateWorldMatrix(true, true);
     assertScaledTransform(this.matrix, this.name || this.type);
     assertScaledTransform(this.matrixWorld, this.name || this.type);

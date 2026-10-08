@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   Matrix4,
   Object3D,
@@ -13,7 +13,6 @@ import {
 import {
   clone,
   resolveCollider,
-  registry,
   BoxCollider,
   CapsuleCollider,
   CylinderCollider,
@@ -31,13 +30,7 @@ import {
   GenericJoint,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
-import {
-  PhysicsUSDExporter,
-  PhysicsUSDLoader,
-  PhysicsUSDScene,
-} from "../src/index.js";
-
-afterEach(() => registry.clear());
+import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
 
 function doorAssembly(model: "force" | "acceleration" = "force") {
   const scene = new Scene();
@@ -127,42 +120,7 @@ describe("USD Physics interchange", () => {
     );
   });
 
-  it("owns imported registrations before any world is built", async () => {
-    const { scene } = doorAssembly();
-    const imported = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
-    const bodies = imported
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    expect(bodies.length).toBe(2);
-    for (const body of bodies) expect(registry.objects.has(body)).toBe(true);
-    expect(registry.world).toBeUndefined();
-    imported.dispose();
-    expect(registry.world).toBeUndefined();
-    for (const body of bodies) expect(body.disposed).toBe(true);
-  });
-
-  it("registers imported objects and disposes only those objects", async () => {
-    const { scene, door } = doorAssembly();
-    const imported = new PhysicsUSDLoader({}).parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
-    const importedBodies = imported
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    for (const body of importedBodies) {
-      expect(registry.objects.has(body)).toBe(true);
-    }
-    imported.dispose();
-    for (const body of importedBodies) expect(body.disposed).toBe(true);
-    expect(registry.objects.has(door)).toBe(true);
-    expect(door.disposed).toBe(false);
-    expect(registry.world).toBeUndefined();
-  });
-
-  it("cleans up failed imports without disposing existing registrations", () => {
-    const existing = new RigidBody({ type: "static" });
+  it("rejects an invalid joint axis on import", () => {
     expect(() =>
       new PhysicsUSDLoader({}).parse(`#usda 1.0
 (
@@ -180,29 +138,6 @@ def PhysicsRevoluteJoint "Hinge"
  uniform token physics:axis = "INVALID"
 }`),
     ).toThrow("Invalid joint axis");
-    expect([...registry.objects]).toEqual([existing]);
-    expect(registry.world).toBeUndefined();
-  });
-
-  it("imports without a built world", () => {
-    registry.clear();
-    const imported = new PhysicsUSDLoader().parse(`#usda 1.0
-(
- metersPerUnit = 1
-)
-def Cube "Crate" (
- prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"]
-)
-{
- double size = 1
-}`);
-    expect(
-      imported
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody),
-    ).toHaveLength(1);
-    expect(registry.world).toBeUndefined();
-    imported.dispose();
   });
 
   it.each(["force", "acceleration"] as const)(
@@ -429,7 +364,6 @@ def Cube "Crate" (
       velocity: 0,
       effort: 0,
     });
-    result.dispose();
   });
 
   it("roundtrips a generic joint with locked, free, and limited axes and per-axis drives", async () => {
@@ -479,7 +413,6 @@ def Cube "Crate" (
     expect(loaded?.getDrive("rotY")?.target?.position).toBeCloseTo(0.5);
     expect(loaded?.getDrive("transX")?.target?.velocity).toBeCloseTo(0.25);
     expect(loaded?.getDrive("rotZ")).toBeUndefined();
-    result.dispose();
   });
 
   it("writes standard schemas, degrees and layer composition rather than serialized JS state", async () => {
@@ -625,7 +558,7 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
   );
 });
 
-it("clones imported assemblies with remapped joints and independent disposal", async () => {
+it("clones imported assemblies with remapped joints", async () => {
   const { scene } = doorAssembly();
   const imported = new PhysicsUSDLoader().parse(
     await new PhysicsUSDExporter().parseAsync(scene),
@@ -637,7 +570,6 @@ it("clones imported assemblies with remapped joints and independent disposal", a
   if (!(nativeJoint instanceof Joint))
     throw new Error("Missing native cloned joint");
   expect(nativeJoint.options.body1).toBe(imported.getObjectByName("Door"));
-  native.dispose();
   const cloned = clone(imported);
   expect(cloned.gravity).toEqual(imported.gravity);
   const originalDoor = imported.getObjectByName("Door");
@@ -648,17 +580,6 @@ it("clones imported assemblies with remapped joints and independent disposal", a
     .filter((object) => object instanceof Joint);
   expect(joints).toHaveLength(1);
   expect(joints[0]?.options.body1).toBe(copiedDoor);
-  copiedDoor?.removeFromParent();
-  cloned.dispose();
-  if (
-    !(originalDoor instanceof RigidBody) ||
-    !(copiedDoor instanceof RigidBody)
-  )
-    throw new Error("Missing cloned door bodies");
-  expect(copiedDoor.disposed).toBe(true);
-  expect(originalDoor.disposed).toBe(false);
-  expect(() => new RigidBody({ type: "static" })).not.toThrow();
-  imported.dispose();
 });
 
 it("exports static groups without rigid-body schemas and preserves their compound colliders", async () => {
@@ -680,15 +601,11 @@ it("exports static groups without rigid-body schemas and preserves their compoun
   expect(text).not.toContain("physics:kinematicEnabled");
   expect(text).toContain("PhysicsCollisionAPI");
   const loaded = new PhysicsUSDLoader().parse(bytes);
-  try {
-    const copy = loaded.getObjectByName("Floor");
-    if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
-    expect(copy.bodyType).toBe("static");
-    expect(copy.getColliders()).toHaveLength(2);
-    expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
-  } finally {
-    loaded.dispose();
-  }
+  const copy = loaded.getObjectByName("Floor");
+  if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
+  expect(copy.bodyType).toBe("static");
+  expect(copy.getColliders()).toHaveLength(2);
+  expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
 });
 
 it("roundtrips scaled visuals, colliders and joint anchors without accumulating scale", async () => {
@@ -740,10 +657,8 @@ it("roundtrips scaled visuals, colliders and joint anchors without accumulating 
           expect(value).toBeCloseTo(expected.elements[i] ?? Infinity, 5),
         );
     }
-    if (source instanceof PhysicsUSDScene) source.dispose();
     source = result;
   }
-  if (source instanceof PhysicsUSDScene) source.dispose();
   expect(assembly.scale.toArray()).toEqual([2, 2, 2]);
   expect(door.scale.toArray()).toEqual([1, 2, 1]);
   expect(mesh.scale.toArray()).toEqual([0.5, 0.5, 0.5]);

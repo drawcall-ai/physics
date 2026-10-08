@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createWorld } from "./fixtures.js";
+import { buildWorld } from "../src/index.js";
 import { BoxGeometry, Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
@@ -111,6 +112,7 @@ for (const axis of ["X", "Y", "Z"] as const)
       frame0: new Matrix4(),
       frame1: new Matrix4().makeTranslation(0, 1, 0),
     });
+    world.root.add(joint);
     const initial = joint.getState();
     expect(initial.velocity).toBeCloseTo(
       axis === "X" ? 2 : axis === "Y" ? 3 : 4,
@@ -124,7 +126,7 @@ for (const axis of ["X", "Y", "Z"] as const)
     expect(Number.isFinite(joint.getState().position)).toBe(true);
   });
 
-it("rejects disposed, foreign and invalid operations while accepting staged commands", async () => {
+it("rejects removed, foreign and invalid operations while accepting staged commands", async () => {
   const world = await setup();
   const body = new RigidBody({ type: "kinematic" });
   world.root.add(body);
@@ -135,10 +137,17 @@ it("rejects disposed, foreign and invalid operations while accepting staged comm
   body.setKinematicTarget(new Matrix4());
   body.sleep();
   body.wake();
-  await expect(setup()).rejects.toThrow("already built");
-  body.dispose();
-  expect(() => body.getVelocity()).toThrow("disposed");
-  expect(() => body.teleport(new Matrix4())).toThrow("disposed");
+  await expect(buildWorld(world.root)).rejects.toThrow("already built");
+  const other = await setup();
+  const foreign = new RigidBody({ type: "kinematic" });
+  other.root.add(foreign);
+  expect(() => world.getVelocity(foreign)).toThrow(
+    "Physics object is outside the world's root",
+  );
+  body.removeFromParent();
+  expect(() => body.setKinematicTarget(new Matrix4())).toThrow(
+    "Add the object under a built world's root",
+  );
   world.update(0);
 });
 
@@ -160,6 +169,7 @@ for (const kind of ["spherical", "distance"] as const)
       kind === "spherical"
         ? new SphericalJoint(options)
         : new DistanceJoint({ ...options, limits: [0, 3] });
+    world.root.add(joint);
     const initial = joint.getState();
     world.update(0);
     expect(joint.getState()).toEqual(initial);
@@ -206,6 +216,7 @@ it("applies staged forces once and keeps replacing the drive effort held at each
   });
   world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
+  world.root.add(joint);
   const drive = new JointDrive({});
   joint.setDrive(drive);
   body.applyForce(new Vector3(2, 0, 0));
@@ -224,7 +235,7 @@ it("applies staged forces once and keeps replacing the drive effort held at each
   expect(body.getVelocity().linear.x).toBeCloseTo(5 * world.fixedDelta);
 });
 
-it("clears staged commands on reset and disposal, and replaces kinematic targets without replay", async () => {
+it("clears staged commands on reset and removal, and replaces kinematic targets without replay", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider());
@@ -236,7 +247,7 @@ it("clears staged commands on reset and disposal, and replaces kinematic targets
   const discarded = new RigidBody({ mass: 1 });
   world.root.add(discarded);
   discarded.applyForce(new Vector3(1, 0, 0));
-  discarded.dispose();
+  discarded.removeFromParent();
   const kinematic = new RigidBody({ type: "kinematic", colliders: false });
   world.root.add(kinematic);
   kinematic.setKinematicTarget(new Matrix4().makeTranslation(5, 0, 0));
@@ -261,6 +272,7 @@ it("recomputes rotating slider reads after construction edits without capturing 
   body.setVelocity({ angular: new Vector3(0, 0, 2) });
   world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "Y" });
+  world.root.add(joint);
   expect(joint.getState().velocity).toBeCloseTo(-2);
   collider.position.x = 2;
   body.scale.setScalar(2);

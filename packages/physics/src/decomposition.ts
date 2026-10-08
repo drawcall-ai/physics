@@ -1,4 +1,4 @@
-import type { BufferGeometry, Vector3 } from "three";
+import type { BufferGeometry, Object3D, Vector3 } from "three";
 import { RigidBody } from "./body.js";
 import type { Collider } from "./colliders.js";
 import {
@@ -28,13 +28,16 @@ const DECOMPOSER = "coacd-b678aa0/cdt-ec03b30/chitin-5a96998/emscripten-5.0.2";
  */
 const SETTINGS = [0.05, -1, 50, 2000, 20, 150, 3, 256, true] as const;
 
-/** Decomposes the triangle mesh colliders of the initial bodies that `needs` selects. */
+/** Decomposes the triangle mesh colliders of the bodies under `root` that `needs` selects. */
 export async function prepareConvexParts(
-  initial: readonly unknown[],
+  root: Object3D,
   needs: (body: RigidBody, geometry: BufferGeometry) => boolean,
 ): Promise<void> {
-  for (const body of initial) {
-    if (!(body instanceof RigidBody) || body.disposed) continue;
+  const bodies: RigidBody[] = [];
+  root.traverse((object) => {
+    if (object instanceof RigidBody) bodies.push(object);
+  });
+  for (const body of bodies) {
     for (const collider of body.getColliders()) {
       const shape = collider.shape();
       if (shape.kind !== "mesh" || shape.approximation !== "trimesh") continue;

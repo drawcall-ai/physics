@@ -1,7 +1,6 @@
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { BoxGeometry, Group, Matrix4, Mesh, Vector3 } from "three";
 import {
-  registry,
   RigidBody,
   BoxCollider,
   SphereCollider,
@@ -11,7 +10,6 @@ import {
   FixedJoint,
   resolveCollider,
 } from "../src/index.js";
-afterEach(() => registry.clear());
 
 it("combines ancestor, body and collider scale including offsets without mutating sources", () => {
   const root = new Group();

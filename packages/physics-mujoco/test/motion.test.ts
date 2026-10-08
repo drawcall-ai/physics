@@ -24,7 +24,7 @@ async function world() {
   return value;
 }
 function free(body1: RigidBody, body0: RigidBody | null = null) {
-  return new GenericJoint({
+  const joint = new GenericJoint({
     body0,
     body1,
     frame0: new Matrix4(),
@@ -38,6 +38,8 @@ function free(body1: RigidBody, body0: RigidBody | null = null) {
       rotZ: "free",
     },
   });
+  scene.add(joint);
+  return joint;
 }
 test("angular-only velocity updates preserve center-of-mass linear velocity", async () => {
   const value = await world();
@@ -248,6 +250,7 @@ test.each([false, true])(
       frame0: new Matrix4(),
       frame1: new Matrix4(),
     }).setEnabled(false);
+    scene.add(joint);
     expect(joint.getState().velocity).toBeCloseTo(-2);
     value.update(0);
     expect(joint.getState().velocity).toBeCloseTo(-2);

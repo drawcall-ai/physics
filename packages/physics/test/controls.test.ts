@@ -1,7 +1,6 @@
-import { afterEach, expect, expectTypeOf, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import { Matrix4, Vector3 } from "three";
 import {
-  registry,
   DistanceJoint,
   MeshCollider,
   PrismaticJoint,
@@ -13,7 +12,6 @@ import {
   type Vec3,
 } from "../src/index.js";
 
-afterEach(() => registry.clear());
 const mass = {
   mass: 1,
   centerOfMass: [0, 0, 0],
@@ -85,10 +83,9 @@ const invalidMass: [RigidBodyOptions, string][] = [
   ],
 ];
 it.each(invalidMass)(
-  "rejects invalid mass properties before registration: %j",
+  "rejects invalid mass properties: %j",
   (options, error) => {
     expect(() => new RigidBody(options)).toThrow(error);
-    expect(registry.objects.size).toBe(0);
   },
 );
 
@@ -125,10 +122,7 @@ it("validates runtime controls before storing and checks the authoring world bou
   }).setCollideConnected(true);
   joint.setEnabled(false).setEnabled(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  expect(() => registry.requireWorld()).toThrow("buildWorld");
-  body.dispose();
-  expect(() => joint.setDrive(undefined)).toThrow("disposed");
-  expect(() => body.setAngularDamping(0)).toThrow("disposed");
+  expect(() => body.wake()).toThrow("under a built world's root");
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {

@@ -18,7 +18,6 @@ export function specimen(spec: Case, spin = false) {
   const root = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
-  const bodies: RigidBody[] = [];
   function mesh(geometry: THREE.BufferGeometry, color: string) {
     const material = new THREE.MeshStandardMaterial({ color });
     geometries.push(geometry);
@@ -37,7 +36,6 @@ export function specimen(spec: Case, spin = false) {
     });
     if (spin && type === "dynamic")
       body.setVelocity({ angular: new THREE.Vector3(1.4, 0.7, 1.1) });
-    bodies.push(body);
     body.add(visual);
     return body;
   }
@@ -207,7 +205,6 @@ export function specimen(spec: Case, spin = false) {
       }, 0);
     },
     dispose() {
-      for (const body of bodies) body.dispose();
       root.removeFromParent();
       geometries.forEach((g) => g.dispose());
       materials.forEach((m) => m.dispose());

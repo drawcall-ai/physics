@@ -43,19 +43,17 @@ export class Interactions {
   }
   replace(overlaps: Pairs<Trigger>, contacts: Pairs<RigidBody>): void {
     transitions(this.overlaps, overlaps, (trigger, body, entered) => {
-      this.events.push(() => {
-        if (!trigger.disposed && (!entered || !body.disposed))
-          trigger.dispatchEvent({ type: entered ? "enter" : "exit", body });
-      });
+      this.events.push(() =>
+        trigger.dispatchEvent({ type: entered ? "enter" : "exit", body }),
+      );
     });
     transitions(this.contacts, contacts, (body, otherBody, entered) => {
-      this.events.push(() => {
-        if (!body.disposed && (!entered || !otherBody.disposed))
-          body.dispatchEvent({
-            type: entered ? "contactbegin" : "contactend",
-            otherBody,
-          });
-      });
+      this.events.push(() =>
+        body.dispatchEvent({
+          type: entered ? "contactbegin" : "contactend",
+          otherBody,
+        }),
+      );
     });
     this.overlaps = overlaps;
     this.contacts = contacts;

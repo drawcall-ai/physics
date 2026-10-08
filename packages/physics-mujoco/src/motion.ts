@@ -127,7 +127,7 @@ export function synchronize(
   set: (body: RigidBody, matrix: Matrix4) => void,
 ): void {
   for (const [body, id] of compiled.bodies)
-    if (!body.disposed && body.bodyType !== "static")
+    if (body.bodyType !== "static")
       set(body, pose(compiled.data.xpos, compiled.data.xquat, id));
 }
 
@@ -141,19 +141,16 @@ export function refreshPoses(
   moved = false,
 ): void {
   for (const [body, id] of compiled.bodies)
-    if (!body.disposed && body.bodyType === "static") {
+    if (body.bodyType === "static") {
       body.updateWorldMatrix(true, false);
       if (writePose(api, compiled, id, splitTransform(body.matrixWorld).pose))
         moved = true;
     }
-  for (const [trigger, id] of compiled.triggers)
-    if (!trigger.disposed) {
-      trigger.updateWorldMatrix(true, false);
-      if (
-        writePose(api, compiled, id, splitTransform(trigger.matrixWorld).pose)
-      )
-        moved = true;
-    }
+  for (const [trigger, id] of compiled.triggers) {
+    trigger.updateWorldMatrix(true, false);
+    if (writePose(api, compiled, id, splitTransform(trigger.matrixWorld).pose))
+      moved = true;
+  }
   if (moved) api.mj_forward(compiled.model, compiled.data);
 }
 export function validateState(api: MainModule, compiled: Compiled): void {

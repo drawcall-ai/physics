@@ -5,10 +5,10 @@ import {
   RigidBody,
   SteppedWorld,
   authoredVelocity,
-  buildRegistered,
-  registry,
+  buildRooted,
   sceneJointReading,
   setAuthoredVelocity,
+  worldOf,
   type Joint,
   type PhysicsVelocity,
   type Trigger,
@@ -46,7 +46,6 @@ class RecordingWorld extends SteppedWorld {
   protected prepare(): void {}
   protected step(): void {}
   protected restore(): void {}
-  protected disposeObjects(): void {}
   protected free(): void {}
 }
 
@@ -62,83 +61,101 @@ function hinge(name: string, body0: RigidBody | null, body1: RigidBody) {
   return result;
 }
 
-let world: RecordingWorld | undefined;
+const worlds: RecordingWorld[] = [];
 afterEach(() => {
-  world?.dispose();
-  world = undefined;
-  registry.clear();
+  for (const world of worlds.splice(0)) world.dispose();
 });
 
 async function build(root: Scene): Promise<RecordingWorld> {
-  world = await buildRegistered(root, async () => new RecordingWorld(root, {}));
+  const world = await buildRooted(
+    root,
+    async () => new RecordingWorld(root, {}),
+  );
+  worlds.push(world);
   return world;
 }
 
-it("simulates the bodies under the root and the joints between them", async () => {
+it("simulates the bodies and joints under the root, joints after their bodies", async () => {
   const root = new Scene();
-  const inside = body("inside");
-  const outside = body("outside");
-  root.add(inside);
-  hinge("anchored", null, inside);
-  hinge("straddling", inside, outside);
+  const base = body("base");
+  const arm = body("arm");
+  root.add(hinge("anchor", null, base), hinge("elbow", base, arm), base, arm);
+  body("outside");
 
-  const { events } = await build(root);
+  const world = await build(root);
 
-  expect(events).toEqual(["add inside", "add anchored"]);
-  expect(registry.worldOf(inside)).toBe(world);
-  expect(registry.worldOf(outside)).toBeUndefined();
+  expect(world.events).toEqual([
+    "add base",
+    "add arm",
+    "add anchor",
+    "add elbow",
+  ]);
+  expect(worldOf(arm)).toBe(world);
 });
 
-it("adds objects entering the root and removes leaving ones without disposing them", async () => {
+it("adds objects entering the root and removes leaving ones, joints first", async () => {
   const root = new Scene();
   const base = body("base");
   const arm = body("arm");
   root.add(base);
-  const joint = hinge("joint", base, arm);
-  const { events } = await build(root);
-  events.length = 0;
+  const world = await build(root);
+  world.events.length = 0;
 
-  root.add(arm);
-  world?.update(0);
-  expect(events).toEqual(["add arm", "add joint"]);
+  const elbow = hinge("elbow", base, arm);
+  root.add(arm, elbow);
+  world.update(0);
+  expect(world.events).toEqual(["add arm", "add elbow"]);
 
-  events.length = 0;
+  world.events.length = 0;
   arm.removeFromParent();
-  world?.update(0);
-  expect(events).toEqual(["remove joint", "remove arm"]);
-  expect(arm.disposed).toBe(false);
-  expect(joint.disposed).toBe(false);
+  elbow.removeFromParent();
+  world.update(0);
+  expect(world.events).toEqual(["remove elbow", "remove arm"]);
 });
 
-it("keeps authored state outside the root and rejects simulation commands there", async () => {
+it("rejects a joint under the root whose body is outside it", async () => {
+  const root = new Scene();
+  const base = body("base");
+  root.add(base, hinge("elbow", base, body("arm")));
+
+  await expect(build(root)).rejects.toThrow(
+    "Joint connects a body outside the world's root",
+  );
+  expect(worldOf(base)).toBeUndefined();
+});
+
+it("keeps authored state outside a root and rejects simulation commands there", async () => {
   const root = new Scene();
   const outside = body("outside");
-  const { events } = await build(root);
+  const world = await build(root);
 
   outside.setVelocity({ linear: new Vector3(1, 0, 0) });
   expect(outside.getVelocity().linear.x).toBe(1);
   expect(() => outside.applyImpulse(new Vector3(0, 1, 0))).toThrow(
-    "outside the world's root",
+    "under a built world's root",
   );
-  expect(events).toEqual([]);
+  expect(world.events).toEqual([]);
 
   root.add(outside);
   outside.setVelocity({ linear: new Vector3(2, 0, 0) });
   outside.applyImpulse(new Vector3(0, 1, 0));
-  expect(events).toEqual(["velocity outside", "impulse outside"]);
+  expect(world.events).toEqual(["velocity outside", "impulse outside"]);
 });
 
-it("removes a disposed member once and ignores disposed outsiders", async () => {
-  const root = new Scene();
-  const member = body("member");
-  const outside = body("outside");
-  root.add(member);
-  const { events } = await build(root);
-  events.length = 0;
+it("builds one world per root", async () => {
+  const left = new Scene();
+  const right = new Scene();
+  const a = body("a");
+  const b = body("b");
+  left.add(a);
+  right.add(b);
 
-  outside.dispose();
-  member.dispose();
-  world?.update(0);
+  const first = await build(left);
+  const second = await build(right);
 
-  expect(events).toEqual(["remove member"]);
+  expect(worldOf(a)).toBe(first);
+  expect(worldOf(b)).toBe(second);
+  await expect(build(left)).rejects.toThrow("already built");
+  first.dispose();
+  expect(worldOf(a)).toBeUndefined();
 });

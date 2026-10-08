@@ -138,14 +138,14 @@ it("queries unprepared and attached triggers without capturing scale or aliasing
   ).toBeNull();
 });
 
-it("excludes disposed owners from raycasts inside event dispatch", async () => {
+it("excludes removed owners from raycasts inside event dispatch", async () => {
   const world = await createWorld();
   const body = new RigidBody({ type: "kinematic" }).add(new BoxCollider());
   const trigger = new Trigger().add(new BoxCollider());
   world.root.add(body, trigger);
   trigger.addEventListener("enter", () => {
-    body.dispose();
-    trigger.dispose();
+    body.removeFromParent();
+    trigger.removeFromParent();
     expect(
       world.raycast(new Vector3(-2, 0, 0), new Vector3(1, 0, 0), 5, {
         includeTriggers: true,

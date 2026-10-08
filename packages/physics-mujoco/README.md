@@ -57,9 +57,9 @@ Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
 `@mujoco/mujoco` imports Node's `module` builtin for Node; webpack fails on that import
 in browser builds unless told to leave it out with `resolve: { fallback: { module: false } }`.
 The examples demonstrate both development and production asset loading.
-`buildWorld(root)` prepares the colliders under `root`, attaches to the single physics
-registry, and compiles the initial model without advancing time. Like every world, it
-simulates the bodies and triggers under `root` and the joints between them. MuJoCo modules are shared;
+`buildWorld(root)` prepares the colliders under `root` and compiles the initial model
+without advancing time. Like every world, it simulates the bodies, joints, and
+triggers under `root`. MuJoCo modules are shared;
 each world owns and frees its model and simulation data. Build after authoring the
 initial scene to enable mesh optimization. Building first is also supported.
 
@@ -70,7 +70,7 @@ initial scene to enable mesh optimization. Building first is also supported.
 parenting, and initial transforms before preparing the world. Shape and body
 scale and joint anchors are captured at first preparation; recreate objects to
 change their scale or anchors. `reset` restores captured poses and velocities.
-Callbacks, disposal, forces, impulses, world-space teleports, kinematic targets,
+Callbacks, forces, impulses, world-space teleports, kinematic targets,
 raycasts, triggers, collision groups, and contact transitions use the core API.
 
 MuJoCo compiles a whole articulated model. Adding/removing bodies, changing

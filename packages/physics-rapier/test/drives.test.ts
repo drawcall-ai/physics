@@ -21,6 +21,7 @@ it("keeps an untargeted drive passive, brakes at zero velocity, and removes actu
     body1: moving,
     axis: "X",
   });
+  world.root.add(slider);
   const drive = new JointDrive({ damping: 10 });
   slider.setDrive(drive);
   world.update(0.03);
@@ -53,12 +54,14 @@ it("drives hinge and slider position natively while reporting physical limits", 
     axis: "Z",
     limits: [-0.25, 0.25],
   });
+  world.root.add(hinge);
   const slider = new PrismaticJoint({
     body0: null,
     body1: sliding,
     axis: "X",
     limits: [-2, 2],
   });
+  world.root.add(slider);
   hinge.setDrive(
     new JointDrive({ stiffness: 100, damping: 10 }).setTarget({
       position: 1,
@@ -90,6 +93,7 @@ it("limits native drive force and torque independently of timestep and model", a
           body1: body,
           axis: "Z",
         });
+        world.root.add(joint);
         joint.setDrive(
           new JointDrive({ model, damping: 1000, maxForce: 2 }).setTarget({
             velocity: 100,
@@ -113,11 +117,13 @@ it("makes acceleration-based drives mass independent", async () => {
       body1: lightBody,
       axis: "X",
     });
+    world.root.add(light);
     const heavy = new PrismaticJoint({
       body0: null,
       body1: heavyBody,
       axis: "X",
     });
+    world.root.add(heavy);
     for (const joint of [light, heavy])
       joint.setDrive(
         new JointDrive({ model, damping: 10 }).setTarget({ velocity: 1 }),
@@ -146,11 +152,13 @@ it("adds the effort term to a velocity drive and caps it by the same maximum for
     body1: pushedBody,
     axis: "X",
   });
+  world.root.add(pushed);
   const capped = new PrismaticJoint({
     body0: null,
     body1: cappedBody,
     axis: "X",
   });
+  world.root.add(capped);
   pushed.setDrive(new JointDrive({}).setTarget({ effort: 10 }));
   capped.setDrive(new JointDrive({ maxForce: 2 }).setTarget({ effort: 10 }));
   world.update(0.01);
@@ -165,6 +173,7 @@ it("adds the effort term to a velocity drive and caps it by the same maximum for
     body1: combinedBody,
     axis: "X",
   });
+  world.root.add(combined);
   combined.setDrive(
     new JointDrive({ damping: 100 }).setTarget({ velocity: 1, effort: 10 }),
   );
@@ -186,6 +195,7 @@ for (const direction of [-1, 1])
       body1: body,
       axis: "Z",
     });
+    world.root.add(hinge);
     const drive = new JointDrive({
       stiffness: 100,
       damping: 20,
@@ -225,6 +235,7 @@ it("drives distance joints as force-limited springs that keep their rope limit",
       frame1: new Matrix4(),
       limits,
     });
+    world.root.add(joint);
     joint.setDrive(
       new JointDrive({
         model: "acceleration",
@@ -257,7 +268,7 @@ it("locks, limits, and frees generic joint axes and drives each axis independent
   });
   welded.position.y = 1;
   world.root.add(welded);
-  new GenericJoint({ body0: null, body1: welded });
+  world.root.add(new GenericJoint({ body0: null, body1: welded }));
   const hinged = inertialBody().setVelocity({
     angular: new Vector3(0, 0, 4),
   });
@@ -267,6 +278,7 @@ it("locks, limits, and frees generic joint axes and drives each axis independent
     body1: hinged,
     dofs: { rotZ: [-0.25, 0.25] },
   });
+  world.root.add(hinge);
   const sliding = inertialBody().setVelocity({
     linear: new Vector3(0, 0, 1),
   });
@@ -276,6 +288,7 @@ it("locks, limits, and frees generic joint axes and drives each axis independent
     body1: sliding,
     dofs: { transZ: "free" },
   });
+  world.root.add(slider);
   slider.setDrive(
     "transZ",
     new JointDrive({ stiffness: 100, damping: 20 }).setTarget({
@@ -317,6 +330,7 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
       rotZ: "free",
     },
   });
+  world.root.add(joint);
   for (const axis of ["transX", "transY", "transZ"] as const)
     joint.setDrive(
       axis,
@@ -345,6 +359,7 @@ it("rejects a capped drive that combines gains with effort, which Rapier caps se
     body1: body,
     axis: "X",
   });
+  world.root.add(joint);
   joint.setDrive(
     new JointDrive({ damping: 1, maxForce: 2 }).setTarget({
       velocity: 1,

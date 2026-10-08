@@ -61,12 +61,15 @@ it("reads inferred COM immediately and honors later assembly transforms", async 
     frame1: new Matrix4(),
   };
   const joint = new PrismaticJoint(options).setEnabled(false);
+  world.root.add(joint);
   expect(joint.getState().velocity).toBeCloseTo(-12, 4);
   body.scale.setScalar(1.5);
   expect(joint.getState().velocity).toBeCloseTo(-18, 4);
   world.onBeforeStep(() => {
     expect(joint.getState().velocity).toBeCloseTo(-18, 4);
-    expect(new PrismaticJoint(options).getState().velocity).toBeCloseTo(-18, 4);
+    const added = new PrismaticJoint(options);
+    world.root.add(added);
+    expect(added.getState().velocity).toBeCloseTo(-18, 4);
   });
   world.update(world.fixedDelta);
   expect(world.time).toBe(world.fixedDelta);
@@ -99,7 +102,7 @@ it("requires dynamic inertia, permits colliderless anchors, and ignores surface 
     const body = new RigidBody({ colliders: false, mass });
     world.root.add(body);
     expect(() => world.update(0)).toThrow(/mass|inertia/);
-    body.dispose();
+    body.removeFromParent();
   }
   world.root.add(
     new RigidBody({ type: "static", colliders: false }),

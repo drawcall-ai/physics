@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { MeshCollider, RigidBody, registry } from "@drawcall/physics";
+import { MeshCollider, RigidBody, worldOf } from "@drawcall/physics";
 import { BufferGeometry, Float32BufferAttribute, Scene, Vector3 } from "three";
 import { heightfield } from "../src/model/heightfield.js";
 import { buildWorld } from "../src/index.js";
@@ -45,10 +45,8 @@ test("rejects overlapping open triangles during initial mesh preparation", async
   );
   try {
     await expect(buildWorld(new Scene().add(body))).rejects.toThrow("closed");
-    expect(registry.world).toBeUndefined();
-    expect(body.disposed).toBe(false);
+    expect(worldOf(body)).toBeUndefined();
   } finally {
-    body.dispose();
     geometry.dispose();
   }
 });

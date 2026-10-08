@@ -9,6 +9,7 @@ it("prepares before observers and applies the effort held at step time for one s
   world.root.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const other = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
+  world.root.add(joint, other);
   const effort = new JointDrive({}).setTarget({ effort: 5 });
   joint.setDrive(effort);
   const idle = new JointDrive({}).setTarget({ effort: 20 });
@@ -56,6 +57,7 @@ for (const Joint of [RevoluteJoint, PrismaticJoint])
       frame0: frame,
       frame1: frame,
     });
+    world.root.add(joint);
     world.update(0);
     joint.setDrive(new JointDrive({}).setTarget({ effort: 2 }));
     world.update(0.01);
@@ -86,6 +88,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     frame0: new Matrix4().makeTranslation(0, 1, 0),
     frame1: new Matrix4().makeTranslation(0, 2, 0),
   }).setEnabled(false);
+  world.root.add(slider);
   world.update(0);
   const initial = slider.getState();
   expect(initial.velocity).toBeCloseTo(0, 6);
@@ -100,6 +103,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     frame0: new Matrix4(),
     frame1: new Matrix4(),
   }).setEnabled(false);
+  world.root.add(offset);
   expect(offset.getState().velocity).toBeCloseTo(-3, 4);
 });
 
@@ -115,6 +119,7 @@ for (const speed of [8, -8])
       body1: body,
       axis: "Z",
     });
+    world.root.add(hinge);
     for (let i = 0; i < 200; i++) world.update(0.01);
     expect(hinge.getState().position).toBeCloseTo(speed * 2, 1);
     body.teleport(new Matrix4().makeRotationZ(0.25));

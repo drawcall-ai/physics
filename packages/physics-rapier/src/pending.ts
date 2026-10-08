@@ -68,11 +68,9 @@ export class Pending {
     read: (bodies: ReadonlyMap<RigidBody, BodyBinding>) => T,
   ): T {
     const unprepared = [...objects].filter(
-      (object) => !object.disposed && !this.prepared.has(object),
+      (object) => !this.prepared.has(object),
     );
-    const bodies = new Map(
-      [...this.prepared].filter(([object]) => !object.disposed),
-    );
+    const bodies = new Map(this.prepared);
     if (!unprepared.length) return read(bodies);
     const backend = new this.api.World(new Vector3());
     try {

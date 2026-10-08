@@ -52,7 +52,7 @@ export interface MujocoOptions extends PhysicsOptions {
 }
 export class MujocoWorld extends SteppedWorld {
   private readonly scene: Scene;
-  private readonly pending: {
+  private pending: {
     body: RigidBody;
     run: (compiled: Compiled) => void;
   }[] = [];
@@ -84,7 +84,10 @@ export class MujocoWorld extends SteppedWorld {
   }
   protected remove(object: RigidBody | Joint | Trigger): void {
     if (!(object instanceof Joint)) this.interactions.remove(object);
-    if (object instanceof RigidBody) this.targets.delete(object);
+    if (object instanceof RigidBody) {
+      this.targets.delete(object);
+      this.pending = this.pending.filter(({ body }) => body !== object);
+    }
     cleanup(
       [() => this.scene.unregister(object), () => this.dispatch()],
       "Physics object removal failed",
@@ -96,8 +99,7 @@ export class MujocoWorld extends SteppedWorld {
   }
   protected step(): void {
     const compiled = this.prepare();
-    for (const { body, run } of this.pending.splice(0))
-      if (!body.disposed) run(compiled);
+    for (const { run } of this.pending.splice(0)) run(compiled);
     let moved = false;
     for (const [body, matrix] of this.targets) {
       const id = compiled.targets.get(body);
@@ -129,11 +131,6 @@ export class MujocoWorld extends SteppedWorld {
     this.pending.length = 0;
     this.targets.clear();
     this.scene.reset();
-  }
-  protected disposeObjects(): void {
-    this.pending.length = 0;
-    this.targets.clear();
-    this.scene.dispose();
   }
   protected free(): void {
     this.scene.free();

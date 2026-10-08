@@ -41,6 +41,7 @@ test("unchanged mesh steps and target edits reuse collision geometry; marked ver
   body.add(new MeshCollider().setGeometry(geometry));
   const clone = vi.spyOn(geometry, "clone");
   const joint = new RevoluteJoint({ body0: null, body1: body });
+  scene.add(joint);
   const drive = new JointDrive({ stiffness: 1, damping: 1 });
   joint.setDrive(drive);
   world.update(0);
@@ -72,6 +73,7 @@ test("unchanged steps skip the change scan; moved and added colliders are still 
   holder.add(new BoxCollider());
   body.add(holder);
   const joint = new RevoluteJoint({ body0: null, body1: body });
+  scene.add(joint);
   const drive = new JointDrive({ stiffness: 1, damping: 1 });
   joint.setDrive(drive);
   world.update(0);

@@ -1,13 +1,13 @@
 import { afterEach, expect, test } from "vitest";
-import { registry } from "@drawcall/physics";
+import type { PhysicsWorld } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { Scene, Vector3 } from "three";
 import { decomposition } from "../decomposition";
 
+const worlds: PhysicsWorld[] = [];
 afterEach(() => {
-  registry.world?.dispose();
-  registry.clear();
+  for (const world of worlds.splice(0)) world.dispose();
 });
 
 test.each([
@@ -18,6 +18,7 @@ test.each([
   async ({ build }) => {
     const { root, lanes } = decomposition();
     const world = await build(new Scene().add(root));
+    worlds.push(world);
     for (let replay = 0; replay < 2; replay++) {
       for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
       const [left, right] = lanes;

@@ -5,7 +5,7 @@ import { Trigger } from "./trigger.js";
 import type { Vec3 } from "./colliders.js";
 import { cleanup } from "./cleanup.js";
 import { Interactions } from "./interactions.js";
-import { registry, assertOwned, inside } from "./registry.js";
+import { assertOwned, detach } from "./worlds.js";
 import {
   assertLive,
   type JointReading,
@@ -62,12 +62,9 @@ export abstract class SteppedWorld implements PhysicsWorld {
     return this.isDisposed;
   }
 
-  unregister(object: RigidBody | Joint | Trigger): void {
-    if (this.members.delete(object)) this.remove(object);
-  }
   /** Adds an object that entered the root; a joint arrives after its bodies. */
   protected abstract add(object: RigidBody | Joint | Trigger): void;
-  /** Removes an object that left the root or was disposed; a joint leaves before its bodies. */
+  /** Removes an object that left the root; a joint leaves before its bodies. */
   protected abstract remove(object: RigidBody | Joint | Trigger): void;
   raycast(
     origin: Vector3,
@@ -108,7 +105,6 @@ export abstract class SteppedWorld implements PhysicsWorld {
   protected abstract step(): void;
   /** Returns the backend to the state captured when its objects were first prepared. */
   protected abstract restore(): void;
-  protected abstract disposeObjects(): void;
   /** Releases backend memory once the world is disposed and idle; may be called more than once. */
   protected abstract free(): void;
 
@@ -157,21 +153,15 @@ export abstract class SteppedWorld implements PhysicsWorld {
     if (this.isDisposed) return;
     this.isDisposed = true;
     this.interactions.clear();
-    cleanup(
-      [
-        () => this.disposeObjects(),
-        () => {
-          this.before.clear();
-          this.after.clear();
-          registry.detach(this);
-          if (!this.updating && !this.interactions.dispatching) this.free();
-        },
-      ],
-      "Physics world disposal failed",
-    );
+    this.members.clear();
+    this.before.clear();
+    this.after.clear();
+    detach(this);
+    if (!this.updating && !this.interactions.dispatching) this.free();
   }
   getOverlappingBodies(trigger: Trigger): RigidBody[] {
     assertOwned(this, trigger);
+    this.sync();
     return this.interactions.bodies(trigger);
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
@@ -188,21 +178,29 @@ export abstract class SteppedWorld implements PhysicsWorld {
       this.after.delete(callback);
     };
   }
-  /** Adds the objects now inside the root and removes those that left it. */
+  /** Adds the objects now under the root and removes those that left it. */
   private sync(): void {
     const current = new Set<RigidBody | Joint | Trigger>();
+    const joints: Joint[] = [];
     this.root.traverse((object) => {
-      if (object instanceof RigidBody || object instanceof Trigger)
+      if (object instanceof Joint) joints.push(object);
+      else if (object instanceof RigidBody || object instanceof Trigger)
         current.add(object);
     });
-    for (const object of registry.objects)
-      if (object instanceof Joint && inside(this.root, object))
-        current.add(object);
+    for (const joint of joints) {
+      const { body0, body1 } = joint.options;
+      if ((body0 && !current.has(body0)) || !current.has(body1))
+        throw new Error("Joint connects a body outside the world's root");
+      current.add(joint);
+    }
     const leaving = [...this.members]
       .filter((object) => !current.has(object))
       .sort((a, b) => Number(b instanceof Joint) - Number(a instanceof Joint));
     cleanup(
-      leaving.map((object) => () => this.unregister(object)),
+      leaving.map((object) => () => {
+        this.members.delete(object);
+        this.remove(object);
+      }),
       "Physics object removal failed",
     );
     for (const object of current) {

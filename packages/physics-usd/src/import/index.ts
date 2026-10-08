@@ -2,7 +2,6 @@ import { Object3D, Vector3 } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import {
-  rollback,
   Joint,
   RigidBody,
   ancestorBody,
@@ -41,16 +40,8 @@ export class PhysicsUSDLoader {
     path = "",
   ): Promise<PhysicsUSDScene> {
     const { scene, textures } = this.prepare(input, path);
-    try {
-      await Promise.all(textures);
-      return scene;
-    } catch (error) {
-      rollback(
-        error,
-        [() => scene.dispose()],
-        "Physics operation and cleanup failed",
-      );
-    }
+    await Promise.all(textures);
+    return scene;
   }
 
   async loadAsync(url: string): Promise<PhysicsUSDScene> {
@@ -72,17 +63,9 @@ export class PhysicsUSDLoader {
     const composer = new USDComposer(this.options.manager);
     const visual = composer.compose(layer, assets, {}, path);
     const scene = new PhysicsUSDScene();
-    try {
-      scene.add(...visual.children);
-      new LayerImport(layer, scene).run();
-      return { scene, textures: composer.texturePromises };
-    } catch (error) {
-      rollback(
-        error,
-        [() => scene.dispose()],
-        "Physics operation and cleanup failed",
-      );
-    }
+    scene.add(...visual.children);
+    new LayerImport(layer, scene).run();
+    return { scene, textures: composer.texturePromises };
   }
 }
 
@@ -140,7 +123,6 @@ class LayerImport {
       bodyType(this.layer, path, rigid),
       massProperties(this.layer, path, object),
     );
-    this.scene.own(body);
     const angular = vector(
       this.layer,
       path,
@@ -187,7 +169,6 @@ class LayerImport {
   /** The joint takes the place of its visual transform, or hangs off the scene without one. */
   private placeJoint(path: string, type: string): void {
     const joint = readJoint(this.layer, path, type, this.bodies);
-    this.scene.own(joint);
     joint.name = path.slice(path.lastIndexOf("/") + 1);
     const object = this.objects.get(path);
     const parent = object?.parent ?? this.scene;
@@ -205,7 +186,6 @@ class LayerImport {
     let body = this.bodies.get(path) ?? ancestorBody(object);
     if (!body) {
       body = wrapBody(object, "static");
-      this.scene.own(body);
       this.bodies.set(path, body);
     }
     const material = materialFor(this.layer, path, this.materials);

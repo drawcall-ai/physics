@@ -1,6 +1,5 @@
-import { afterEach, expect, expectTypeOf, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import {
-  registry,
   DistanceJoint,
   GenericJoint,
   JointDrive,
@@ -10,7 +9,6 @@ import {
   RigidBody,
 } from "../src/index.js";
 
-afterEach(() => registry.clear());
 function hinge() {
   return new RevoluteJoint({ body0: null, body1: new RigidBody() });
 }
@@ -54,7 +52,7 @@ it("replaces the whole target, zeroes omitted terms, and requires the gain a ter
   expect(drive.target).toBeUndefined();
 });
 
-it("attaches to one joint at a time and detaches on replacement and disposal", () => {
+it("attaches to one joint at a time and detaches on replacement", () => {
   const first = hinge(),
     second = hinge();
   const drive = new JointDrive({ stiffness: 1 });
@@ -69,9 +67,6 @@ it("attaches to one joint at a time and detaches on replacement and disposal", (
   expect(replacement.joint).toBe(first);
   second.setDrive(drive);
   expect(drive.joint).toBe(second);
-  first.dispose();
-  expect(replacement.joint).toBeUndefined();
-  expect(() => first.setDrive(undefined)).toThrow("disposed");
 });
 
 it("clones drives with their subclass and copies them with their joint", () => {

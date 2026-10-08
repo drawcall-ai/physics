@@ -7,6 +7,7 @@ import {
   RigidBody,
 } from "@drawcall/physics";
 import { createWorld, box, earth } from "./fixtures.js";
+import { buildWorld } from "../src/index.js";
 
 it("adds bodies after stepping without resetting existing velocities or poses", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
@@ -33,12 +34,12 @@ it("adds joints after bodies are already simulating", async () => {
   const anchor = body.position.y;
   const joint = new FixedJoint({ body0: null, body1: body });
   joint.position.y = anchor;
+  world.root.add(joint);
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeCloseTo(anchor, 2);
-  body.dispose();
-  expect(joint.disposed).toBe(true);
-  expect(() => joint.getFrame(0, new Matrix4())).toThrow("disposed");
-  world.update(world.fixedDelta);
+  joint.removeFromParent();
+  for (let i = 0; i < 30; i++) world.update(world.fixedDelta);
+  expect(body.position.y).toBeLessThan(anchor - 0.5);
 });
 
 it("updates collider geometry without resetting the body", async () => {
@@ -55,20 +56,20 @@ it("updates collider geometry without resetting the body", async () => {
   expect(Math.abs(body.position.y)).toBeGreaterThan(0.8);
 });
 
-it("allows one attached world and disposes pending joints with their body", async () => {
+it("allows one world per root, several roots side by side, and rebuilding a disposed root", async () => {
   const first = await createWorld(earth);
   const body = box();
   first.root.add(body);
-  await expect(createWorld(earth)).rejects.toThrow("already built");
-  const joint = new FixedJoint({ body0: null, body1: body });
-  body.dispose();
-  first.update(first.fixedDelta);
-  expect(joint.disposed).toBe(true);
-  first.dispose();
+  await expect(buildWorld(first.root, earth)).rejects.toThrow("already built");
   const next = box();
   const second = await createWorld(earth, new Scene().add(next));
   second.update(second.fixedDelta);
   expect(next.position.y).toBeLessThan(0);
+  expect(body.position.y).toBe(0);
+  first.dispose();
+  const rebuilt = await createWorld(earth, first.root);
+  rebuilt.update(rebuilt.fixedDelta);
+  expect(body.position.y).toBeLessThan(0);
 });
 
 it("materializes bodies created by before-step callbacks", async () => {
@@ -123,7 +124,9 @@ it("copies caller-owned joint frames", async () => {
   const body = box();
   world.root.add(body);
   const frame = new Matrix4();
-  new FixedJoint({ body0: null, body1: body, frame0: frame, frame1: frame });
+  world.root.add(
+    new FixedJoint({ body0: null, body1: body, frame0: frame, frame1: frame }),
+  );
   world.update(world.fixedDelta);
   frame.makeTranslation(0, 1, 0);
   world.update(world.fixedDelta);
@@ -143,6 +146,7 @@ it("copies immutable distance limits without changing a prepared joint", async (
     frame1: new Matrix4(),
     limits,
   });
+  world.root.add(joint);
   world.update(world.fixedDelta);
   limits[1] = 8;
   expect(joint.limits).toEqual([0, 2]);
@@ -156,6 +160,7 @@ it("keeps captured anchors when a joint is disabled and enabled", async () => {
   body.position.y = 3;
   world.root.add(body);
   const joint = new FixedJoint({ body0: null, body1: body });
+  world.root.add(joint);
   joint.position.y = 3;
   world.update(world.fixedDelta);
   joint.setEnabled(false);
@@ -189,15 +194,15 @@ it("rejects copying joint identity and preserves the live constraint", async () 
   second.position.set(3, 4, 0);
   world.root.add(first, second);
   const joint = new FixedJoint({ body0: null, body1: first });
+  world.root.add(joint);
   world.update(0);
   const source = new FixedJoint({ body0: null, body1: second });
+  world.root.add(source);
   expect(() => joint.copy(source)).toThrow();
-  source.dispose();
+  source.removeFromParent();
   for (let i = 0; i < 30; i++) world.update(world.fixedDelta);
   expect(first.position.y).toBeCloseTo(4, 1);
   expect(second.position.y).toBeLessThan(3);
-  first.dispose();
-  expect(joint.disposed).toBe(true);
 });
 
 it("uses one update path for preparation, fractional time, catch-up and explicit advancement", async () => {
@@ -230,6 +235,7 @@ it("teleports a body together with the assembly jointed to it", async () => {
   child.position.x = 2;
   world.root.add(root, child);
   const joint = new RevoluteJoint({ body0: root, body1: child, axis: "X" });
+  world.root.add(joint);
   joint.position.x = 1;
   child.setVelocity({ angular: new Vector3(8, 0, 0) });
   for (let i = 0; i < 60; i++) world.update(world.fixedDelta);

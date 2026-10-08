@@ -5,16 +5,24 @@ import {
   RigidBody,
   RevoluteJoint,
   Trigger,
-  registry,
+  worldOf,
 } from "@drawcall/physics";
-import { Group, Scene, Vector3 } from "three";
-import { buildWorld } from "../src/index.js";
+import { Group, Object3D, Scene, Vector3 } from "three";
+import { buildWorld as build, type MujocoWorld } from "../src/index.js";
 import { concave } from "./mesh-fixture.js";
 
+const worlds: MujocoWorld[] = [];
 afterEach(() => {
-  registry.world?.dispose();
-  registry.clear();
+  for (const world of worlds.splice(0)) world.dispose();
 });
+async function buildWorld(
+  root: Object3D,
+  options?: Parameters<typeof build>[1],
+): Promise<MujocoWorld> {
+  const world = await build(root, options);
+  worlds.push(world);
+  return world;
+}
 
 function mesh(geometry = concave()) {
   const body = new RigidBody({ type: "static" });
@@ -69,12 +77,12 @@ test("registrations during loading are included without losing removals", async 
   const removed = new RigidBody({ mass: 1 }).add(new BoxCollider());
   const root = new Scene().add(removed);
   const pending = buildWorld(root);
-  removed.dispose();
+  removed.removeFromParent();
   const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
   body.position.y = 3;
   root.add(body);
   const world = await pending;
-  expect(removed.disposed).toBe(true);
+  expect(world.raycast(new Vector3(0, 0, 3), forward, 6)).toBeNull();
   expect(world.raycast(new Vector3(0, 3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body,
@@ -87,12 +95,11 @@ test("failed compilation preserves authoring objects for repair and retry", asyn
   const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
   const joint = new RevoluteJoint({ body0: null, body1: body, limits: [0, 0] });
   const trigger = new Trigger().add(new BoxCollider());
-  const root = new Scene().add(body, trigger);
+  const root = new Scene().add(body, joint, trigger);
   await expect(buildWorld(root)).rejects.toThrow("nonzero");
-  expect(registry.world).toBeUndefined();
-  expect([...registry.objects]).toEqual([body, joint, trigger]);
-  expect(joint.disposed).toBe(false);
-  joint.dispose();
+  expect(worldOf(root)).toBeUndefined();
+  expect(root.children).toEqual([body, joint, trigger]);
+  joint.removeFromParent();
   const world = await buildWorld(root);
   world.update(world.fixedDelta);
   expect(body.position.y).toBeLessThan(0);
@@ -103,7 +110,7 @@ test("rejects concurrent builds without disturbing the first", async () => {
   const pending = buildWorld(root);
   await expect(buildWorld(root)).rejects.toThrow("already built or building");
   const world = await pending;
-  expect(registry.world).toBe(world);
+  expect(worldOf(root)).toBe(world);
 });
 
 test("explicit convexHull remains a hull when present before building", async () => {

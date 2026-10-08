@@ -58,12 +58,13 @@ No engine is required to construct, clone, import, or export a scene. Finish the
 initial scene, then call `await buildWorld(root, options)` from your chosen backend.
 The returned world is ready for queries and simulation; building does not advance time.
 
-A world simulates the bodies and triggers under `root`, and the joints whose bodies
-are under it. A joint takes part wherever it sits in the hierarchy. The world
-updates its members at the start of every `update()` and before every step: adding
-an object under `root` brings it in, and removing it takes it out without disposing
-it. Objects outside `root` keep their authored state, so a hierarchy can be built
-in full before it is attached, and simulation commands on them throw.
+A world simulates the bodies, joints, and triggers under `root`. It updates its
+members at every `update()`, before every step, and before queries: adding an
+object under `root` brings it in, and removing it takes it out. Objects outside
+every world's root keep their authored state, so a hierarchy can be built in full
+before it is attached, and simulation commands on them throw. A joint under `root`
+whose body is not under it fails the next update. Physics objects own nothing
+outside a world, so they need no disposal.
 
 Building before scene construction also works. Initial building decomposes the
 triangle meshes under `root` a backend cannot collide as triangles into convex
@@ -76,8 +77,8 @@ attribute is replaced, or marked with `needsUpdate = true` after an in-place edi
 edits are not seen, and a marked edit rebuilds the colliders that use the geometry, even if
 the values did not change.
 
-Only one world may be built or building at a time. Failed builds leave authored
-objects intact so they can be corrected and the build retried.
+Each root has at most one world; separate roots can have their own. A failed build
+leaves the scene untouched so it can be corrected and the build retried.
 
 Constructor options are copied and typed readonly: body type/mass, collider dimensions,
 joint bodies/frames/limits/dofs, and drive gains. `options` carries the resolved
@@ -88,11 +89,7 @@ and a drive's `setTarget`.
 Private state and readonly configuration use TypeScript; numeric physics and
 external-input constraints are checked at runtime.
 
-`body.dispose()` removes it from the simulation and disposes connected joints and
-attached triggers. Removing a body from under the root only stops simulating it.
-`world.dispose()` disposes the objects it simulates and releases native resources
-and its registry attachment. `registry.objects` holds every live body, joint, and
-trigger; `registry.clear()` disposes them, including when no world has been built.
+`world.dispose()` releases native resources and leaves the scene as authored state.
 
 ## Objects
 
@@ -217,8 +214,8 @@ validate support and report unsupported properties instead of ignoring them.
 
 ## Adapters
 
-Worlds expose `disposed`, and `joint.connects(body)` tells whether a body is either
-side of a joint. The core also exports adapter helpers (authored velocity and joint
+Worlds expose `root` and `disposed`, `worldOf(object)` finds the world simulating an
+object, and `joint.connects(body)` tells whether a body is either side of a joint. The core also exports adapter helpers (authored velocity and joint
 readings, world-pose writeback, validation, and the shared world assertions) that
 scene code never needs.
 
@@ -324,7 +321,7 @@ for (const axis of ["transX", "transY", "transZ"] as const)
       maxForce: 600,
     }).setTarget({ position: 0 }),
   );
-hand.setKinematicTarget(controllerPose); // each frame; hand.dispose() releases
+hand.setKinematicTarget(controllerPose); // each frame; hand.removeFromParent() releases
 ```
 
 The ragdoll example wires this to `@pmndrs/pointer-events` for mouse and touch.
@@ -439,7 +436,7 @@ const stopEvaluation = world.onAfterStep((dt) => {
   if (elapsed <= 10 && settledFor >= 0.5) result = "passed";
   else if (elapsed >= 10) result = "failed";
 });
-// At episode teardown: stopEvaluation(); goal.dispose();
+// At episode teardown: stopEvaluation(); goal.removeFromParent();
 ```
 
 Reset the evaluator's own state for each episode. `gripper` is one RigidBody,
@@ -447,10 +444,9 @@ not the whole articulated robot. Overlap does not prove complete containment or
 correct orientation; precision tasks also need world pose tolerances. Discrete
 sampling can miss fast crossings.
 
-Sleep and backend collider rebuilds do not create false exits. Disposal removes
-active relationships and notifies surviving owners; scene detachment alone does
-not dispose physics. Disposing a body also disposes attached Triggers. Reset clears
-overlap state silently; the next step establishes fresh pairs. World disposal is
+Sleep and backend collider rebuilds do not create false exits. Removing a body or
+trigger from the root ends its relationships and notifies the owners that remain;
+a body's triggers leave with it. Reset clears overlap state silently; the next step establishes fresh pairs. World disposal is
 silent. Clone/copy preserve authored settings, not listeners or runtime overlaps.
 
 Scene edits inside listeners remain synchronous; backend reconciliation waits

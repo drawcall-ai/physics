@@ -45,14 +45,15 @@ export function grab(
   });
   for (const axis of ["transX", "transY", "transZ"] as const)
     joint.setDrive(axis, new JointDrive(spring).setTarget({ position: 0 }));
+  hand.add(joint);
   return {
     body,
     move(target: THREE.Vector3) {
       hand.setKinematicTarget(new THREE.Matrix4().makeTranslation(target));
     },
-    /** Disposing the hand releases its joint and drives. */
+    /** Removing the hand also removes its joint, releasing the body. */
     release() {
-      hand.dispose();
+      hand.removeFromParent();
     },
   };
 }

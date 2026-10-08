@@ -60,7 +60,7 @@ it("aggregates compound body and trigger shapes without shape-handoff noise", as
   expect(exit).toHaveBeenCalledTimes(1);
 });
 
-it("does not equate scene detachment with disposal and clears disposed occupants immediately", async () => {
+it("keeps objects moved within the root simulated and exits occupants that leave it at the next sync", async () => {
   const world = await createWorld();
   const goal = region();
   const body = box("static");
@@ -68,7 +68,8 @@ it("does not equate scene detachment with disposal and clears disposed occupants
   world.root.add(scene);
   const exit = vi.fn();
   goal.addEventListener("exit", ({ body: other }) => {
-    expect(other.disposed).toBe(true);
+    expect(other).toBe(body);
+    expect(other.parent).toBeNull();
     expect(goal.getOverlappingBodies()).toEqual([]);
     exit();
   });
@@ -77,15 +78,14 @@ it("does not equate scene detachment with disposal and clears disposed occupants
   world.root.add(body, goal);
   world.update(world.fixedDelta);
   expect(goal.overlaps(body)).toBe(true);
-  body.dispose();
-  expect(exit).toHaveBeenCalledTimes(1);
+  body.removeFromParent();
   expect(goal.getOverlappingBodies()).toEqual([]);
-  // Leaving the root removes the trigger from the simulation without disposing it.
+  expect(exit).toHaveBeenCalledTimes(1);
+  // Leaving the root removes the trigger from the simulation.
   world.root.remove(goal);
   world.update(world.fixedDelta);
-  expect(goal.disposed).toBe(false);
   expect(() => goal.getOverlappingBodies()).toThrow(
-    "Physics object is outside the world's root",
+    "Add the object under a built world's root",
   );
 });
 
@@ -143,7 +143,7 @@ it("attaches to body motion, excludes its parent, and detects a joint neighbor",
   goal.position.x = 1;
   parent.add(new Group().add(goal));
   world.root.add(parent, other);
-  new FixedJoint({ body0: parent, body1: other });
+  world.root.add(new FixedJoint({ body0: parent, body1: other }));
   world.update(world.fixedDelta);
   expect(goal.overlaps(parent)).toBe(false);
   expect(goal.overlaps(other)).toBe(false);
@@ -254,7 +254,7 @@ it("aggregates compound solid contacts and notifies both bodies", async () => {
   expect(floorEnd).toHaveBeenCalledExactlyOnceWith(body);
 });
 
-it("defers disposal exits until the current dispatch completes", async () => {
+it("defers removal exits until the current dispatch completes", async () => {
   const world = await createWorld();
   const goal = region();
   const body = box("kinematic");
@@ -262,12 +262,13 @@ it("defers disposal exits until the current dispatch completes", async () => {
   const order: string[] = [];
   goal.addEventListener("enter", () => {
     order.push("enter");
-    body.dispose();
-    order.push("disposed");
+    body.removeFromParent();
+    expect(goal.getOverlappingBodies()).toEqual([]);
+    order.push("removed");
   });
   goal.addEventListener("exit", () => order.push("exit"));
   world.update(world.fixedDelta);
-  expect(order).toEqual(["enter", "disposed", "exit"]);
+  expect(order).toEqual(["enter", "removed", "exit"]);
   expect(goal.getOverlappingBodies()).toEqual([]);
 });
 
@@ -311,7 +312,8 @@ it("keeps resting solid contacts through sleep without duplicate transitions", a
   expect(begin).toHaveBeenCalledTimes(1);
   expect(end).not.toHaveBeenCalled();
   expect(body.position.y).toBeCloseTo(1, 1);
-  floor.dispose();
+  floor.removeFromParent();
+  world.update(0);
   expect(end).toHaveBeenCalledTimes(1);
 });
 
@@ -341,10 +343,12 @@ it("does not dispatch teardown exits while disposing the world", async () => {
   world.update(world.fixedDelta);
   world.dispose();
   expect(exit).not.toHaveBeenCalled();
-  expect(() => goal.getOverlappingBodies()).toThrow("disposed");
+  expect(() => goal.getOverlappingBodies()).toThrow(
+    "Add the object under a built world's root",
+  );
 });
 
-it("finishes body disposal even when its exit listener throws", async () => {
+it("finishes body removal even when its exit listener throws", async () => {
   const world = await createWorld();
   const goal = region();
   const body = box("kinematic");
@@ -358,12 +362,15 @@ it("finishes body disposal even when its exit listener throws", async () => {
   goal.addEventListener("exit", fail);
   world.update(world.fixedDelta);
   expect(goal.overlaps(body)).toBe(true);
-  expect(() => body.dispose()).toThrow("exit failed");
-  expect(body.disposed).toBe(true);
-  expect(attached.disposed).toBe(true);
-  expect(body.parent).toBe(null);
-  expect(parent.children).toEqual([]);
+  body.removeFromParent();
+  expect(() => world.update(world.fixedDelta)).toThrow("exit failed");
   expect(goal.getOverlappingBodies()).toEqual([]);
+  expect(() => attached.getOverlappingBodies()).toThrow(
+    "Add the object under a built world's root",
+  );
+  expect(() => body.setKinematicTarget(new Matrix4())).toThrow(
+    "Add the object under a built world's root",
+  );
   goal.removeEventListener("exit", fail);
   world.update(world.fixedDelta);
   expect(goal.getOverlappingBodies()).toEqual([]);
@@ -384,7 +391,7 @@ it("detects separate static bodies from a static attachment while excluding its 
   expect(goal.getOverlappingBodies()).toEqual([]);
 });
 
-it("does not retain invalid native trigger handles after unregistering their parent", async () => {
+it("does not retain invalid native trigger handles after removing their parent", async () => {
   const world = await createWorld();
   const parent = box("kinematic");
   const trigger = new Trigger().add(new BoxCollider());
@@ -392,8 +399,9 @@ it("does not retain invalid native trigger handles after unregistering their par
   const target = box("static");
   world.root.add(parent, target);
   world.update(world.fixedDelta);
-  world.unregister(parent);
-  // The parent is still under the root, so the next update adds it back.
+  parent.removeFromParent();
+  world.update(world.fixedDelta);
+  world.root.add(parent);
   world.update(world.fixedDelta);
   expect(trigger.overlaps(target)).toBe(true);
 });

@@ -154,14 +154,6 @@ export class RapierWorld extends SteppedWorld {
       if (binding) rebaseAngle(object, binding);
     }
   }
-  protected disposeObjects(): void {
-    cleanup(
-      [...this.triggers.keys(), ...this.joints.keys(), ...this.objects].map(
-        (object) => () => object.dispose(),
-      ),
-      "Physics world disposal failed",
-    );
-  }
   protected free(): void {
     if (this.freed) return;
     this.backend.free();
@@ -256,24 +248,16 @@ export class RapierWorld extends SteppedWorld {
     maxDistance: number,
     options?: RaycastOptions,
   ) {
-    assertLive(this);
     for (const body of options?.excludeBodies ?? []) assertOwned(this, body);
     for (const [object, binding] of this.bodies) {
-      if (object.disposed) continue;
       object.validate();
       refreshBody(this.api, this.backend, object, binding);
     }
     this.backend.propagateModifiedBodyPositionsToColliders();
     return this.pending.preview(this.objects, (bodies) =>
-      raycast(
-        this.api,
-        bodies,
-        origin,
-        direction,
-        maxDistance,
-        options,
-        [...this.triggers.keys()].filter((trigger) => !trigger.disposed),
-      ),
+      raycast(this.api, bodies, origin, direction, maxDistance, options, [
+        ...this.triggers.keys(),
+      ]),
     );
   }
   private command(

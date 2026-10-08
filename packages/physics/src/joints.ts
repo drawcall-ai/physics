@@ -19,15 +19,10 @@ export abstract class ScalarJoint<
     return this.currentDrive;
   }
   setDrive(drive: JointDrive | undefined): this {
-    this.assertLive();
     attach(this, this.currentDrive, drive);
     this.currentDrive = drive;
     this.touch();
     return this;
-  }
-  protected override releaseDrives(): void {
-    attach(this, this.currentDrive, undefined);
-    this.currentDrive = undefined;
   }
   protected override copyDrives(source: this): void {
     this.setDrive(source.drive?.clone());

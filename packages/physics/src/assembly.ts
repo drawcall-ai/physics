@@ -1,3 +1,4 @@
+import type { Object3D } from "three";
 import type { RigidBody } from "./body.js";
 import type { Trigger } from "./trigger.js";
 import { Joint } from "./joint.js";
@@ -39,4 +40,15 @@ export function assembly(
       if (other?.bodyType === "dynamic") members.add(other);
     }
   return members;
+}
+
+/** The joints in the whole hierarchy that holds `object`. */
+export function hierarchyJoints(object: Object3D): Joint[] {
+  let top = object;
+  while (top.parent) top = top.parent;
+  const joints: Joint[] = [];
+  top.traverse((node) => {
+    if (node instanceof Joint) joints.push(node);
+  });
+  return joints;
 }

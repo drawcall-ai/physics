@@ -24,6 +24,7 @@ it("rejects a drive velocity limit, which its constant motor force cannot model"
   const body = inertialBody();
   world.root.add(body);
   const joint = new RevoluteJoint({ body0: null, body1: body });
+  world.root.add(joint);
   joint.setDrive(
     new JointDrive({ stiffness: 10, maxForce: 1, maxVelocity: 1.5 }).setTarget({
       position: 1,
@@ -47,13 +48,15 @@ it("rejects distance joints with a positive minimum distance", async () => {
   const world = await createWorld();
   const body = inertialBody();
   world.root.add(body);
-  new DistanceJoint({
-    body0: null,
-    body1: body,
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-    limits: [0.5, 2],
-  });
+  world.root.add(
+    new DistanceJoint({
+      body0: null,
+      body1: body,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      limits: [0.5, 2],
+    }),
+  );
   expect(() => world.update(0)).toThrow("zero minimum distance");
 });
 
@@ -66,6 +69,7 @@ it("rejects ambiguous revolute position goals before stepping, including huge fi
     body1: body,
     axis: "Z",
   });
+  world.root.add(hinge);
   const drive = new JointDrive({ stiffness: 100, damping: 10 });
   hinge.setDrive(drive);
   for (const position of [

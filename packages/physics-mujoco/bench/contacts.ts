@@ -19,7 +19,7 @@ const { buildWorld } = (await import(
 )) as typeof import("../src/index.js");
 
 // A wide flat base, a narrower body and a head: rings of (radius, height) closed by two poles.
-const rings = [
+const rings: [number, number][] = [
   [0.016, 0],
   [0.016, 0.008],
   [0.01, 0.012],
@@ -84,8 +84,7 @@ for (const side of [-1, 1]) {
   pad.add(new BoxCollider({ size: [0.01, 0.01, 0.03] }));
   const x = held.position.x + side * 0.02;
   pad.position.set(x, top + 0.02, held.position.z);
-  scene.add(pad);
-  new PrismaticJoint({
+  const joint = new PrismaticJoint({
     body0: null,
     body1: pad,
     axis: "X",
@@ -97,6 +96,7 @@ for (const side of [-1, 1]) {
       position: -side * 0.02,
     }),
   );
+  scene.add(pad, joint);
 }
 
 const world = await buildWorld(scene, {

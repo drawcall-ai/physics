@@ -11,7 +11,6 @@ import {
   setWorldPose,
   setAuthoredVelocity,
   wrapAngle,
-  cleanup,
   rollback,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
@@ -88,14 +87,6 @@ export class Scene {
       ).angle;
       record.sampled = record.angle;
     }
-  }
-  dispose(): void {
-    cleanup(
-      [...this.triggers, ...this.jointObjects, ...this.objects]
-        .map((object) => () => object.dispose())
-        .concat(() => this.changes.clear()),
-      "MuJoCo scene disposal failed",
-    );
   }
   prepare(time: number, read: (joint: Joint) => JointReading): Compiled {
     // Change detection validates every body and trigger first.

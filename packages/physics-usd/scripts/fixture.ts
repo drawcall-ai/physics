@@ -1,11 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { Scene, Group, Mesh, MeshStandardMaterial, BoxGeometry } from "three";
-import {
-  registry,
-  RigidBody,
-  RevoluteJoint,
-  JointDrive,
-} from "@drawcall/physics";
+import { RigidBody, RevoluteJoint, JointDrive } from "@drawcall/physics";
 import { PhysicsUSDExporter } from "../dist/index.js";
 const scene = new Scene();
 const assembly = new Group();
@@ -39,5 +34,3 @@ writeFileSync(
   process.argv[2] ?? "/tmp/door.usdz",
   await new PhysicsUSDExporter().parseAsync(scene),
 );
-
-registry.clear();

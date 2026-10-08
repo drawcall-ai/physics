@@ -14,7 +14,7 @@ const world = await buildWorld(scene, { gravity: [0, -9.81, 0] });
 world.update(deltaSeconds);
 ```
 
-`buildWorld(root)` initializes Rapier, attaches to the single physics registry, and prepares the objects under `root` without advancing time. It simulates the bodies and triggers under `root` and the joints between them; objects added under `root` later join at the next update, and objects removed from it leave without being disposed. Create the initial scene first; building an empty world and adding objects later also works. Only one world can be attached at a time.
+`buildWorld(root)` initializes Rapier and prepares the bodies, joints, and triggers under `root` without advancing time. Objects added under `root` later join at the next update or query, and objects removed from it leave. Create the initial scene first; building an empty world and adding objects later also works.
 
 `buildWorld(root, { solverIterations: 16 })` increases constraint solver precision for demanding joint chains, such as vehicle wheel assemblies. The value must be a positive integer; omitting it preserves Rapier’s default. Higher values cost more CPU time.
 
@@ -22,9 +22,9 @@ Dynamic bodies need colliders or complete explicit mass properties; static and k
 
 New objects do not reset existing simulation state. Colliders follow child additions/removals, geometry replaced or marked with `needsUpdate`, collider properties and materials. Body damping and gravity scale update through methods; body type and `canSleep` are immutable.
 
-Body and collider scale are captured once; later scale edits throw and require disposing and recreating the affected bodies and joints. New colliders capture their scale when added. Explicit body mass stays fixed; density-derived mass and inertia follow the scaled shapes.
+Body and collider scale are captured once; later scale edits throw and require recreating the affected bodies and joints. New colliders capture their scale when added. Explicit body mass stays fixed; density-derived mass and inertia follow the scaled shapes.
 
-Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Drives, their targets, and connected-contact settings update before each step; limits are immutable. Changing joint transforms afterward does not move captured anchors. Explicit frame options are copied at construction, and the getter returns defensive matrix copies. Editing those copies does not change the anchors; dispose and create a new joint to change them. Recreate a joint to change its limits. Disable/re-enable with `joint.setEnabled(value)`.
+Joint anchors are captured on first materialization. Explicit `frame0` and `frame1` options are Three.js `Matrix4` transforms relative to their respective bodies (or world space for `body0: null`). Drives, their targets, and connected-contact settings update before each step; limits are immutable. Changing joint transforms afterward does not move captured anchors. Explicit frame options are copied at construction, and the getter returns defensive matrix copies. Editing those copies does not change the anchors; replace the joint to change them. Recreate a joint to change its limits. Disable/re-enable with `joint.setEnabled(value)`.
 
 Use methods directly on the objects:
 
@@ -42,15 +42,15 @@ world.update(world.fixedDelta); // first ordinary step applies pending commands
 
 Read the object's pose through `body.matrixWorld`. Physics writeback and teleportation synchronize it before returning, so observation callbacks after a step need no refresh. Call `body.updateWorldMatrix(true, false)` only when reading immediately after direct authoring or hierarchy changes. Copy or clone it to retain a snapshot. It includes scale; `splitTransform(body.matrixWorld).pose` extracts the rigid pose. The old `world.body`, `world.joint`, and `getMatrix` APIs are removed. `teleport(matrix)` works before and after initialization and synchronously updates the object's world pose while preserving world scale. Under a nonuniformly scaled static parent, the local scale may change to compensate; transforms requiring shear are rejected before the object or backend is moved. Both it and `setKinematicTarget(matrix)` require a world-space rigid matrix with unit scale and no shear. After initialization the backend owns the dynamic body's pose; assigning Three.js position alone does not teleport it.
 
-Commands work before the first update. Pending body commands replay in call order against the completed assembly, before `onBeforeStep` callbacks. Impulses add velocity once; a later velocity setter replaces the specified component. Forces add for one solver substep and survive no-step updates. Sleep/wake and kinematic targets retain their ordering. Reset and disposal clear pending commands; reset also clears a kinematic body's next target. `onBeforeStep` and `onAfterStep` return unsubscribe functions.
+Commands work before the first update. Pending body commands replay in call order against the completed assembly, before `onBeforeStep` callbacks. Impulses add velocity once; a later velocity setter replaces the specified component. Forces add for one solver substep and survive no-step updates. Sleep/wake and kinematic targets retain their ordering. Reset, removal, and world disposal clear pending commands; reset also clears a kinematic body's next target. `onBeforeStep` and `onAfterStep` return unsubscribe functions.
 
-Reads and raycasts never simulate or capture permanent geometry, scale, or joint anchors. Before preparation, Rapier uses disposable bodies to evaluate inferred mass, pending impulses, and ray intersections from the current assembly. A force does not change velocity until a solver step. Later construction edits remain visible. Missing physical data, invalid frames, and disposed/foreign objects fail clearly.
+Reads and raycasts never simulate or capture permanent geometry, scale, or joint anchors. Before preparation, Rapier uses disposable bodies to evaluate inferred mass, pending impulses, and ray intersections from the current assembly. A force does not change velocity until a solver step. Later construction edits remain visible. Missing physical data, invalid frames, and objects outside the world's root fail clearly.
 
 Axis `joint.getState()` returns position/velocity immediately, including rotating sliders with inferred COM. Disabled joints remain readable using captured frames once prepared.
 
 This is a breaking API change: release the packages together under a new minor version and migrate scene consumers before deploying that release.
 
-`body.dispose()` releases its physics resources and connected joints. Removing a body from under the root stops simulating it without disposing it. `world.dispose()` disposes the physics objects it simulates and frees Rapier. Geometry and materials remain owned by the application.
+Removing a body from under the root releases its Rapier resources. `world.dispose()` frees Rapier and leaves the scene as authored state. Geometry and materials remain owned by the application.
 
 Rapier's own limits are tested in `test/rapier.test.ts`: equal static/dynamic friction, distance joints with a zero minimum, revolute position targets within π of the current angle, and positive integer solver iterations. Distance joints are Rapier spring joints: a finite maximum becomes their rope limit, and a `JointDrive` acts on the spring's coupled linear axis. Generic joints map to Rapier generic joints with per-axis limits and motors. Unsupported authored data fails visibly.
 

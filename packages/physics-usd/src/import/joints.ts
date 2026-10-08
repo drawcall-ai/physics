@@ -1,6 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import {
-  rollback,
   DistanceJoint,
   GenericJoint,
   JointDrive,
@@ -162,29 +161,21 @@ export function readJoint(
   bodies: Map<string, RigidBody>,
 ): Joint {
   const joint = createJoint(layer, path, type, bodies);
-  try {
-    joint.setEnabled(boolean(layer, path, "physics:jointEnabled", true));
-    joint.setCollideConnected(
-      boolean(layer, path, "physics:collisionEnabled", false),
-    );
-    if (joint instanceof ScalarJoint) {
-      const angular = joint instanceof RevoluteJoint;
-      joint.setDrive(
-        readDrive(layer, path, angular ? "angular" : "linear", angular),
-      );
-    }
-    if (joint instanceof GenericJoint)
-      for (const axis of jointDofs)
-        joint.setDrive(
-          axis,
-          readDrive(layer, path, axis, axis.startsWith("rot")),
-        );
-    return joint;
-  } catch (error) {
-    rollback(
-      error,
-      [() => joint.dispose()],
-      "Physics operation and cleanup failed",
+  joint.setEnabled(boolean(layer, path, "physics:jointEnabled", true));
+  joint.setCollideConnected(
+    boolean(layer, path, "physics:collisionEnabled", false),
+  );
+  if (joint instanceof ScalarJoint) {
+    const angular = joint instanceof RevoluteJoint;
+    joint.setDrive(
+      readDrive(layer, path, angular ? "angular" : "linear", angular),
     );
   }
+  if (joint instanceof GenericJoint)
+    for (const axis of jointDofs)
+      joint.setDrive(
+        axis,
+        readDrive(layer, path, axis, axis.startsWith("rot")),
+      );
+  return joint;
 }

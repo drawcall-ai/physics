@@ -8,8 +8,6 @@ import { PhysicsUSDExporter, PhysicsUSDLoader } from "@drawcall/physics-usd";
 const bytes = await new PhysicsUSDExporter().parseAsync(scene);
 const imported = await new PhysicsUSDLoader().parseAsync(bytes);
 // imported is a Three.js Group with a gravity vector in m/s².
-// When finished with the imported physics resources:
-imported.dispose();
 ```
 
 `PhysicsUSDExporter.parseAsync` returns `Uint8Array<ArrayBuffer>`, matching Three's `USDZExporter`. `PhysicsUSDLoader` accepts ASCII USDA strings, array buffers, and USDZ bytes. `parse` constructs synchronously; `parseAsync` also waits for referenced textures. `loadAsync(url)` fetches and imports a file.
@@ -30,7 +28,7 @@ Supported mapping:
 - `JointDrive` position/velocity targets, force/acceleration model, gains, and force/torque limits through PhysicsDriveAPI, per axis on generic joints. Distance joints use the linear drive, an extension beyond UsdPhysics, which defines drives for revolute and prismatic joints only, so other consumers ignore it. The effort term has no USD counterpart.
 - SI stage units and Y-up. Angular targets, limits, velocity, and drive coefficients convert between radians and USD's degree-based angular units.
 
-Import creates actual `RigidBody`, collider, material, and joint instances. It resolves inherited physics material bindings and density and retains shared material identity. The returned `PhysicsUSDScene` extends Three.js `Group`; its `gravity` preserves the stage's gravity. Use `clone(scene)` from `@drawcall/physics` to remap joint references to cloned bodies within the same registry. Native `scene.clone()` follows Three.js behavior and retains original joint references. Disposing a clone releases its own registrations. Imported objects need no world. Add the imported scene under the root before `buildWorld(root)` to include it in backend preparation, or add it to a running world's root as a later addition. `scene.dispose()` releases only its imported bodies and joints. Visual geometry and materials retain normal Three.js ownership; release owned visual resources before disposal, which detaches bodies. A loading manager can be supplied as `{ manager }`.
+Import creates actual `RigidBody`, collider, material, and joint instances. It resolves inherited physics material bindings and density and retains shared material identity. The returned `PhysicsUSDScene` extends Three.js `Group`; its `gravity` preserves the stage's gravity. Use `clone(scene)` from `@drawcall/physics` to remap joint references to cloned bodies. Native `scene.clone()` follows Three.js behavior and retains original joint references. Imported objects need no world. Add the imported scene under the root before `buildWorld(root)` to include it in backend preparation, or add it to a running world's root as a later addition; remove it to stop simulating it. Visual geometry and materials retain normal Three.js ownership. A loading manager can be supplied as `{ manager }`.
 
 ## Explicit boundaries
 

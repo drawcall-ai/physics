@@ -1,6 +1,3 @@
-import { afterEach } from "vitest";
-import { registry } from "../src/index.js";
-afterEach(() => registry.clear());
 import { describe, expect, it } from "vitest";
 import {
   BoxGeometry,

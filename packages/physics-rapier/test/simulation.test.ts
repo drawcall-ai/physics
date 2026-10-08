@@ -108,16 +108,22 @@ it("keeps the opening of a compound frame empty", async () => {
   expect(falling.position.y).toBeLessThan(0);
 });
 
-it("releases disposed bodies and rejects further operations", async () => {
+it("releases removed bodies and rejects further simulation commands", async () => {
   const world = await createWorld(earth);
   const body = box();
   world.root.add(body);
-  body.dispose();
   world.update(world.fixedDelta);
-  expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow("disposed");
+  body.removeFromParent();
+  world.update(world.fixedDelta);
+  expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
+    "Add the object under a built world's root",
+  );
+  expect(
+    world.raycast(new Vector3(-2, 0, 0), new Vector3(1, 0, 0), 4),
+  ).toBeNull();
 });
 
-it("drops a body onto a floor, resets its pose, and rejects disposed access", async () => {
+it("drops a body onto a floor, resets its pose, and stops simulating it once the world is disposed", async () => {
   const world = await createWorld(earth);
   const scene = world.root;
   const floor = box("static"),
@@ -130,7 +136,10 @@ it("drops a body onto a floor, resets its pose, and rejects disposed access", as
   world.reset();
   expect(falling.position.y).toBe(3);
   world.dispose();
-  expect(() => falling.getVelocity()).toThrow("disposed");
+  expect(falling.parent).toBe(scene);
+  expect(() => falling.applyImpulse(new Vector3(1, 0, 0))).toThrow(
+    "Add the object under a built world's root",
+  );
 });
 
 it("drives a hinge under rotated parents while preserving its anchor", async () => {

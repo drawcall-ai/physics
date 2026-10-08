@@ -54,7 +54,6 @@ export class GenericJoint extends Joint<
     return this.currentDrives.get(axis);
   }
   setDrive(axis: JointDof, drive: JointDrive | undefined): this {
-    this.assertLive();
     attach(this, this.currentDrives.get(axis), drive);
     if (drive) this.currentDrives.set(axis, drive);
     else this.currentDrives.delete(axis);
@@ -63,11 +62,6 @@ export class GenericJoint extends Joint<
   }
   get drives(): ReadonlyMap<JointDof, JointDrive> {
     return this.currentDrives;
-  }
-  protected override releaseDrives(): void {
-    for (const drive of this.currentDrives.values())
-      attach(this, drive, undefined);
-    this.currentDrives.clear();
   }
   protected override copyDrives(source: this): void {
     for (const axis of jointDofs)

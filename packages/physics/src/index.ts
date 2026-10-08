@@ -63,5 +63,3 @@ export {
 export * from "./backend.js";
 
 export { Trigger, type TriggerEventMap } from "./trigger.js";
-
-export { registry } from "./registry.js";

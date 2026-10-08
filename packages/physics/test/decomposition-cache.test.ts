@@ -15,7 +15,6 @@ import {
   RigidBody,
   convexParts,
   prepareConvexParts,
-  registry,
 } from "../src/index.js";
 
 const hull = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -41,7 +40,6 @@ beforeEach(async () => {
   decompose.mockClear();
 });
 afterEach(async () => {
-  registry.clear();
   vi.restoreAllMocks();
   await chmod(root, 0o700).catch(() => {});
   await rm(root, { recursive: true, force: true });
@@ -55,7 +53,7 @@ function box() {
   return collider;
 }
 const prepare = (collider: MeshCollider) =>
-  prepareConvexParts([collider.parent], () => true);
+  prepareConvexParts(collider.parent!, () => true);
 
 it("reads an identical mesh's parts back from disk", async () => {
   await mkdir(join(root, "node_modules"));
