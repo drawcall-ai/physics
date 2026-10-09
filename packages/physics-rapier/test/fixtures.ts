@@ -1,24 +1,23 @@
 import { afterEach } from "vitest";
-import { BoxGeometry, Mesh } from "three";
+import { BoxGeometry, Mesh, Scene } from "three";
 import {
   RigidBody,
   type PhysicsWorld,
+  type PhysicsWorldOptions,
   type RigidBodyOptions,
   type RigidBodyType,
 } from "@drawcall/physics";
-import {
-  buildWorld,
-  type RapierOptions,
-  type RapierWorld,
-} from "../src/index.js";
+import { buildWorld, type RapierWorld } from "../src/index.js";
 
 const worlds: RapierWorld[] = [];
 afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
 });
 
-export async function createWorld(options: RapierOptions = {}) {
+/** Builds a world over a fresh scene unless given one; tests add what it simulates to `world.scene`. */
+export async function createWorld(options: Partial<PhysicsWorldOptions> = {}) {
   const world = await buildWorld({
+    scene: new Scene(),
     gravity: [0, 0, 0],
     fixedDelta: 0.01,
     ...options,
@@ -39,8 +38,8 @@ export function inertialBody(options: Partial<RigidBodyOptions> = {}) {
 
 export const earth = { gravity: [0, -9.81, 0], fixedDelta: 1 / 60 } as const;
 
-export function box(type: RigidBodyType = "dynamic") {
-  const body = new RigidBody({ mass: 1, type });
+export function box(bodyType: RigidBodyType = "dynamic") {
+  const body = new RigidBody({ mass: 1, bodyType });
   body.add(new Mesh(new BoxGeometry(1, 1, 1)));
   return body;
 }

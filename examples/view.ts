@@ -1,18 +1,17 @@
 import * as THREE from "three";
-import { cleanup } from "@drawcall/physics";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import type { PhysicsWorld } from "@drawcall/physics";
 import "./style.css";
 
 export function view(
-  world: { update(delta: number): void; dispose(): void },
-  root: THREE.Object3D,
+  world: PhysicsWorld,
+  scene: THREE.Scene,
   target = new THREE.Vector3(0, 1, 0),
 ) {
   const canvas = document.querySelector("canvas");
   const status = document.querySelector("output");
   if (!canvas || !status) throw new Error("Missing canvas or status output");
-  const scene = new THREE.Scene();
-  scene.add(root, new THREE.HemisphereLight(0xffffff, 0x667788, 3));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 3));
   const light = new THREE.DirectionalLight(0xffffff, 3);
   scene.add(light, light.target);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -25,27 +24,21 @@ export function view(
   const previous = target.clone();
   const timer = new THREE.Timer();
   timer.connect(document);
-  const events = new AbortController();
   let paused = false;
   function resize() {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
   }
-  window.addEventListener("resize", resize, { signal: events.signal });
-  window.addEventListener(
-    "keydown",
-    (event) => {
-      if (event.code === "KeyP") paused = !paused;
-    },
-    { signal: events.signal },
-  );
+  window.addEventListener("resize", resize);
+  window.addEventListener("keydown", (event) => {
+    if (event.code === "KeyP") paused = !paused;
+  });
   resize();
   return {
     canvas,
     camera,
     controls,
-    signal: events.signal,
     run(update: () => string = () => "") {
       renderer.setAnimationLoop(() => {
         timer.update();
@@ -67,29 +60,6 @@ export function view(
           console.error(error);
         }
       });
-    },
-    dispose() {
-      const resources = new Set<THREE.BufferGeometry | THREE.Material>();
-      scene.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
-        resources.add(object.geometry);
-        for (const material of Array.isArray(object.material)
-          ? object.material
-          : [object.material])
-          resources.add(material);
-      });
-      cleanup(
-        [
-          () => events.abort(),
-          () => renderer.setAnimationLoop(null),
-          () => world.dispose(),
-          () => controls.dispose(),
-          () => timer.dispose(),
-          ...Array.from(resources, (resource) => () => resource.dispose()),
-          () => renderer.dispose(),
-        ],
-        "Failed to dispose example",
-      );
     },
   };
 }

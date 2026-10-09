@@ -1,10 +1,6 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBodyType, Shape } from "@drawcall/physics";
-import { Prim } from "./prim.js";
-
-export function tuple(values: readonly number[]): string {
-  return `(${values.join(", ")})`;
-}
+import { Prim, tuple } from "./prim.js";
 
 function transform(
   prim: Prim,

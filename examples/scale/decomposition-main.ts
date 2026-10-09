@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import { backend, buildWorld } from "../backend";
 import { view } from "../view";
 import { decomposition } from "./decomposition";
@@ -22,11 +22,12 @@ for (const child of Array.from(nav.children)) {
 }
 nav.prepend(controls);
 const { root, lanes } = decomposition();
-const world = await buildWorld();
-const demo = view(world, root, new Vector3(0, 1.5, 0));
+const scene = new Scene().add(root);
+const world = await buildWorld({ scene });
+const demo = view(world, scene, new Vector3(0, 1.5, 0));
 document
   .querySelector("#replay")
-  ?.addEventListener("click", () => world.reset(), { signal: demo.signal });
+  ?.addEventListener("click", () => world.reset());
 demo.run(() =>
   lanes
     .map(
@@ -34,11 +35,4 @@ demo.run(() =>
         `${index === 0 ? "Left" : "Right"} cube height: ${cube.position.y.toFixed(2)} m`,
     )
     .join(" · "),
-);
-window.addEventListener(
-  "pagehide",
-  (event) => {
-    if (!event.persisted) demo.dispose();
-  },
-  { signal: demo.signal },
 );

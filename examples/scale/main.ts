@@ -4,7 +4,7 @@ import { view } from "../view";
 import { cases } from "./cases";
 import { specimen, verify } from "./specimen";
 
-const root = new THREE.Group();
+const scene = new THREE.Scene();
 function controls() {
   const select = document.querySelector<HTMLSelectElement>(
     'select[aria-label="Scale case"]',
@@ -23,8 +23,8 @@ let current: ReturnType<typeof specimen> | undefined = specimen(
   initialCase,
   true,
 );
-root.add(current.root);
-const world = await buildWorld();
+scene.add(current.root);
+const world = await buildWorld({ scene });
 world.onAfterStep((delta) => current?.step(delta));
 let checking = false;
 let status = "";
@@ -36,37 +36,26 @@ function remove() {
   current = undefined;
   removed++;
 }
-function show() {
+async function show() {
   if (checking) return;
   remove();
   const spec = cases[select.selectedIndex];
   if (!spec) throw new Error("Missing case");
   if (spec.error) {
-    status = verify(world, spec);
+    status = await verify(world, spec);
     return;
   }
-  current = specimen(spec, true);
-  root.add(current.root);
+  const next = specimen(spec, true);
+  await world.decompose(next.root);
+  current = next;
+  scene.add(current.root);
   added++;
   status =
-    spec.type === "kinematic"
+    spec.bodyType === "kinematic"
       ? "Moving kinematic lift · teal cubes ride its collider"
       : "Spinning drop · R removes and drops it again";
 }
-const demo = view(
-  {
-    update(delta) {
-      if (checking) return;
-      world.update(delta);
-    },
-    dispose() {
-      remove();
-      world.dispose();
-    },
-  },
-  root,
-  new THREE.Vector3(0, 2, 0),
-);
+const demo = view(world, scene, new THREE.Vector3(0, 2, 0));
 async function checkAll() {
   if (checking) return;
   remove();
@@ -81,8 +70,8 @@ async function checkAll() {
       const row = document.createElement("li");
       try {
         // The second run creates fresh objects in the already-running world.
-        verify(world, spec);
-        const result = verify(world, spec);
+        await verify(world, spec);
+        const result = await verify(world, spec);
         row.textContent = `${spec.name} — ${result}; removal/recreation PASS`;
         passed++;
       } catch (error) {
@@ -98,54 +87,39 @@ async function checkAll() {
     checking = false;
     select.disabled = false;
   }
-  show();
+  await show();
 }
-select.addEventListener("change", show, { signal: demo.signal });
+select.addEventListener("change", () => void show());
 for (const [id, index] of [
   ["compound", cases.findIndex((spec) => spec.compound)],
   [
     "kinematic",
-    cases.findIndex((spec) => spec.type === "kinematic" && !spec.error),
+    cases.findIndex((spec) => spec.bodyType === "kinematic" && !spec.error),
   ],
 ] as const) {
-  document.getElementById(id)?.addEventListener(
-    "click",
-    () => {
-      if (checking) return;
-      select.selectedIndex = index;
-      show();
-    },
-    { signal: demo.signal },
-  );
+  document.getElementById(id)?.addEventListener("click", () => {
+    if (checking) return;
+    select.selectedIndex = index;
+    void show();
+  });
 }
 document
   .querySelector("#check")
-  ?.addEventListener("click", () => void checkAll(), { signal: demo.signal });
+  ?.addEventListener("click", () => void checkAll());
 document
   .querySelector("#recreate")
-  ?.addEventListener("click", show, { signal: demo.signal });
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (checking) return;
-    if (event.code === "KeyX") {
-      remove();
-      status = "Removed. R recreates this case.";
-    }
-    if (event.code === "KeyR") show();
-    if (event.code === "KeyN") {
-      select.selectedIndex = (select.selectedIndex + 1) % cases.length;
-      show();
-    }
-  },
-  { signal: demo.signal },
-);
+  ?.addEventListener("click", () => void show());
+window.addEventListener("keydown", (event) => {
+  if (checking) return;
+  if (event.code === "KeyX") {
+    remove();
+    status = "Removed. R recreates this case.";
+  }
+  if (event.code === "KeyR") void show();
+  if (event.code === "KeyN") {
+    select.selectedIndex = (select.selectedIndex + 1) % cases.length;
+    void show();
+  }
+});
 demo.run(() => `${status} · ${added} added / ${removed} removed`);
 void checkAll();
-window.addEventListener(
-  "pagehide",
-  (event) => {
-    if (!event.persisted) demo.dispose();
-  },
-  { signal: demo.signal },
-);

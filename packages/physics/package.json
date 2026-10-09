@@ -3,8 +3,16 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Physics scene objects, automatic colliders, and joints for Three.js.",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./backend": {
+      "types": "./dist/backend.d.ts",
+      "default": "./dist/backend.js"
+    }
+  },
   "sideEffects": false,
   "files": [
     "dist",

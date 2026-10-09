@@ -6,7 +6,7 @@ output="$package/generated/coacd"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 
-# Changing a pin changes the decomposer: bump DECOMPOSER in src/decomposition.ts too.
+# Changing a pin changes the decomposer: bump DECOMPOSER in src/colliders/decomposition.ts too.
 coacd=b678aa0802996fa03e1ec0e68bd05acf8cd20cf9
 cdt=ec03b309fd18102ab1da069f2edf3b37be5d1fb3
 bridge=5a969983b1a1280c07b2c7cdf44c16a681fc3384
@@ -90,7 +90,7 @@ cat > "$build/output/README.md" <<EOF
 # Generated CoACD WASM
 
 Built by scripts/build-coacd.sh with Emscripten 5.0.2.
-src/coacd.ts embeds its WASM and is compiled to dist/coacd.js.
+src/colliders/coacd.ts embeds its WASM and is compiled to dist/colliders/coacd.js.
 No external asset is required.
 
 Source revisions:
@@ -105,6 +105,6 @@ EOF
 
 # Publish a complete build only after compilation and packaging succeed.
 mkdir -p "$(dirname "$output")"
-mv "$build/output/coacd.ts" "$package/src/coacd.ts"
+mv "$build/output/coacd.ts" "$package/src/colliders/coacd.ts"
 rm -rf "$output"
 mv "$build/output" "$output"

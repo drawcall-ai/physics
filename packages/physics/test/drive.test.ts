@@ -1,6 +1,5 @@
-import { afterEach, expect, expectTypeOf, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import {
-  registry,
   DistanceJoint,
   GenericJoint,
   JointDrive,
@@ -8,19 +7,18 @@ import {
   type JointDriveTarget,
   RevoluteJoint,
   RigidBody,
+  clone,
 } from "../src/index.js";
 
-afterEach(() => registry.clear());
 function hinge() {
   return new RevoluteJoint({ body0: null, body1: new RigidBody() });
 }
 
-it("freezes drive options and starts passive", () => {
+it("keeps drive options and starts passive", () => {
   const options = { stiffness: 10, damping: 2, maxForce: 5 };
   const drive = new JointDrive(options);
-  expect(drive.options).not.toBe(options);
-  options.stiffness = 100;
-  expect(drive.options.stiffness).toBe(10);
+  expect(drive.options).toBe(options);
+  expect(drive.clone().options).toBe(options);
   expectTypeOf<Pick<JointDrive, "options">>().toEqualTypeOf<{
     readonly options: JointDriveOptions;
   }>();
@@ -54,7 +52,7 @@ it("replaces the whole target, zeroes omitted terms, and requires the gain a ter
   expect(drive.target).toBeUndefined();
 });
 
-it("attaches to one joint at a time and detaches on replacement and disposal", () => {
+it("attaches to one joint at a time and detaches on replacement", () => {
   const first = hinge(),
     second = hinge();
   const drive = new JointDrive({ stiffness: 1 });
@@ -69,9 +67,18 @@ it("attaches to one joint at a time and detaches on replacement and disposal", (
   expect(replacement.joint).toBe(first);
   second.setDrive(drive);
   expect(drive.joint).toBe(second);
-  first.dispose();
-  expect(replacement.joint).toBeUndefined();
-  expect(() => first.setDrive(undefined)).toThrow("disposed");
+});
+
+it("counts drive target changes as changes of the attached joint", () => {
+  const joint = hinge();
+  const drive = new JointDrive({ stiffness: 1 });
+  drive.setTarget({ position: 1 });
+  const detached = joint.version;
+  joint.setDrive(drive);
+  const attached = joint.version;
+  expect(attached).toBeGreaterThan(detached);
+  drive.setTarget({ position: 2 });
+  expect(joint.version).toBeGreaterThan(attached);
 });
 
 it("clones drives with their subclass and copies them with their joint", () => {
@@ -86,7 +93,7 @@ it("clones drives with their subclass and copies them with their joint", () => {
     position: 0.5,
   });
   joint.setDrive(actuator);
-  const copy = joint.clone();
+  const copy = clone(joint);
   expect(copy.drive).toBeInstanceOf(Actuator);
   expect(copy.drive?.options).toEqual(actuator.options);
   expect(copy.drive?.target).toEqual(actuator.target);
@@ -96,7 +103,7 @@ it("clones drives with their subclass and copies them with their joint", () => {
     body1: new RigidBody(),
     limits: [0, Infinity],
   }).setDrive(new JointDrive({ stiffness: 10 }).setTarget({ position: 0 }));
-  expect(distance.clone().drive?.options.stiffness).toBe(10);
+  expect(clone(distance).drive?.options.stiffness).toBe(10);
 });
 
 it("locks generic joint axes by default and drives each axis separately", () => {
@@ -119,8 +126,7 @@ it("locks generic joint axes by default and drives each axis separately", () => 
   expect(joint.getDrive("transY")).toBe(lift);
   expect(() => joint.setDrive("rotX", lift)).toThrow("already attached");
   expect(joint.drives.size).toBe(1);
-  expect(joint.clone().getDrive("transY")?.target).toEqual(lift.target);
-  expect(joint.getState("transY")).toEqual({ position: 0, velocity: 0 });
+  expect(clone(joint).getDrive("transY")?.target).toEqual(lift.target);
   joint.setDrive("transY", undefined);
   expect(lift.joint).toBeUndefined();
   expect(

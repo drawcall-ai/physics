@@ -1,11 +1,15 @@
-import {
-  RigidBody,
-  resolveCollisionGroups,
-  type CollisionGroups,
-  type Joint,
-} from "@drawcall/physics";
-import { name } from "../values.js";
+import { RigidBody, type CollisionGroups, type Joint } from "@drawcall/physics";
+import { resolveCollisionGroups } from "@drawcall/physics/backend";
+import { name } from "./markup.js";
 import { matches, type Geometry } from "./shapes.js";
+
+interface Mask {
+  groups: CollisionGroups;
+  contype: number;
+  conaffinity: number;
+  /** Groups this one collides with that no bit pairs it with yet. */
+  open: Set<Mask>;
+}
 
 /**
  * Contact filtering through MuJoCo's own broadphase.
@@ -16,7 +20,7 @@ import { matches, type Geometry } from "./shapes.js";
  * themselves share one bit in both masks, and each remaining colliding pair of groups gets a
  * bit from one to the other. Friction and restitution combine by MuJoCo's own rules.
  */
-export function contacts(bodies: ReadonlySet<RigidBody>, fixedDelta: number) {
+export function contacts(bodies: readonly RigidBody[], fixedDelta: number) {
   const key = (groups: CollisionGroups) =>
     `${groups.membership}/${groups.filter}`;
   const distinct = new Map<string, CollisionGroups>();
@@ -25,33 +29,35 @@ export function contacts(bodies: ReadonlySet<RigidBody>, fixedDelta: number) {
       const groups = resolveCollisionGroups(collider, body);
       distinct.set(key(groups), groups);
     }
-  const groups = [...distinct.values()];
   const masks = new Map(
-    groupMasks(groups).map((mask, i) => [key(groups[i]!), mask]),
+    groupMasks([...distinct.values()]).map((mask) => [key(mask.groups), mask]),
   );
   const stiffness = Math.max(0.004, fixedDelta * 2);
   return (geometry: Geometry): string => {
     if (!(geometry.owner instanceof RigidBody))
       return 'contype="0" conaffinity="0"';
-    const [contype, conaffinity] = masks.get(key(geometry.groups))!;
+    const mask = masks.get(key(geometry.groups));
+    if (!mask) throw new Error("Missing MuJoCo contact mask");
     const restitution = Math.min(geometry.restitution, 0.9999);
     const damping =
       restitution === 0
         ? 1
         : -Math.log(restitution) /
           Math.sqrt(Math.PI ** 2 + Math.log(restitution) ** 2);
-    return `contype="${contype}" conaffinity="${conaffinity}" condim="3" friction="${geometry.friction} 0 0" solref="${stiffness} ${damping}"`;
+    return `contype="${mask.contype}" conaffinity="${mask.conaffinity}" condim="3" friction="${geometry.friction} 0 0" solref="${stiffness} ${damping}"`;
   };
 }
 
 /** contype and conaffinity for each group, colliding exactly as `matches` says. */
-function groupMasks(groups: CollisionGroups[]): [number, number][] {
-  const masks = groups.map((): [number, number] => [0, 0]);
-  const pair = (i: number, j: number) => `${Math.min(i, j)},${Math.max(i, j)}`;
-  const open = new Set<string>();
-  for (const [i, a] of groups.entries())
-    for (const [j, b] of groups.entries())
-      if (i <= j && matches(a, b)) open.add(pair(i, j));
+function groupMasks(groups: CollisionGroups[]): Mask[] {
+  const masks = groups.map((groups): Mask => ({
+    groups,
+    contype: 0,
+    conaffinity: 0,
+    open: new Set(),
+  }));
+  for (const a of masks)
+    for (const b of masks) if (matches(a.groups, b.groups)) a.open.add(b);
   let bits = 0;
   const bit = () => {
     if (bits === 32)
@@ -60,33 +66,34 @@ function groupMasks(groups: CollisionGroups[]): [number, number][] {
       );
     return 1 << bits++;
   };
-  const selfColliding = groups.map((g) => matches(g, g));
-  for (const [i] of groups.entries())
-    for (const [j] of groups.entries()) {
-      if (!selfColliding[i] || !selfColliding[j] || !open.has(pair(i, j)))
-        continue;
-      const shared = [...new Set([i, j])];
-      for (const [k, group] of groups.entries())
+  const self = (mask: Mask) => matches(mask.groups, mask.groups);
+  for (const a of masks)
+    for (const b of masks) {
+      if (!self(a) || !self(b) || !a.open.has(b)) continue;
+      const shared = [...new Set([a, b])];
+      for (const mask of masks)
         if (
-          selfColliding[k] &&
-          !shared.includes(k) &&
-          shared.every((m) => matches(groups[m]!, group))
+          self(mask) &&
+          !shared.includes(mask) &&
+          shared.every((other) => matches(other.groups, mask.groups))
         )
-          shared.push(k);
-      const b = bit();
-      for (const m of shared) {
-        masks[m]![0] |= b;
-        masks[m]![1] |= b;
-        for (const n of shared) open.delete(pair(m, n));
+          shared.push(mask);
+      const value = bit();
+      for (const mask of shared) {
+        mask.contype |= value;
+        mask.conaffinity |= value;
+        for (const other of shared) mask.open.delete(other);
       }
     }
   // What is left pairs two groups of which at least one does not collide with itself.
-  for (const key of open) {
-    const [i, j] = key.split(",").map(Number) as [number, number];
-    const b = bit();
-    masks[i]![0] |= b;
-    masks[j]![1] |= b;
-  }
+  for (const a of masks)
+    for (const b of [...a.open]) {
+      const value = bit();
+      a.contype |= value;
+      b.conaffinity |= value;
+      a.open.delete(b);
+      b.open.delete(a);
+    }
   return masks;
 }
 
@@ -96,7 +103,7 @@ function groupMasks(groups: CollisionGroups[]): [number, number][] {
  * includes every pair of static bodies.
  */
 export function exclusions(
-  bodies: ReadonlySet<RigidBody>,
+  bodies: readonly RigidBody[],
   joints: Iterable<Joint>,
 ): string {
   const pairs = new Map<string, string>();
@@ -106,10 +113,10 @@ export function exclusions(
   };
   for (const joint of joints) {
     const { body0, body1 } = joint.options;
-    if (joint.enabled && !joint.collideConnected && body0 && bodies.has(body0))
+    if (joint.enabled && !joint.collideConnected && body0)
       exclude(body0, body1);
   }
-  const idle = [...bodies].filter((body) => body.bodyType !== "dynamic");
+  const idle = bodies.filter((body) => body.bodyType !== "dynamic");
   for (const body of idle)
     if (body.bodyType === "kinematic")
       for (const other of idle) if (other !== body) exclude(body, other);

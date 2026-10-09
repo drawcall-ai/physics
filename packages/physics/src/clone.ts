@@ -1,8 +1,5 @@
 import { Object3D } from "three";
-import { RigidBody } from "./body.js";
-import { Trigger } from "./trigger.js";
-import { cleanup, rollback } from "./cleanup.js";
-import { Joint } from "./joint.js";
+import { Joint } from "./joints/joint.js";
 
 /** Copy bodies before constructing joints so immutable connections point at their copies. */
 export function clone<T extends Object3D>(root: T): T {
@@ -13,63 +10,28 @@ export function clone<T extends Object3D>(root: T): T {
     copies.set(source, target);
     return target;
   }
-  try {
-    let result = root instanceof Joint ? undefined : copy(root);
-    root.traverse((source) => {
-      if (source === root) return;
-      if (source instanceof Joint) joints.push(source);
-      else copy(source);
-    });
-    for (const joint of joints) {
-      const target = joint.cloneWithBodies(copies, false);
-      copies.set(joint, target);
-    }
-    if (root instanceof Joint) {
-      const target = root.cloneWithBodies(copies, false);
-      copies.set(root, target);
-      result = target;
-    }
-    for (const [source, target] of copies) {
-      for (const child of source.children) {
-        const copiedChild = copies.get(child);
-        if (!copiedChild) throw new Error("Missing cloned child");
-        target.add(copiedChild);
-      }
-    }
-    for (const [source, target] of copies) {
-      if (!(source instanceof Joint)) target.copy(source, false);
-    }
-    if (!result) throw new Error("Missing cloned root");
-    return result;
-  } catch (error) {
-    rollback(
-      error,
-      [...copies.values()].reverse().map((object) => () => {
-        if (
-          object instanceof RigidBody ||
-          object instanceof Joint ||
-          object instanceof Trigger
-        )
-          object.dispose();
-      }),
-      "Assembly clone failed",
-    );
-  }
-}
-
-/** Release every physics object in a partial clone, including unfinished hierarchies. */
-export function disposeClonedPhysics(root: Object3D): void {
-  const objects: (RigidBody | Joint | Trigger)[] = [];
-  root.traverse((object) => {
-    if (
-      object instanceof RigidBody ||
-      object instanceof Joint ||
-      object instanceof Trigger
-    )
-      objects.push(object);
+  let result = root instanceof Joint ? undefined : copy(root);
+  root.traverse((source) => {
+    if (source === root) return;
+    if (source instanceof Joint) joints.push(source);
+    else copy(source);
   });
-  cleanup(
-    objects.reverse().map((object) => () => object.dispose()),
-    "Cloned hierarchy disposal failed",
-  );
+  for (const joint of joints) {
+    const target = joint.cloneWithBodies(copies, false);
+    copies.set(joint, target);
+  }
+  if (root instanceof Joint) {
+    const target = root.cloneWithBodies(copies, false);
+    copies.set(root, target);
+    result = target;
+  }
+  for (const [source, target] of copies) {
+    for (const child of source.children) {
+      const copiedChild = copies.get(child);
+      if (!copiedChild) throw new Error("Missing cloned child");
+      target.add(copiedChild);
+    }
+  }
+  if (!result) throw new Error("Missing cloned root");
+  return result;
 }

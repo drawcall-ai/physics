@@ -19,11 +19,10 @@ import {
 it("queries authored and simulated surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
   const world = await createWorld();
   const bodies = [0, 3, 6].map((x) => {
-    const body = new RigidBody({ mass: 1 }).setVelocity({
-      linear: new Vector3(1, 0, 0),
-    });
+    const body = new RigidBody({ mass: 1, velocity: { linear: [1, 0, 0] } });
     body.position.x = x;
     body.add(new Mesh(new BoxGeometry(2, 2, 2)));
+    world.scene.add(body);
     return body;
   });
   const [first, second, third] = bodies;
@@ -42,7 +41,7 @@ it("queries authored and simulated surfaces, exits, source identity and multiple
   world.update(0.01);
   const hit = world.raycast(origin, direction, 20);
   expect(hit).toMatchObject({ kind: "body", body: first });
-  expect(hit?.collider).toBe(first.children[0]);
+  expect(hit?.object).toBe(first.children[0]);
   expect(hit?.distance).toBeCloseTo(2.01, 5);
   expect(hit?.point.x).toBeCloseTo(-0.99, 5);
   expect(hit?.normal.toArray()).toEqual([-1, 0, 0]);
@@ -56,9 +55,7 @@ it("queries authored and simulated surfaces, exits, source identity and multiple
   });
   second.clear().add(new BoxCollider({ size: [4, 1, 1] }));
   world.update(0.01);
-  expect(world.raycast(origin, direction, 20)?.collider).toBe(
-    second.children[0],
-  );
+  expect(world.raycast(origin, direction, 20)?.object).toBe(second.children[0]);
 });
 
 it("filters triggers/groups and rejects invalid ray inputs", async () => {
@@ -67,6 +64,7 @@ it("filters triggers/groups and rejects invalid ray inputs", async () => {
   trigger.add(
     new BoxCollider().setCollisionGroups({ membership: 2, filter: 4 }),
   );
+  world.scene.add(trigger);
   world.update(0);
   const origin = new Vector3(-3, 0, 0),
     direction = new Vector3(1, 0, 0);
@@ -97,9 +95,9 @@ it("filters triggers/groups and rejects invalid ray inputs", async () => {
   ).toBeNull();
 });
 
-it("queries unprepared and attached triggers without capturing scale or aliasing their body", async () => {
+it("queries attached triggers added since the last step without aliasing their body", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "kinematic" }).add(new BoxCollider());
+  const body = new RigidBody({ bodyType: "kinematic" }).add(new BoxCollider());
   const trigger = new Trigger().setCollisionGroups({
     membership: 2,
     filter: 4,
@@ -108,6 +106,7 @@ it("queries unprepared and attached triggers without capturing scale or aliasing
   trigger.position.x = 3;
   trigger.add(collider);
   body.add(trigger);
+  world.scene.add(body);
   const origin = new Vector3(1, 0, 0),
     direction = new Vector3(1, 0, 0);
   const options = { includeTriggers: true, excludeBodies: [body] };
@@ -115,17 +114,13 @@ it("queries unprepared and attached triggers without capturing scale or aliasing
   expect(hit?.kind).toBe("trigger");
   if (hit?.kind !== "trigger") throw new Error("Expected trigger hit");
   expect(hit.trigger).toBe(trigger);
-  expect(hit.collider).toBe(collider);
+  expect(hit.object).toBe(collider);
   expect(hit.distance).toBeCloseTo(1.5);
   expect(trigger.getOverlappingBodies()).toEqual([]);
-  collider.scale.setScalar(2);
   world.update(world.fixedDelta);
-  expect(world.raycast(origin, direction, 10, options)?.distance).toBeCloseTo(
-    1,
-  );
   body.teleport(new Matrix4().makeTranslation(1, 0, 0));
   expect(world.raycast(origin, direction, 10, options)?.distance).toBeCloseTo(
-    2,
+    2.5,
   );
   expect(
     world.raycast(origin, direction, 10, {
@@ -135,13 +130,14 @@ it("queries unprepared and attached triggers without capturing scale or aliasing
   ).toBeNull();
 });
 
-it("excludes disposed owners from raycasts inside event dispatch", async () => {
+it("excludes removed owners from raycasts inside event dispatch", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "kinematic" }).add(new BoxCollider());
+  const body = new RigidBody({ bodyType: "kinematic" }).add(new BoxCollider());
   const trigger = new Trigger().add(new BoxCollider());
+  world.scene.add(body, trigger);
   trigger.addEventListener("enter", () => {
-    body.dispose();
-    trigger.dispose();
+    body.removeFromParent();
+    trigger.removeFromParent();
     expect(
       world.raycast(new Vector3(-2, 0, 0), new Vector3(1, 0, 0), 5, {
         includeTriggers: true,
@@ -163,8 +159,10 @@ it("refreshes mesh collision when an interleaved position attribute changes its 
     "position",
     new InterleavedBufferAttribute(data, 3, 0),
   );
-  new RigidBody({ type: "static" }).add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+  world.scene.add(
+    new RigidBody({ bodyType: "static" }).add(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+    ),
   );
   world.update(0);
   const ray = () =>

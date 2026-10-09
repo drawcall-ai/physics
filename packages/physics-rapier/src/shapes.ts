@@ -1,57 +1,64 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
-  convexParts,
   resolveCollider,
-  resolveCollisionGroups,
+  type Collider,
+  type RigidBody,
+  type Shape,
+  type Trigger,
 } from "@drawcall/physics";
-import type { RigidBody, Shape } from "@drawcall/physics";
-import { Quaternion, Vector3 } from "three";
+import {
+  convexParts,
+  geometryVersion,
+  lockScale,
+  resolveCollisionGroups,
+} from "@drawcall/physics/backend";
+import { Quaternion, Vector3, type Matrix4, type Object3D } from "three";
+
+type Resolved = ReturnType<typeof resolveCollider>;
 
 /**
- * Rapier colliders for one authored collider. Rapier keeps real triangle meshes for static
- * bodies; on a moving body a triangle mesh collides as the convex parts prepared when the
- * world was built, or as one hull without them.
+ * Rapier colliders for one authored body collider. Rapier keeps real triangle meshes for static
+ * bodies; on a moving body a triangle mesh collides as its prepared convex parts.
  */
 export function colliderDescs(
   api: typeof Rapier,
-  resolved: ReturnType<typeof resolveCollider>,
+  resolved: Resolved,
   body: RigidBody,
 ): Rapier.ColliderDesc[] {
   const { collider, shape, matrix, scale } = resolved;
   const material = body.getMaterial(collider);
-  const position = new Vector3().setFromMatrixPosition(matrix);
-  const quaternion = new Quaternion().setFromRotationMatrix(matrix);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction");
-  const { membership, filter } = resolveCollisionGroups(collider, body);
   const moving =
     shape.kind === "mesh" &&
     shape.approximation === "trimesh" &&
     body.bodyType !== "static";
-  const parts = moving ? convexParts(collider, scale) : undefined;
-  const descriptors = parts
-    ? parts.map((part) => hull(api, new Float32Array(part)))
-    : [
-        descriptor(
-          api,
-          moving ? { ...shape, approximation: "convexHull" } : shape,
-        ),
-      ];
-  return descriptors.map((result) =>
-    result
-      .setCollisionGroups(((membership << 16) | filter) >>> 0)
-      .setTranslation(position.x, position.y, position.z)
-      .setRotation(quaternion)
+  const descs = moving
+    ? convexParts(collider, scale).map((part) =>
+        hull(api, new Float32Array(part)),
+      )
+    : [descriptor(api, shape)];
+  return descs.map((desc) =>
+    place(desc, matrix, collider, body)
       .setDensity(material.density)
       .setFriction(material.dynamicFriction)
       .setRestitution(material.restitution),
   );
 }
 
-function hull(api: typeof Rapier, vertices: Float32Array): Rapier.ColliderDesc {
-  const result = api.ColliderDesc.convexHull(vertices);
-  if (!result) throw new Error("Rapier could not construct the convex hull");
-  return result;
+/** Places the desc at `matrix` in its Rapier body's frame, in the collider's groups. */
+export function place(
+  desc: Rapier.ColliderDesc,
+  matrix: Matrix4,
+  collider: Collider,
+  owner: RigidBody | Trigger,
+): Rapier.ColliderDesc {
+  const { membership, filter } = resolveCollisionGroups(collider, owner);
+  const position = new Vector3().setFromMatrixPosition(matrix);
+  return desc
+    .setTranslation(position.x, position.y, position.z)
+    .setRotation(new Quaternion().setFromRotationMatrix(matrix))
+    .setCollisionGroups(((membership << 16) | filter) >>> 0);
 }
 
 export function descriptor(
@@ -89,4 +96,58 @@ export function descriptor(
       return factory.trimesh(vertices, indices);
     }
   }
+}
+
+function hull(api: typeof Rapier, vertices: Float32Array): Rapier.ColliderDesc {
+  const desc = api.ColliderDesc.convexHull(vertices);
+  if (!desc) throw new Error("Rapier could not construct the convex hull");
+  return desc;
+}
+
+/**
+ * Resolves the collider at the scale captured when it first joined, which the returned scale
+ * reports; Rapier shapes cannot follow a later scale edit.
+ */
+export function resolve(
+  owner: RigidBody | Trigger,
+  collider: Collider,
+  scales: ReadonlyMap<Object3D, Vector3>,
+): Resolved {
+  const captured = scales.get(collider.source);
+  const resolved = resolveCollider(owner, collider, captured);
+  const name = `${owner.name}/${collider.name || collider.type}`;
+  return { ...resolved, scale: lockScale(name, captured, resolved.scale) };
+}
+
+/** What decides the collider's Rapier form, relative to `owner`. */
+export function fingerprint(collider: Collider, owner: Object3D): unknown {
+  const shape = collider.shape();
+  const data =
+    shape.kind === "mesh"
+      ? {
+          kind: shape.kind,
+          approximation: shape.approximation,
+          version: geometryVersion(shape.geometry),
+        }
+      : shape;
+  // Relative transforms accumulate tiny roundoff as bodies move under parents.
+  const transform = owner.matrixWorld
+    .clone()
+    .invert()
+    .multiply(collider.matrixWorld)
+    .elements.map((value) => Math.round(value * 1e10) / 1e10);
+  return [collider.source.uuid, data, transform, collider.version];
+}
+
+/**
+ * Removes the colliders behind `sources`. Those of a removed body went with it, and Rapier may
+ * already have reused their handles, so only colliders that are still valid are removed.
+ */
+export function removeColliders(
+  simulation: Rapier.World,
+  sources: Map<Rapier.Collider, Object3D>,
+): void {
+  for (const collider of sources.keys())
+    if (collider.isValid()) simulation.removeCollider(collider, true);
+  sources.clear();
 }

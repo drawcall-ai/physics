@@ -1,20 +1,14 @@
-import { afterEach, expect, expectTypeOf, it, vi } from "vitest";
+import { expect, expectTypeOf, it, vi } from "vitest";
 import { BoxGeometry, Group, Mesh, Vector3 } from "three";
 import {
-  registry,
   BoxCollider,
   MeshCollider,
   RigidBody,
   Trigger,
   clone,
-  resolveCollisionGroups,
   type RaycastHit,
 } from "../src/index.js";
-
-afterEach(() => {
-  registry.clear();
-  vi.restoreAllMocks();
-});
+import { resolveCollisionGroups } from "../src/backend.js";
 
 it("owns only explicit shapes and stops body collider collection at its boundary", () => {
   const body = new RigidBody();
@@ -101,90 +95,23 @@ it("clones trigger ownership and settings without copying listeners", () => {
   const copiedTrigger = copiedBody.children[0];
   if (!(copiedTrigger instanceof Trigger))
     throw new Error("Expected a cloned Trigger");
-  expect(registry.objects.has(copiedTrigger)).toBe(true);
   expect(copiedTrigger.parent).toBe(copiedBody);
   expect(copiedBody.collisionGroups).toEqual(body.collisionGroups);
   expect(copiedTrigger.collisionGroups).toEqual(trigger.collisionGroups);
   expect(copiedTrigger.getColliders()[0]).not.toBe(trigger.getColliders()[0]);
   copiedTrigger.dispatchEvent({ type: "enter", body });
   expect(listener).not.toHaveBeenCalled();
-  expect(registry.objects.size).toBe(4);
 });
 
-it("keeps detachment distinct from disposal and cascades attached trigger disposal", () => {
+it("fails visibly for overlap reads outside every built world's scene", () => {
+  const trigger = new Trigger();
   const body = new RigidBody();
-  const trigger = new Trigger();
-  body.add(new Group().add(trigger));
-  new Group().add(body).remove(body);
-  expect(registry.objects.has(body)).toBe(true);
-  expect(trigger.disposed).toBe(false);
-  body.dispose();
-  expect(trigger.disposed).toBe(true);
-  expect(registry.objects.size).toBe(0);
-  expect(() => trigger.getOverlappingBodies()).toThrow("disposed");
-});
-
-it("detaches a Trigger and preserves both unregister and scene listener failures", () => {
-  const trigger = new Trigger();
-  new Group().add(trigger);
-  const unregisterError = new Error("exit callback failed");
-  const removedError = new Error("removed callback failed");
-  const unregister = registry.unregister.bind(registry);
-  vi.spyOn(registry, "unregister").mockImplementation((object) => {
-    unregister(object);
-    throw unregisterError;
-  });
-  trigger.addEventListener("removed", () => {
-    throw removedError;
-  });
-
-  expect(() => trigger.dispose()).toThrow(
-    new AggregateError(
-      [unregisterError, removedError],
-      "Trigger disposal failed",
-    ),
+  expect(() => trigger.getOverlappingBodies()).toThrow(
+    "not under a built world's scene",
   );
-  expect(trigger.parent).toBeNull();
-  expect(trigger.disposed).toBe(true);
-  expect(registry.objects.size).toBe(0);
-  expect(() => trigger.dispose()).not.toThrow();
-});
-
-it("finishes disposing every attached Trigger and its body after callback failures", () => {
-  const body = new RigidBody();
-  const first = new Trigger();
-  const second = new Trigger();
-  body.add(new Group().add(first, second));
-  new Group().add(body);
-  const firstError = new Error("first exit callback failed");
-  const bodyError = new Error("body exit callback failed");
-  const unregister = registry.unregister.bind(registry);
-  vi.spyOn(registry, "unregister").mockImplementation((object) => {
-    unregister(object);
-    if (object === first) throw firstError;
-    if (object === body) throw bodyError;
-  });
-
-  expect(() => body.dispose()).toThrow(
-    new AggregateError([firstError, bodyError], "Rigid body disposal failed"),
+  expect(() => trigger.overlaps(body)).toThrow(
+    "not under a built world's scene",
   );
-  for (const object of [first, second, body]) {
-    expect(object.parent).toBeNull();
-    expect(object.disposed).toBe(true);
-  }
-  expect(registry.objects.size).toBe(0);
-  expect(() => body.dispose()).not.toThrow();
-});
-
-it("fails visibly for authoring overlap reads and invalid arguments", () => {
-  const trigger = new Trigger();
-  const body = new RigidBody();
-  expect(() => trigger.getOverlappingBodies()).toThrow("buildWorld");
-  expect(() => trigger.overlaps(body)).toThrow("buildWorld");
-  expect(() => trigger.overlaps(new RigidBody())).toThrow("buildWorld");
-  body.dispose();
-  expect(() => trigger.overlaps(body)).toThrow("disposed");
-  expect(registry.objects.has(trigger)).toBe(true);
 });
 
 it("types trigger and contact payloads while preserving Three.js scene events", () => {
@@ -207,7 +134,7 @@ it("types trigger and contact payloads while preserving Three.js scene events", 
   const hit: RaycastHit = {
     kind: "trigger",
     trigger,
-    collider: new BoxCollider(),
+    object: new BoxCollider(),
     distance: 1,
     point: new Vector3(),
     normal: new Vector3(),

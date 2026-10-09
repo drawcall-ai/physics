@@ -1,18 +1,24 @@
 import { expect, test } from "vitest";
-import { Euler, Vector3 } from "three";
-import { buildWorld } from "@drawcall/physics-rapier";
+import { Euler, Scene, Vector3 } from "three";
+import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
+import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
 import { createCar, simulationOptions } from "../model";
 import { driveCar } from "../drive";
 import { createRoad } from "../road";
 import { createGoal } from "../goal";
 
-test.each([1 / 120, 1 / 240])(
-  "powered car crosses the bump course and brakes with independent suspension at dt=%s",
-  async (fixedDelta) => {
+test.each([
+  { backend: "Rapier", build: buildRapier, fixedDelta: 1 / 120 },
+  { backend: "Rapier", build: buildRapier, fixedDelta: 1 / 240 },
+  { backend: "MuJoCo", build: buildMujoco, fixedDelta: 1 / 120 },
+])(
+  "$backend: powered car crosses the bump course and brakes with independent suspension at dt=$fixedDelta",
+  async ({ build, fixedDelta }) => {
     const car = createCar();
-    createRoad();
-    const world = await buildWorld({ ...simulationOptions, fixedDelta });
+    const scene = new Scene().add(car.root, createRoad());
+    const world = await build({ scene, ...simulationOptions, fixedDelta });
     const goal = createGoal(car.chassis);
+    scene.add(goal.trigger);
     let entries = 0;
     let exits = 0;
     goal.trigger.addEventListener("enter", ({ body }) => {
@@ -92,7 +98,6 @@ test.each([1 / 120, 1 / 240])(
     for (let i = 0; i < Math.round(3 / fixedDelta); i++)
       world.update(world.fixedDelta);
     expect(car.chassis.position.x).toBeGreaterThan(0.4);
-    driver.dispose();
     world.dispose();
   },
   60000,

@@ -1,13 +1,13 @@
 import { afterEach, expect, test } from "vitest";
-import { registry } from "@drawcall/physics";
+import type { PhysicsWorld } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
-import { Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import { decomposition } from "../decomposition";
 
+const worlds: PhysicsWorld[] = [];
 afterEach(() => {
-  registry.world?.dispose();
-  registry.clear();
+  for (const world of worlds.splice(0)) world.dispose();
 });
 
 test.each([
@@ -16,8 +16,9 @@ test.each([
 ])(
   "$backend: the example preserves the opening on the right, including replay",
   async ({ build }) => {
-    const { lanes } = decomposition();
-    const world = await build();
+    const { root, lanes } = decomposition();
+    const world = await build({ scene: new Scene().add(root) });
+    worlds.push(world);
     for (let replay = 0; replay < 2; replay++) {
       for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
       const [left, right] = lanes;
@@ -39,9 +40,17 @@ test.each([
   30000,
 );
 
-test("the same right frame blocks the opening if added after building", async () => {
-  const world = await buildWorld();
-  const { lanes } = decomposition();
+test("the right frame needs world.decompose when added after building", async () => {
+  const world = await buildWorld({ scene: new Scene() });
+  worlds.push(world);
+  const { root, lanes } = decomposition();
+  world.scene.add(root);
+  expect(() => world.update(world.fixedDelta)).toThrow(
+    "await world.decompose(object)",
+  );
+  await world.decompose(root);
   for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
-  for (const { cube } of lanes) expect(cube.position.y).toBeCloseTo(2.45, 2);
-});
+  const [left, right] = lanes;
+  expect(left?.cube.position.y).toBeCloseTo(2.45, 2);
+  expect(right?.cube.position.y).toBeCloseTo(0.25, 2);
+}, 30000);

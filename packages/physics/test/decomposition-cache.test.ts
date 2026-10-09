@@ -10,13 +10,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BoxGeometry, Vector3 } from "three";
-import {
-  MeshCollider,
-  RigidBody,
-  convexParts,
-  prepareConvexParts,
-  registry,
-} from "../src/index.js";
+import { MeshCollider, RigidBody } from "../src/index.js";
+import { convexParts } from "../src/backend.js";
+import { prepareConvexParts } from "../src/colliders/decomposition.js";
 
 const hull = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
 const decompose = vi.fn(() => ({
@@ -30,7 +26,9 @@ const decompose = vi.fn(() => ({
     { delete() {} },
   ),
 }));
-vi.mock("../src/coacd.js", () => ({ default: async () => ({ decompose }) }));
+vi.mock("../src/colliders/coacd.js", () => ({
+  default: async () => ({ decompose }),
+}));
 
 let root: string;
 const cache = () =>
@@ -41,7 +39,6 @@ beforeEach(async () => {
   decompose.mockClear();
 });
 afterEach(async () => {
-  registry.clear();
   vi.restoreAllMocks();
   await chmod(root, 0o700).catch(() => {});
   await rm(root, { recursive: true, force: true });
@@ -55,7 +52,7 @@ function box() {
   return collider;
 }
 const prepare = (collider: MeshCollider) =>
-  prepareConvexParts([collider.parent], () => true);
+  prepareConvexParts(collider.parent!, () => true);
 
 it("reads an identical mesh's parts back from disk", async () => {
   await mkdir(join(root, "node_modules"));

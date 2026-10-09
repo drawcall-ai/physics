@@ -1,6 +1,3 @@
-import { afterEach } from "vitest";
-import { registry } from "../src/index.js";
-afterEach(() => registry.clear());
 import { describe, expect, it } from "vitest";
 import {
   BoxGeometry,
@@ -22,7 +19,7 @@ import {
 
 function doorAssembly() {
   const root = new Group();
-  const frame = new RigidBody({ type: "static" });
+  const frame = new RigidBody({ bodyType: "static" });
   for (const x of [-0.55, 0.55]) {
     const post = new Mesh(new BoxGeometry(0.1, 2.2, 0.15));
     post.position.set(x, 1.1, 0);
@@ -142,7 +139,7 @@ describe("physics objects", () => {
       new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3),
     );
     geometry.setIndex([0, 1, 3]);
-    const body = new RigidBody({ type: "static" });
+    const body = new RigidBody({ bodyType: "static" });
     body.add(new Mesh(geometry));
     expect(() => body.getColliders()).toThrow("index is outside");
     geometry.setIndex([0, 1]);

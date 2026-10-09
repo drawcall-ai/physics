@@ -1,6 +1,5 @@
 import { Group, Matrix4, Object3D, Scene } from "three";
 import { Collider, Joint, RigidBody, splitTransform } from "@drawcall/physics";
-import { PhysicsUSDScene } from "../scene.js";
 import { Prim } from "./prim.js";
 
 /**
@@ -22,9 +21,7 @@ export class Hierarchy {
     const name = `P${this.count++}`;
     const path = `${parentPath}/${name}`;
     const clone =
-      object instanceof RigidBody ||
-      object instanceof Scene ||
-      object instanceof PhysicsUSDScene
+      object instanceof RigidBody || object instanceof Scene
         ? new Group().copy(object, false)
         : object.clone(false);
     clone.name = name;

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import {
   RigidBody,
   BoxCollider,
@@ -8,18 +8,10 @@ import {
   PrismaticJoint,
 } from "@drawcall/physics";
 import { Matrix4, Vector3 } from "three";
-import { buildWorld, type MujocoWorld } from "../src/index.js";
-const worlds: MujocoWorld[] = [];
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
-});
-async function world() {
-  const value = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-  worlds.push(value);
-  return value;
-}
+import { createWorld, scene } from "./fixtures.js";
+
 function free(body1: RigidBody, body0: RigidBody | null = null) {
-  return new GenericJoint({
+  const joint = new GenericJoint({
     body0,
     body1,
     frame0: new Matrix4(),
@@ -33,15 +25,18 @@ function free(body1: RigidBody, body0: RigidBody | null = null) {
       rotZ: "free",
     },
   });
+  scene.add(joint);
+  return joint;
 }
 test("angular-only velocity updates preserve center-of-mass linear velocity", async () => {
-  const value = await world();
+  const value = await createWorld();
   const body = new RigidBody({
     mass: 1,
     centerOfMass: [1, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   body.setVelocity({ linear: new Vector3(2, 3, 4) });
   body.setVelocity({ angular: new Vector3(0, 0, 1) });
@@ -49,13 +44,14 @@ test("angular-only velocity updates preserve center-of-mass linear velocity", as
   expect(body.getVelocity().angular.toArray()).toEqual([0, 0, 1]);
 });
 test("velocity updates copy both caller-owned vectors", async () => {
-  const value = await world();
+  const value = await createWorld();
   const body = new RigidBody({
     mass: 1,
     centerOfMass: [1, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   const linear = new Vector3(4, 5, 6);
   const angular = new Vector3(1, 2, 3);
@@ -70,9 +66,10 @@ test("velocity updates copy both caller-owned vectors", async () => {
 test.each(jointDofs)(
   "free %s acceleration drive uses effective inertia",
   async (axis) => {
-    const value = await world();
+    const value = await createWorld();
     const body = new RigidBody({ mass: 1 });
     body.add(new BoxCollider());
+    scene.add(body);
     body.scale.set(0.1, 0.2, 0.3);
     const joint = free(body);
     joint.setDrive(
@@ -86,11 +83,13 @@ test.each(jointDofs)(
   },
 );
 test("a free drive accounts for both moving endpoints", async () => {
-  const value = await world();
+  const value = await createWorld();
   const a = new RigidBody({ mass: 1 });
   a.add(new BoxCollider());
+  scene.add(a);
   const b = new RigidBody({ mass: 3 });
   b.add(new BoxCollider());
+  scene.add(b);
   b.position.x = 2;
   const joint = free(b, a);
   joint.setDrive(
@@ -105,9 +104,10 @@ test("a free drive accounts for both moving endpoints", async () => {
   expect(b.getVelocity().linear.x).toBeCloseTo((0.25 * 0.01) / 1.01, 10);
 });
 test("free spring predicts motion and includes effort in the implicit solve", async () => {
-  const value = await world();
+  const value = await createWorld();
   const body = new RigidBody({ mass: 2 });
   body.add(new BoxCollider());
+  scene.add(body);
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   const joint = free(body);
   joint.setDrive(
@@ -125,19 +125,21 @@ test("free spring predicts motion and includes effort in the implicit solve", as
   expect(body.getVelocity().linear.x).toBeCloseTo(2 + (0.01 * force) / 2, 10);
 });
 test("frame-relative translation applies its reaction at the driven anchor", async () => {
-  const value = await world();
+  const value = await createWorld();
   const a = new RigidBody({
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
   a.add(new BoxCollider());
+  scene.add(a);
   const b = new RigidBody({
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
   b.add(new BoxCollider());
+  scene.add(b);
   b.position.x = 2;
   free(b, a).setDrive("transY", new JointDrive({}).setTarget({ effort: 1 }));
   value.update(value.fixedDelta);
@@ -148,9 +150,10 @@ test("frame-relative translation applies its reaction at the driven anchor", asy
 });
 
 test("free acceleration drive between static endpoints has no response", async () => {
-  const value = await world();
-  const body = new RigidBody({ type: "static" });
+  const value = await createWorld();
+  const body = new RigidBody({ bodyType: "static" });
   body.add(new BoxCollider());
+  scene.add(body);
   free(body).setDrive(
     "transX",
     new JointDrive({ damping: 1, model: "acceleration" }).setTarget({
@@ -162,9 +165,10 @@ test("free acceleration drive between static endpoints has no response", async (
 });
 
 test("kinematic target and motion survive rebuilding, teleport, and reset", async () => {
-  const value = await world();
-  const body = new RigidBody({ type: "kinematic", mass: 2 });
+  const value = await createWorld();
+  const body = new RigidBody({ bodyType: "kinematic", mass: 2 });
   body.add(new BoxCollider());
+  scene.add(body);
   value.update(0);
   const target = new Matrix4().makeRotationZ(0.3).setPosition(0, 1, 0);
   body.setKinematicTarget(target);
@@ -173,8 +177,9 @@ test("kinematic target and motion survive rebuilding, teleport, and reset", asyn
   const velocity = body.getVelocity();
   expect(velocity.linear.y).toBeGreaterThan(0);
   expect(velocity.angular.z).toBeGreaterThan(0);
-  const extra = new RigidBody({ type: "static" });
+  const extra = new RigidBody({ bodyType: "static" });
   extra.add(new BoxCollider());
+  scene.add(extra);
   extra.position.x = 10;
   value.update(0);
   expect(body.position.distanceTo(position)).toBeLessThan(1e-10);
@@ -198,8 +203,9 @@ test("kinematic target and motion survive rebuilding, teleport, and reset", asyn
 });
 
 test("colliderless kinematic targets remain valid moving anchors", async () => {
-  const value = await world();
-  const body = new RigidBody({ type: "kinematic", colliders: false });
+  const value = await createWorld();
+  const body = new RigidBody({ bodyType: "kinematic", colliders: false });
+  scene.add(body);
   value.update(0);
   body.setKinematicTarget(new Matrix4().makeTranslation(1, 2, 3));
   for (let i = 0; i < 120; i++) value.update(value.fixedDelta);
@@ -207,22 +213,22 @@ test("colliderless kinematic targets remain valid moving anchors", async () => {
 });
 
 test.each([false, true])(
-  "reads rotating anchor velocity about the %s explicit center before and after preparation",
+  "reads rotating anchor velocity about the %s explicit center as the joint joins",
   async (explicit) => {
-    const value = await world();
+    const value = await createWorld();
     const body = new RigidBody(
       explicit
         ? {
             mass: 1,
             centerOfMass: [1, 0, 0],
             diagonalInertia: [1, 1, 1],
+            velocity: { angular: [0, 0, 2] },
           }
-        : { mass: 1 },
+        : { mass: 1, velocity: { angular: [0, 0, 2] } },
     );
     const collider = new BoxCollider();
     collider.position.x = 1;
     body.add(collider);
-    body.setVelocity({ angular: new Vector3(0, 0, 2) });
     const joint = new PrismaticJoint({
       body0: null,
       body1: body,
@@ -230,6 +236,7 @@ test.each([false, true])(
       frame0: new Matrix4(),
       frame1: new Matrix4(),
     }).setEnabled(false);
+    scene.add(body, joint);
     expect(joint.getState().velocity).toBeCloseTo(-2);
     value.update(0);
     expect(joint.getState().velocity).toBeCloseTo(-2);

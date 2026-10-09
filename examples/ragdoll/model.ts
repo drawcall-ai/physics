@@ -18,8 +18,11 @@ export function createRagdoll() {
     size: [number, number, number],
     position: [number, number, number],
     mass: number,
+    linear: [number, number, number] = [0, 0, 0],
   ) {
-    const body = new RigidBody(mass === 0 ? { type: "static" } : { mass });
+    const body = new RigidBody(
+      mass === 0 ? { bodyType: "static" } : { mass, velocity: { linear } },
+    );
     body.name = name;
     body.position.set(...position);
     body.add(
@@ -32,7 +35,13 @@ export function createRagdoll() {
     return body;
   }
   body("Floor", [8, 0.2, 6], [0, -0.1, 0], 0);
-  const pelvis = body("Pelvis", [0.5, 0.3, 0.28], [0, 1.8, 0], 8);
+  const pelvis = body(
+    "Pelvis",
+    [0.5, 0.3, 0.28],
+    [0, 1.8, 0],
+    8,
+    [0.6, 0, 0.8],
+  );
   const chest = body("Chest", [0.6, 0.6, 0.3], [0, 2.3, 0], 12);
   const head = body("Head", [0.32, 0.36, 0.32], [0, 2.84, 0], 4);
   function ball(
@@ -93,6 +102,5 @@ export function createRagdoll() {
       scene.add(joint);
     }
   }
-  pelvis.setVelocity({ linear: new THREE.Vector3(0.6, 0, 0.8) });
   return scene;
 }

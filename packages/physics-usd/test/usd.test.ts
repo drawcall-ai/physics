@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   Matrix4,
   Object3D,
@@ -13,7 +13,6 @@ import {
 import {
   clone,
   resolveCollider,
-  registry,
   BoxCollider,
   CapsuleCollider,
   CylinderCollider,
@@ -31,13 +30,8 @@ import {
   GenericJoint,
 } from "@drawcall/physics";
 import { strFromU8, unzipSync } from "fflate";
-import {
-  PhysicsUSDExporter,
-  PhysicsUSDLoader,
-  PhysicsUSDScene,
-} from "../src/index.js";
-
-afterEach(() => registry.clear());
+import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
+import { roundtrip } from "./roundtrip.js";
 
 function doorAssembly(model: "force" | "acceleration" = "force") {
   const scene = new Scene();
@@ -45,7 +39,7 @@ function doorAssembly(model: "force" | "acceleration" = "force") {
   assembly.position.set(2, 3, 4);
   assembly.rotation.y = 0.6;
   scene.add(assembly);
-  const frame = new RigidBody({ type: "static" });
+  const frame = new RigidBody({ bodyType: "static" });
   frame.name = "Frame";
   const material = new MeshStandardMaterial({ color: "brown" });
   for (const x of [-0.55, 0.55]) {
@@ -87,7 +81,7 @@ describe("USD Physics interchange", () => {
       const scene = parent === "root" ? trigger : new Scene();
       if (parent === "group") scene.add(new Group().add(trigger));
       if (parent === "body")
-        scene.add(new RigidBody({ type: "static" }).add(trigger));
+        scene.add(new RigidBody({ bodyType: "static" }).add(trigger));
       await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
         "Core USD Physics cannot represent Trigger volumes",
       );
@@ -117,7 +111,7 @@ describe("USD Physics interchange", () => {
 
   it("rejects authored collider masks even with unrestricted body defaults", async () => {
     const scene = new Scene();
-    const body = new RigidBody({ type: "static" });
+    const body = new RigidBody({ bodyType: "static" });
     body.add(
       new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
     );
@@ -127,42 +121,7 @@ describe("USD Physics interchange", () => {
     );
   });
 
-  it("owns imported registrations before any world is built", async () => {
-    const { scene } = doorAssembly();
-    const imported = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
-    const bodies = imported
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    expect(bodies.length).toBe(2);
-    for (const body of bodies) expect(registry.objects.has(body)).toBe(true);
-    expect(registry.world).toBeUndefined();
-    imported.dispose();
-    expect(registry.world).toBeUndefined();
-    for (const body of bodies) expect(body.disposed).toBe(true);
-  });
-
-  it("registers imported objects and disposes only those objects", async () => {
-    const { scene, door } = doorAssembly();
-    const imported = new PhysicsUSDLoader({}).parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
-    const importedBodies = imported
-      .getObjectsByProperty("isObject3D", true)
-      .filter((object) => object instanceof RigidBody);
-    for (const body of importedBodies) {
-      expect(registry.objects.has(body)).toBe(true);
-    }
-    imported.dispose();
-    for (const body of importedBodies) expect(body.disposed).toBe(true);
-    expect(registry.objects.has(door)).toBe(true);
-    expect(door.disposed).toBe(false);
-    expect(registry.world).toBeUndefined();
-  });
-
-  it("cleans up failed imports without disposing existing registrations", () => {
-    const existing = new RigidBody({ type: "static" });
+  it("rejects an invalid joint axis on import", () => {
     expect(() =>
       new PhysicsUSDLoader({}).parse(`#usda 1.0
 (
@@ -180,29 +139,6 @@ def PhysicsRevoluteJoint "Hinge"
  uniform token physics:axis = "INVALID"
 }`),
     ).toThrow("Invalid joint axis");
-    expect([...registry.objects]).toEqual([existing]);
-    expect(registry.world).toBeUndefined();
-  });
-
-  it("imports without a built world", () => {
-    registry.clear();
-    const imported = new PhysicsUSDLoader().parse(`#usda 1.0
-(
- metersPerUnit = 1
-)
-def Cube "Crate" (
- prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"]
-)
-{
- double size = 1
-}`);
-    expect(
-      imported
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody),
-    ).toHaveLength(1);
-    expect(registry.world).toBeUndefined();
-    imported.dispose();
   });
 
   it.each(["force", "acceleration"] as const)(
@@ -212,8 +148,7 @@ def Cube "Crate" (
       const before = new Vector3().setFromMatrixPosition(
         hinge.getFrame(0, new Matrix4()),
       );
-      const bytes = await new PhysicsUSDExporter().parseAsync(scene);
-      const result = await new PhysicsUSDLoader().parseAsync(bytes);
+      const { scene: result, gravity } = await roundtrip(scene);
       const bodies = result
         .getObjectsByProperty("isObject3D", true)
         .filter((object) => object instanceof RigidBody);
@@ -253,7 +188,7 @@ def Cube "Crate" (
         if (object instanceof Mesh) meshes++;
       });
       expect(meshes).toBe(4);
-      expect(result.gravity).toEqual([0, -9.81, 0]);
+      expect(gravity).toEqual([0, -9.81, 0]);
       expect(door.parent?.children).toContain(hinge);
     },
   );
@@ -263,16 +198,14 @@ def Cube "Crate" (
     const camera = new PerspectiveCamera(42);
     camera.name = "Camera";
     scene.add(camera);
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
+    const { scene: result } = await roundtrip(scene);
     expect(result.getObjectByName("Camera")).toBeInstanceOf(PerspectiveCamera);
   });
 
   it("roundtrips triangle mesh colliders on static and moving bodies", async () => {
     const scene = new Scene();
     for (const type of ["static", "dynamic"] as const) {
-      const body = new RigidBody({ type, colliders: false });
+      const body = new RigidBody({ bodyType: type, colliders: false });
       body.name = type;
       body.add(
         new MeshCollider({ approximation: "trimesh" }).setGeometry(
@@ -281,9 +214,7 @@ def Cube "Crate" (
       );
       scene.add(body);
     }
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
+    const { scene: result } = await roundtrip(scene);
     for (const type of ["static", "dynamic"]) {
       const body = result.getObjectByName(type);
       if (!(body instanceof RigidBody)) throw new Error(`Missing ${type} body`);
@@ -324,9 +255,7 @@ def Cube "Crate" (
         limits: [-1, 1],
       }),
     );
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
+    const { scene: result } = await roundtrip(scene);
     expect(
       result
         .getObjectsByProperty("isObject3D", true)
@@ -359,7 +288,7 @@ def Cube "Crate" (
   });
 
   it("imports independently authored standard USDA, including a mesh carrying a body schema", () => {
-    const result = new PhysicsUSDLoader().parse(`#usda 1.0
+    const { scene: result } = new PhysicsUSDLoader().parse(`#usda 1.0
 (
  metersPerUnit = 1
  upAxis = "Y"
@@ -391,7 +320,7 @@ def Cube "Crate" (
 
   it("roundtrips an unlimited distance joint driven by a linear motor", async () => {
     const scene = new Scene();
-    const hand = new RigidBody({ type: "kinematic", colliders: false });
+    const hand = new RigidBody({ bodyType: "kinematic", colliders: false });
     hand.name = "Hand";
     const ball = new RigidBody({ mass: 2 });
     ball.name = "Ball";
@@ -415,7 +344,7 @@ def Cube "Crate" (
     const text = strFromU8(unzipSync(bytes)["model.usda"] ?? new Uint8Array());
     expect(text).toContain("physics:maxDistance = -1");
     expect(text).toContain("PhysicsDriveAPI:linear");
-    const result = await new PhysicsUSDLoader().parseAsync(bytes);
+    const { scene: result } = await new PhysicsUSDLoader().parseAsync(bytes);
     const joint = result
       .getObjectsByProperty("isObject3D", true)
       .find((object) => object instanceof DistanceJoint);
@@ -429,12 +358,11 @@ def Cube "Crate" (
       velocity: 0,
       effort: 0,
     });
-    result.dispose();
   });
 
   it("roundtrips a generic joint with locked, free, and limited axes and per-axis drives", async () => {
     const scene = new Scene();
-    const base = new RigidBody({ type: "static" });
+    const base = new RigidBody({ bodyType: "static" });
     base.name = "Base";
     const arm = new RigidBody({ mass: 1 });
     arm.name = "Arm";
@@ -464,7 +392,7 @@ def Cube "Crate" (
     expect(text).toContain(
       "drive:rotY:physics:targetPosition = 28.64788975654116",
     );
-    const result = await new PhysicsUSDLoader().parseAsync(bytes);
+    const { scene: result } = await new PhysicsUSDLoader().parseAsync(bytes);
     const loaded = result
       .getObjectsByProperty("isObject3D", true)
       .find((object) => object instanceof GenericJoint);
@@ -479,7 +407,6 @@ def Cube "Crate" (
     expect(loaded?.getDrive("rotY")?.target?.position).toBeCloseTo(0.5);
     expect(loaded?.getDrive("transX")?.target?.velocity).toBeCloseTo(0.25);
     expect(loaded?.getDrive("rotZ")).toBeUndefined();
-    result.dispose();
   });
 
   it("writes standard schemas, degrees and layer composition rather than serialized JS state", async () => {
@@ -531,9 +458,7 @@ def Cube "Crate" (
     body.add(new BoxCollider());
     const joint = new FixedJoint({ body0: null, body1: body });
     scene.add(body, joint);
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
+    const { scene: result } = await roundtrip(scene);
     expect(
       result
         .getObjectsByProperty("isObject3D", true)
@@ -573,38 +498,22 @@ def Cube "Crate" (
       new SphereCollider().setMaterial(material),
     );
     scene.add(body);
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(scene),
-    );
+    const { scene: result } = await roundtrip(scene);
     const colliders = result
       .getObjectsByProperty("isObject3D", true)
       .filter((object) => object instanceof RigidBody)[0]
       ?.getColliders();
     expect(colliders?.[0]?.material).toEqual(colliders?.[1]?.material);
   });
-  it("retains imported gravity by default and permits an explicit export override", async () => {
+  it.each([
+    [0, 0, 0],
+    [2, -3, 4],
+  ] as const)("roundtrips gravity (%s, %s, %s)", async (...gravity) => {
     const { scene } = doorAssembly();
-    const exporter = new PhysicsUSDExporter();
-    const loader = new PhysicsUSDLoader();
-    for (const gravity of [
-      [0, 0, 0],
-      [2, -3, 4],
-    ]) {
-      const [x, y, z] = gravity;
-      if (x === undefined || y === undefined || z === undefined)
-        throw new Error("Missing test vector");
-      const imported = loader.parse(
-        await exporter.parseAsync(scene, { gravity: [x, y, z] }),
-      );
-      const reimported = loader.parse(await exporter.parseAsync(imported));
-      expect(reimported.gravity[0]).toBeCloseTo(x);
-      expect(reimported.gravity[1]).toBeCloseTo(y);
-      expect(reimported.gravity[2]).toBeCloseTo(z);
-      const overridden = loader.parse(
-        await exporter.parseAsync(imported, { gravity: [0, -1, 0] }),
-      );
-      expect(overridden.gravity).toEqual([0, -1, 0]);
-    }
+    const imported = await roundtrip(scene, { gravity });
+    imported.gravity.forEach((value, index) =>
+      expect(value).toBeCloseTo(gravity[index] ?? Infinity),
+    );
   });
 });
 
@@ -617,7 +526,7 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
     "Collider must belong",
   );
   collider.removeFromParent();
-  const outside = new RigidBody({ type: "static" });
+  const outside = new RigidBody({ bodyType: "static" });
   const joint = new FixedJoint({ body0: null, body1: outside });
   scene.add(joint);
   await expect(exporter.parseAsync(scene)).rejects.toThrow(
@@ -625,21 +534,11 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
   );
 });
 
-it("clones imported assemblies with remapped joints and independent disposal", async () => {
+it("clones imported assemblies with remapped joints", async () => {
   const { scene } = doorAssembly();
-  const imported = new PhysicsUSDLoader().parse(
-    await new PhysicsUSDExporter().parseAsync(scene),
-  );
-  const native = imported.clone();
-  const nativeJoint = native
-    .getObjectsByProperty("isObject3D", true)
-    .find((object) => object instanceof Joint);
-  if (!(nativeJoint instanceof Joint))
-    throw new Error("Missing native cloned joint");
-  expect(nativeJoint.options.body1).toBe(imported.getObjectByName("Door"));
-  native.dispose();
+  const { scene: imported } = await roundtrip(scene);
+  expect(() => imported.clone()).toThrow("clone(root)");
   const cloned = clone(imported);
-  expect(cloned.gravity).toEqual(imported.gravity);
   const originalDoor = imported.getObjectByName("Door");
   const copiedDoor = cloned.getObjectByName("Door");
   expect(copiedDoor).not.toBe(originalDoor);
@@ -648,22 +547,11 @@ it("clones imported assemblies with remapped joints and independent disposal", a
     .filter((object) => object instanceof Joint);
   expect(joints).toHaveLength(1);
   expect(joints[0]?.options.body1).toBe(copiedDoor);
-  copiedDoor?.removeFromParent();
-  cloned.dispose();
-  if (
-    !(originalDoor instanceof RigidBody) ||
-    !(copiedDoor instanceof RigidBody)
-  )
-    throw new Error("Missing cloned door bodies");
-  expect(copiedDoor.disposed).toBe(true);
-  expect(originalDoor.disposed).toBe(false);
-  expect(() => new RigidBody({ type: "static" })).not.toThrow();
-  imported.dispose();
 });
 
 it("exports static groups without rigid-body schemas and preserves their compound colliders", async () => {
   const scene = new Group();
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({ bodyType: "static" });
   floor.name = "Floor";
   floor.position.set(2, 3, 4);
   floor.add(new Mesh(new BoxGeometry()));
@@ -679,16 +567,12 @@ it("exports static groups without rigid-body schemas and preserves their compoun
   expect(text).not.toContain("physics:velocity");
   expect(text).not.toContain("physics:kinematicEnabled");
   expect(text).toContain("PhysicsCollisionAPI");
-  const loaded = new PhysicsUSDLoader().parse(bytes);
-  try {
-    const copy = loaded.getObjectByName("Floor");
-    if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
-    expect(copy.bodyType).toBe("static");
-    expect(copy.getColliders()).toHaveLength(2);
-    expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
-  } finally {
-    loaded.dispose();
-  }
+  const { scene: loaded } = new PhysicsUSDLoader().parse(bytes);
+  const copy = loaded.getObjectByName("Floor");
+  if (!(copy instanceof RigidBody)) throw new Error("Missing static group");
+  expect(copy.bodyType).toBe("static");
+  expect(copy.getColliders()).toHaveLength(2);
+  expect(copy.getWorldPosition(new Vector3()).toArray()).toEqual([2, 3, 4]);
 });
 
 it("roundtrips scaled visuals, colliders and joint anchors without accumulating scale", async () => {
@@ -708,9 +592,7 @@ it("roundtrips scaled visuals, colliders and joint anchors without accumulating 
   ];
   let source: Object3D = assembly;
   for (let iteration = 0; iteration < 2; iteration++) {
-    const result = new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(source),
-    );
+    const { scene: result } = await roundtrip(source);
     result.updateMatrixWorld(true);
     const loaded = result.getObjectsByProperty("isObject3D", true);
     const body = loaded.find(
@@ -740,10 +622,8 @@ it("roundtrips scaled visuals, colliders and joint anchors without accumulating 
           expect(value).toBeCloseTo(expected.elements[i] ?? Infinity, 5),
         );
     }
-    if (source instanceof PhysicsUSDScene) source.dispose();
     source = result;
   }
-  if (source instanceof PhysicsUSDScene) source.dispose();
   expect(assembly.scale.toArray()).toEqual([2, 2, 2]);
   expect(door.scale.toArray()).toEqual([1, 2, 1]);
   expect(mesh.scale.toArray()).toEqual([0.5, 0.5, 0.5]);

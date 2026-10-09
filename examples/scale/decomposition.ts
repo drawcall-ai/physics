@@ -31,7 +31,7 @@ export function decomposition() {
   });
   geometry.rotateX(-Math.PI / 2);
   const root = new Group();
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({ bodyType: "static" });
   floor.position.y = -0.1;
   floor.add(
     new Mesh(
@@ -42,7 +42,10 @@ export function decomposition() {
   root.add(floor);
   const lanes = (["convexHull", "trimesh"] as const).map(
     (approximation, index) => {
-      const frame = new RigidBody({ type: "static", colliders: approximation });
+      const frame = new RigidBody({
+        bodyType: "static",
+        colliders: approximation,
+      });
       frame.name = approximation;
       frame.position.set(index === 0 ? -2 : 2, 1.8, 0);
       frame.add(

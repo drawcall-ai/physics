@@ -3,19 +3,13 @@ import {
   Trigger,
   DistanceJoint,
   splitTransform,
-  treeJoint,
   type Joint,
-  type JointReading,
 } from "@drawcall/physics";
+import { treeJoint, type JointBinding } from "@drawcall/physics/backend";
 import { shapes, type Geometry } from "./shapes.js";
 import { contacts, exclusions } from "./contacts.js";
-import {
-  jointXml,
-  driveOf,
-  type JointRecord,
-  type Coordinate,
-} from "./joints.js";
-import { name, placement } from "../values.js";
+import { jointXml, driveOf, type Coordinate } from "./joints.js";
+import { name, placement } from "./markup.js";
 
 export interface ModelOptions {
   fixedDelta: number;
@@ -25,11 +19,10 @@ export interface ModelOptions {
   frictionCone: "pyramidal" | "elliptic";
 }
 export function modelXml(
-  bodies: ReadonlySet<RigidBody>,
-  joints: ReadonlyMap<Joint, JointRecord>,
-  triggers: ReadonlySet<Trigger>,
+  bodies: readonly RigidBody[],
+  joints: ReadonlyMap<Joint, JointBinding>,
+  triggers: readonly Trigger[],
   options: ModelOptions,
-  read: (joint: Joint) => JointReading,
 ) {
   const parents = parentsOf(bodies, joints);
   const assets: string[] = [],
@@ -45,17 +38,16 @@ export function modelXml(
   }
   function bodyXml(body: RigidBody): string {
     const parent = parents.get(body);
-    const joint = parent?.joint;
-    const record = parent?.record;
-    const pose = record
-      ? record.frames[0].clone().multiply(record.frames[1].clone().invert())
+    const pose = parent
+      ? parent.binding.frames[0]
+          .clone()
+          .multiply(parent.binding.frames[1].clone().invert())
       : splitTransform(body.matrixWorld).pose;
-    let connection =
-      body.bodyType !== "static" && !joint
-        ? `<freejoint name="${name(body)}free"/>`
-        : "";
-    if (joint && record)
-      connection = jointXml(joint, record, read(joint), coordinates);
+    const connection = parent
+      ? jointXml(parent.joint, parent.binding, coordinates)
+      : body.bodyType === "static"
+        ? ""
+        : `<freejoint name="${name(body)}free"/>`;
     const mass = body.options;
     const geometry = contents(body);
     const inertial = mass.centerOfMass
@@ -69,14 +61,16 @@ export function modelXml(
       .join("");
     return `<body name="${name(body)}" ${placement(pose)} gravcomp="${body.bodyType === "kinematic" ? 1 : 1 - body.gravityScale}">${connection}${inertial}${geometry}${(sites.get(body) ?? []).join("")}${children}</body>`;
   }
-  const roots = new Set([...bodies].filter((body) => !parents.has(body)));
   const xmlBodies =
-    [...roots].map(bodyXml).join("") +
+    bodies
+      .filter((body) => !parents.has(body))
+      .map(bodyXml)
+      .join("") +
     [...parents]
       .filter(([, parent]) => !parent.joint.options.body0)
       .map(([body]) => bodyXml(body))
       .join("");
-  const xmlTargets = [...bodies]
+  const xmlTargets = bodies
     .filter((body) => body.bodyType === "kinematic")
     .map((body) => {
       // A stiff native weld supplies contact velocity without teleporting collision geometry.
@@ -87,7 +81,7 @@ export function modelXml(
       return `<body name="${name(body)}target" mocap="true" ${placement(splitTransform(body.matrixWorld).pose)}/>`;
     })
     .join("");
-  const xmlTriggers = [...triggers]
+  const xmlTriggers = triggers
     .map(
       (trigger) =>
         `<body name="${name(trigger)}" mocap="true" ${placement(splitTransform(trigger.matrixWorld).pose)}>${contents(trigger)}</body>`,
@@ -101,15 +95,15 @@ export function modelXml(
     .join("");
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
   const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
-  return { xml, geometries, coordinates, roots };
+  return { xml, geometries, coordinates };
 }
 
 function parentsOf(
-  bodies: ReadonlySet<RigidBody>,
-  joints: ReadonlyMap<Joint, JointRecord>,
+  bodies: readonly RigidBody[],
+  joints: ReadonlyMap<Joint, JointBinding>,
 ) {
-  const parents = new Map<RigidBody, { joint: Joint; record: JointRecord }>();
-  for (const [joint, record] of joints) {
+  const parents = new Map<RigidBody, { joint: Joint; binding: JointBinding }>();
+  for (const [joint, binding] of joints) {
     if (!treeJoint(joint)) continue;
     const { body1 } = joint.options;
     if (body1.bodyType !== "dynamic")
@@ -118,7 +112,7 @@ function parentsOf(
       throw new Error(
         "MuJoCo constrained joints must form a tree; a body cannot have two parent joints",
       );
-    parents.set(body1, { joint, record });
+    parents.set(body1, { joint, binding });
   }
   for (const body of bodies) {
     const visited = new Set<RigidBody>();
@@ -133,17 +127,17 @@ function parentsOf(
   return parents;
 }
 
-function distanceXml(joints: ReadonlyMap<Joint, JointRecord>) {
+function distanceXml(joints: ReadonlyMap<Joint, JointBinding>) {
   const tendons: string[] = [],
     equalities: string[] = [];
   const sites = new Map<RigidBody | null, string[]>();
-  for (const [joint, record] of joints) {
+  for (const [joint, binding] of joints) {
     if (!(joint instanceof DistanceJoint) || !joint.enabled) continue;
     for (const index of [0, 1] as const) {
       const owner = index === 0 ? joint.options.body0 : joint.options.body1;
       const list = sites.get(owner) ?? [];
       list.push(
-        `<site name="${name(joint)}s${index}" ${placement(record.frames[index])} size="0.001"/>`,
+        `<site name="${name(joint)}s${index}" ${placement(binding.frames[index])} size="0.001"/>`,
       );
       sites.set(owner, list);
     }

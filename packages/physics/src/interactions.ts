@@ -10,9 +10,6 @@ export class Interactions {
   private events: (() => void)[] = [];
   private delivering = false;
 
-  get dispatching(): boolean {
-    return this.delivering;
-  }
   bodies(trigger: Trigger): RigidBody[] {
     return [...(this.overlaps.get(trigger) ?? [])];
   }
@@ -26,36 +23,36 @@ export class Interactions {
     this.contacts.clear();
     this.events = [];
   }
+  /** Delivers every queued event, including those listeners queue, even when some throw. */
   dispatch(): void {
     if (this.delivering) return;
     this.delivering = true;
     try {
-      // Every listener of a batch runs even when one throws; listeners may queue the next batch.
-      while (this.events.length) {
-        const batch = this.events;
-        this.events = [];
-        cleanup(batch, "Physics event listeners failed");
-      }
+      cleanup(this.drain(), "Physics event listeners failed");
     } finally {
-      this.events = [];
       this.delivering = false;
+    }
+  }
+  private *drain(): Generator<() => void> {
+    while (this.events.length) {
+      const batch = this.events;
+      this.events = [];
+      yield* batch;
     }
   }
   replace(overlaps: Pairs<Trigger>, contacts: Pairs<RigidBody>): void {
     transitions(this.overlaps, overlaps, (trigger, body, entered) => {
-      this.events.push(() => {
-        if (!trigger.disposed && (!entered || !body.disposed))
-          trigger.dispatchEvent({ type: entered ? "enter" : "exit", body });
-      });
+      this.events.push(() =>
+        trigger.dispatchEvent({ type: entered ? "enter" : "exit", body }),
+      );
     });
     transitions(this.contacts, contacts, (body, otherBody, entered) => {
-      this.events.push(() => {
-        if (!body.disposed && (!entered || !otherBody.disposed))
-          body.dispatchEvent({
-            type: entered ? "contactbegin" : "contactend",
-            otherBody,
-          });
-      });
+      this.events.push(() =>
+        body.dispatchEvent({
+          type: entered ? "contactbegin" : "contactend",
+          otherBody,
+        }),
+      );
     });
     this.overlaps = overlaps;
     this.contacts = contacts;

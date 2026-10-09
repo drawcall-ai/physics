@@ -1,18 +1,13 @@
 import { writeFileSync } from "node:fs";
 import { Scene, Group, Mesh, MeshStandardMaterial, BoxGeometry } from "three";
-import {
-  registry,
-  RigidBody,
-  RevoluteJoint,
-  JointDrive,
-} from "@drawcall/physics";
+import { RigidBody, RevoluteJoint, JointDrive } from "@drawcall/physics";
 import { PhysicsUSDExporter } from "../dist/index.js";
 const scene = new Scene();
 const assembly = new Group();
 assembly.position.set(2, 3, 4);
 assembly.scale.setScalar(Number(process.argv[3] ?? 1));
 assembly.rotation.y = Math.PI / 4;
-const frame = new RigidBody({ type: "static" });
+const frame = new RigidBody({ bodyType: "static" });
 frame.name = "Frame";
 const door = new RigidBody({ mass: 20 });
 door.name = "Door";
@@ -39,5 +34,3 @@ writeFileSync(
   process.argv[2] ?? "/tmp/door.usdz",
   await new PhysicsUSDExporter().parseAsync(scene),
 );
-
-registry.clear();

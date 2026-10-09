@@ -12,14 +12,14 @@ import { createWorld, inertialBody } from "./fixtures.js";
 
 it("keeps an untargeted drive passive, brakes at zero velocity, and removes actuation when detached", async () => {
   const world = await createWorld();
-  const moving = inertialBody().setVelocity({
-    linear: new Vector3(1, 0, 0),
-  });
+  const moving = inertialBody({ velocity: { linear: [1, 0, 0] } });
+  world.scene.add(moving);
   const slider = new PrismaticJoint({
     body0: null,
     body1: moving,
     axis: "X",
   });
+  world.scene.add(slider);
   const drive = new JointDrive({ damping: 10 });
   slider.setDrive(drive);
   world.update(0.03);
@@ -43,18 +43,23 @@ it("keeps an untargeted drive passive, brakes at zero velocity, and removes actu
 
 it("drives hinge and slider position natively while reporting physical limits", async () => {
   const world = await createWorld();
+  const turning = inertialBody(),
+    sliding = inertialBody();
+  world.scene.add(turning, sliding);
   const hinge = new RevoluteJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: turning,
     axis: "Z",
     limits: [-0.25, 0.25],
   });
+  world.scene.add(hinge);
   const slider = new PrismaticJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: sliding,
     axis: "X",
     limits: [-2, 2],
   });
+  world.scene.add(slider);
   hinge.setDrive(
     new JointDrive({ stiffness: 100, damping: 10 }).setTarget({
       position: 1,
@@ -79,11 +84,14 @@ it("limits native drive force and torque independently of timestep and model", a
     for (const Joint of [RevoluteJoint, PrismaticJoint])
       for (const dt of [0.01, 0.02]) {
         const world = await createWorld({ fixedDelta: dt });
+        const body = inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] });
+        world.scene.add(body);
         const joint = new Joint({
           body0: null,
-          body1: inertialBody({ mass: 2, diagonalInertia: [2, 2, 2] }),
+          body1: body,
           axis: "Z",
         });
+        world.scene.add(joint);
         joint.setDrive(
           new JointDrive({ model, damping: 1000, maxForce: 2 }).setTarget({
             velocity: 100,
@@ -99,16 +107,21 @@ it("makes acceleration-based drives mass independent", async () => {
   const models: ("force" | "acceleration")[] = ["force", "acceleration"];
   for (const model of models) {
     const world = await createWorld();
+    const lightBody = inertialBody();
+    const heavyBody = inertialBody({ mass: 10, diagonalInertia: [10, 10, 10] });
+    world.scene.add(lightBody, heavyBody);
     const light = new PrismaticJoint({
       body0: null,
-      body1: inertialBody(),
+      body1: lightBody,
       axis: "X",
     });
+    world.scene.add(light);
     const heavy = new PrismaticJoint({
       body0: null,
-      body1: inertialBody({ mass: 10, diagonalInertia: [10, 10, 10] }),
+      body1: heavyBody,
       axis: "X",
     });
+    world.scene.add(heavy);
     for (const joint of [light, heavy])
       joint.setDrive(
         new JointDrive({ model, damping: 10 }).setTarget({ velocity: 1 }),
@@ -129,26 +142,34 @@ it("makes acceleration-based drives mass independent", async () => {
 
 it("adds the effort term to a velocity drive and caps it by the same maximum force", async () => {
   const world = await createWorld();
+  const pushedBody = inertialBody(),
+    cappedBody = inertialBody();
+  world.scene.add(pushedBody, cappedBody);
   const pushed = new PrismaticJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: pushedBody,
     axis: "X",
   });
+  world.scene.add(pushed);
   const capped = new PrismaticJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: cappedBody,
     axis: "X",
   });
+  world.scene.add(capped);
   pushed.setDrive(new JointDrive({}).setTarget({ effort: 10 }));
   capped.setDrive(new JointDrive({ maxForce: 2 }).setTarget({ effort: 10 }));
   world.update(0.01);
   expect(pushed.getState().velocity).toBeCloseTo(0.1, 5);
   expect(capped.getState().velocity).toBeCloseTo(0.02, 5);
+  const combinedBody = inertialBody({ velocity: { linear: [1, 0, 0] } });
+  world.scene.add(combinedBody);
   const combined = new PrismaticJoint({
     body0: null,
-    body1: inertialBody().setVelocity({ linear: new Vector3(1, 0, 0) }),
+    body1: combinedBody,
     axis: "X",
   });
+  world.scene.add(combined);
   combined.setDrive(
     new JointDrive({ damping: 100 }).setTarget({ velocity: 1, effort: 10 }),
   );
@@ -161,14 +182,14 @@ it("adds the effort term to a velocity drive and caps it by the same maximum for
 for (const direction of [-1, 1])
   it(`tracks nearby continuous targets across wraps and holds after several turns (${direction})`, async () => {
     const world = await createWorld();
-    const body = inertialBody().setVelocity({
-      angular: new Vector3(0, 0, direction * 4),
-    });
+    const body = inertialBody({ velocity: { angular: [0, 0, direction * 4] } });
+    world.scene.add(body);
     const hinge = new RevoluteJoint({
       body0: null,
       body1: body,
       axis: "Z",
     });
+    world.scene.add(hinge);
     const drive = new JointDrive({
       stiffness: 100,
       damping: 20,
@@ -197,9 +218,10 @@ it("drives distance joints as force-limited springs that keep their rope limit",
     fixedDelta: 1 / 120,
   });
   const hang = (limits: [number, number], maxForce?: number) => {
-    const hand = new RigidBody({ type: "kinematic", colliders: false });
+    const hand = new RigidBody({ bodyType: "kinematic", colliders: false });
     const body = inertialBody({ mass: 10 });
     body.position.y = -0.2;
+    world.scene.add(hand, body);
     const joint = new DistanceJoint({
       body0: hand,
       body1: body,
@@ -207,6 +229,7 @@ it("drives distance joints as force-limited springs that keep their rope limit",
       frame1: new Matrix4(),
       limits,
     });
+    world.scene.add(joint);
     joint.setDrive(
       new JointDrive({
         model: "acceleration",
@@ -233,28 +256,28 @@ it("drives distance joints as force-limited springs that keep their rope limit",
 
 it("locks, limits, and frees generic joint axes and drives each axis independently", async () => {
   const world = await createWorld();
-  const welded = inertialBody().setVelocity({
-    linear: new Vector3(1, 0, 0),
-    angular: new Vector3(0, 2, 0),
+  const welded = inertialBody({
+    velocity: { linear: [1, 0, 0], angular: [0, 2, 0] },
   });
   welded.position.y = 1;
-  new GenericJoint({ body0: null, body1: welded });
-  const hinged = inertialBody().setVelocity({
-    angular: new Vector3(0, 0, 4),
-  });
+  world.scene.add(welded);
+  world.scene.add(new GenericJoint({ body0: null, body1: welded }));
+  const hinged = inertialBody({ velocity: { angular: [0, 0, 4] } });
+  world.scene.add(hinged);
   const hinge = new GenericJoint({
     body0: null,
     body1: hinged,
     dofs: { rotZ: [-0.25, 0.25] },
   });
-  const sliding = inertialBody().setVelocity({
-    linear: new Vector3(0, 0, 1),
-  });
+  world.scene.add(hinge);
+  const sliding = inertialBody({ velocity: { linear: [0, 0, 1] } });
+  world.scene.add(sliding);
   const slider = new GenericJoint({
     body0: null,
     body1: sliding,
     dofs: { transZ: "free" },
   });
+  world.scene.add(slider);
   slider.setDrive(
     "transZ",
     new JointDrive({ stiffness: 100, damping: 20 }).setTarget({
@@ -279,8 +302,9 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
     gravity: [0, -9.81, 0],
     fixedDelta: 1 / 120,
   });
-  const hand = new RigidBody({ type: "kinematic", colliders: false });
+  const hand = new RigidBody({ bodyType: "kinematic", colliders: false });
   const body = inertialBody({ mass: 5 });
+  world.scene.add(hand, body);
   const joint = new GenericJoint({
     body0: hand,
     body1: body,
@@ -295,6 +319,7 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
       rotZ: "free",
     },
   });
+  world.scene.add(joint);
   for (const axis of ["transX", "transY", "transZ"] as const)
     joint.setDrive(
       axis,
@@ -305,6 +330,7 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
         maxForce: 500,
       }).setTarget({ position: 0 }),
     );
+  world.update(0);
   for (let i = 0; i < 240; i++) {
     hand.setKinematicTarget(new Matrix4().makeTranslation(i / 120, 0, 0));
     world.update(1 / 120);
@@ -316,11 +342,14 @@ it("holds a body at a moving hand through linear drives on a free generic joint"
 
 it("rejects a capped drive that combines gains with effort, which Rapier caps separately", async () => {
   const world = await createWorld();
+  const body = inertialBody();
+  world.scene.add(body);
   const joint = new PrismaticJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: body,
     axis: "X",
   });
+  world.scene.add(joint);
   joint.setDrive(
     new JointDrive({ damping: 1, maxForce: 2 }).setTarget({
       velocity: 1,

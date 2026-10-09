@@ -1,15 +1,13 @@
-import { Object3D, Vector3 } from "three";
+import { Group, MathUtils, Object3D } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import {
-  rollback,
   Joint,
   RigidBody,
   ancestorBody,
   type PhysicsMaterial,
+  type Vec3,
 } from "@drawcall/physics";
-import { PhysicsUSDScene } from "../scene.js";
-import { radians } from "../units.js";
 import { attribute, boolean, numeric, prims, schemas } from "./layer.js";
 import type { Layer } from "./layer.js";
 import {
@@ -21,39 +19,36 @@ import {
 } from "./bodies.js";
 import { validate } from "./validate.js";
 import { read } from "./read.js";
-import { readJoint } from "./joints.js";
+import { parseJoint } from "./joints.js";
 import { readShape } from "./shapes.js";
 
 export interface PhysicsUSDImportOptions {
   manager?: LoadingManager;
 }
 
+/** A loaded stage: its objects and the gravity of its physics scene in m/s². */
+export interface PhysicsUSD {
+  scene: Group;
+  gravity: Vec3;
+}
+
+type Input = ArrayBuffer | Uint8Array | string;
+
 export class PhysicsUSDLoader {
   constructor(private readonly options: PhysicsUSDImportOptions = {}) {}
 
   /** Textures keep loading after this returns and report through the `LoadingManager`; `parseAsync` waits for them. */
-  parse(input: ArrayBuffer | Uint8Array | string, path = ""): PhysicsUSDScene {
-    return this.prepare(input, path).scene;
+  parse(input: Input, path = ""): PhysicsUSD {
+    return this.prepare(input, path).result;
   }
 
-  async parseAsync(
-    input: ArrayBuffer | Uint8Array | string,
-    path = "",
-  ): Promise<PhysicsUSDScene> {
-    const { scene, textures } = this.prepare(input, path);
-    try {
-      await Promise.all(textures);
-      return scene;
-    } catch (error) {
-      rollback(
-        error,
-        [() => scene.dispose()],
-        "Physics operation and cleanup failed",
-      );
-    }
+  async parseAsync(input: Input, path = ""): Promise<PhysicsUSD> {
+    const { result, textures } = this.prepare(input, path);
+    await Promise.all(textures);
+    return result;
   }
 
-  async loadAsync(url: string): Promise<PhysicsUSDScene> {
+  async loadAsync(url: string): Promise<PhysicsUSD> {
     const response = await fetch(url);
     if (!response.ok)
       throw new Error(`USD request failed: ${response.status} ${url}`);
@@ -64,25 +59,17 @@ export class PhysicsUSDLoader {
   }
 
   private prepare(
-    input: ArrayBuffer | Uint8Array | string,
+    input: Input,
     path: string,
-  ): { scene: PhysicsUSDScene; textures: Promise<unknown>[] } {
+  ): { result: PhysicsUSD; textures: Promise<unknown>[] } {
     const { layer, assets } = read(input);
     validate(layer);
     const composer = new USDComposer(this.options.manager);
-    const visual = composer.compose(layer, assets, {}, path);
-    const scene = new PhysicsUSDScene();
-    try {
-      scene.add(...visual.children);
-      new LayerImport(layer, scene).run();
-      return { scene, textures: composer.texturePromises };
-    } catch (error) {
-      rollback(
-        error,
-        [() => scene.dispose()],
-        "Physics operation and cleanup failed",
-      );
-    }
+    const scene = new Group().add(
+      ...composer.compose(layer, assets, {}, path).children,
+    );
+    const result = new LayerImport(layer, scene).run();
+    return { result, textures: composer.texturePromises };
   }
 }
 
@@ -92,13 +79,14 @@ class LayerImport {
   private readonly objects = new Map<string, Object3D>();
   private readonly bodies = new Map<string, RigidBody>();
   private readonly materials = new Map<string, PhysicsMaterial>();
+  private gravity: Vec3 = [0, -9.81, 0];
 
   constructor(
     private readonly layer: Layer,
-    private readonly scene: PhysicsUSDScene,
+    private readonly scene: Group,
   ) {}
 
-  run(): void {
+  run(): PhysicsUSD {
     for (const child of this.scene.children) this.index(child, "");
     for (const [path, object] of this.objects) {
       if (attribute(this.layer, path, "visibility") === "invisible")
@@ -119,6 +107,7 @@ class LayerImport {
       if (object instanceof RigidBody) object.getColliders();
       if (object instanceof Joint) object.validate();
     });
+    return { scene: this.scene, gravity: this.gravity };
   }
 
   private index(object: Object3D, parent: string): void {
@@ -135,27 +124,26 @@ class LayerImport {
     if (!object)
       throw new Error(`Missing visual transform for rigid body ${path}`);
     if (!rigid && ancestorBody(object)) return;
-    const body = wrapBody(
-      object,
-      bodyType(this.layer, path, rigid),
-      massProperties(this.layer, path, object),
-    );
-    this.scene.own(body);
-    const angular = vector(
+    const type = bodyType(this.layer, path, rigid);
+    const linear = vector(this.layer, path, "physics:velocity", [0, 0, 0]);
+    const degrees = vector(
       this.layer,
       path,
       "physics:angularVelocity",
       [0, 0, 0],
     );
-    const velocity = {
-      linear: new Vector3(
-        ...vector(this.layer, path, "physics:velocity", [0, 0, 0]),
-      ),
-      angular: new Vector3(...angular).multiplyScalar(radians),
-    };
-    if (body.bodyType === "dynamic") body.setVelocity(velocity);
-    else if (velocity.linear.lengthSq() || velocity.angular.lengthSq())
+    if (type !== "dynamic" && [...linear, ...degrees].some((v) => v !== 0))
       throw new Error(`Velocity on a non-dynamic body is unsupported: ${path}`);
+    const angular: Vec3 = [
+      degrees[0] * MathUtils.DEG2RAD,
+      degrees[1] * MathUtils.DEG2RAD,
+      degrees[2] * MathUtils.DEG2RAD,
+    ];
+    const body = wrapBody(object, {
+      ...massProperties(this.layer, path, object),
+      bodyType: type,
+      velocity: type === "dynamic" ? { linear, angular } : undefined,
+    });
     this.bodies.set(path, body);
   }
 
@@ -176,7 +164,7 @@ class LayerImport {
     if (!length && magnitude)
       throw new Error("USD gravity direction cannot be zero");
     const factor = length ? magnitude / length : 0;
-    this.scene.gravity = [
+    this.gravity = [
       direction[0] * factor,
       direction[1] * factor,
       direction[2] * factor,
@@ -186,8 +174,7 @@ class LayerImport {
 
   /** The joint takes the place of its visual transform, or hangs off the scene without one. */
   private placeJoint(path: string, type: string): void {
-    const joint = readJoint(this.layer, path, type, this.bodies);
-    this.scene.own(joint);
+    const joint = parseJoint(this.layer, path, type, this.bodies);
     joint.name = path.slice(path.lastIndexOf("/") + 1);
     const object = this.objects.get(path);
     const parent = object?.parent ?? this.scene;
@@ -204,8 +191,7 @@ class LayerImport {
     if (!object) throw new Error(`Missing collision geometry ${path}`);
     let body = this.bodies.get(path) ?? ancestorBody(object);
     if (!body) {
-      body = wrapBody(object, "static");
-      this.scene.own(body);
+      body = wrapBody(object, { bodyType: "static" });
       this.bodies.set(path, body);
     }
     const material = materialFor(this.layer, path, this.materials);

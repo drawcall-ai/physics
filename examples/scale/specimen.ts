@@ -10,6 +10,7 @@ import {
   SphereCollider,
   type PhysicsWorld,
   type AutoColliders,
+  type RigidBodyType,
 } from "@drawcall/physics";
 
 import type { Case } from "./cases";
@@ -18,7 +19,6 @@ export function specimen(spec: Case, spin = false) {
   const root = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
-  const bodies: RigidBody[] = [];
   function mesh(geometry: THREE.BufferGeometry, color: string) {
     const material = new THREE.MeshStandardMaterial({ color });
     geometries.push(geometry);
@@ -26,18 +26,18 @@ export function specimen(spec: Case, spin = false) {
     return new THREE.Mesh(geometry, material);
   }
   function body(
-    type: "dynamic" | "static" | "kinematic",
+    bodyType: RigidBodyType,
     visual: THREE.Mesh,
     colliders: AutoColliders = "auto",
   ) {
     const body = new RigidBody({
-      type,
+      bodyType,
       colliders,
-      ...(type === "static" ? {} : { mass: 2 }),
+      ...(bodyType === "static" ? {} : { mass: 2 }),
+      ...(spin && bodyType === "dynamic"
+        ? { velocity: { angular: [1.4, 0.7, 1.1] } }
+        : {}),
     });
-    if (spin && type === "dynamic")
-      body.setVelocity({ angular: new THREE.Vector3(1.4, 0.7, 1.1) });
-    bodies.push(body);
     body.add(visual);
     return body;
   }
@@ -61,10 +61,10 @@ export function specimen(spec: Case, spin = false) {
   const visual = mesh(geometry, "#eaa65a");
   const platform =
     spec.kind === "triangle mesh" ||
-    spec.type === "kinematic" ||
-    spec.type === "static";
+    spec.bodyType === "kinematic" ||
+    spec.bodyType === "static";
   const target = body(
-    spec.type ?? (spec.kind === "triangle mesh" ? "static" : "dynamic"),
+    spec.bodyType ?? (spec.kind === "triangle mesh" ? "static" : "dynamic"),
     visual,
     spec.kind === "convex hull"
       ? "convexHull"
@@ -148,7 +148,7 @@ export function specimen(spec: Case, spin = false) {
   let initial: THREE.Matrix4 | undefined;
   return {
     step(delta: number) {
-      if (spec.type !== "kinematic") return;
+      if (spec.bodyType !== "kinematic") return;
       initial ??= splitTransform(target.matrixWorld).pose;
       time += delta;
       const position = new THREE.Vector3().setFromMatrixPosition(initial);
@@ -207,7 +207,6 @@ export function specimen(spec: Case, spin = false) {
       }, 0);
     },
     dispose() {
-      for (const body of bodies) body.dispose();
       root.removeFromParent();
       geometries.forEach((g) => g.dispose());
       materials.forEach((m) => m.dispose());
@@ -215,11 +214,14 @@ export function specimen(spec: Case, spin = false) {
   };
 }
 
-export function verify(world: PhysicsWorld, spec: Case) {
+export async function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(spec);
   const stop = world.onAfterStep(item.step);
   try {
     try {
+      // Decomposing reads the colliders, so it rejects invalid ones as joining would.
+      await world.decompose(item.root);
+      world.scene.add(item.root);
       world.update(world.fixedDelta);
       if (!spec.error && item.boundsError() > 1e-5)
         throw new Error("Collider bounds differ from visual geometry");

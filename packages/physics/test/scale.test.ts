@@ -1,7 +1,6 @@
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { BoxGeometry, Group, Matrix4, Mesh, Vector3 } from "three";
 import {
-  registry,
   RigidBody,
   BoxCollider,
   SphereCollider,
@@ -11,7 +10,6 @@ import {
   FixedJoint,
   resolveCollider,
 } from "../src/index.js";
-afterEach(() => registry.clear());
 
 it("combines ancestor, body and collider scale including offsets without mutating sources", () => {
   const root = new Group();
@@ -118,7 +116,7 @@ it("rejects singular transforms, shear and nonuniform moving ancestors", () => {
   body.scale.setScalar(1);
   root.scale.set(2, 1, 1);
   expect(() => body.getColliders()).toThrow("uniform ancestor");
-  const fixed = new RigidBody({ type: "static" });
+  const fixed = new RigidBody({ bodyType: "static" });
   root.add(fixed.add(new Mesh(new BoxGeometry())));
   fixed.rotation.z = 0.5;
   expect(() => fixed.getColliders()).toThrow("shear");

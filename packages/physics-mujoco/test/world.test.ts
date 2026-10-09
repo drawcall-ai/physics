@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import {
   BoxCollider,
   SphereCollider,
@@ -12,37 +12,16 @@ import {
   DistanceJoint,
   JointDrive,
 } from "@drawcall/physics";
-import { Matrix4, Vector3 } from "three";
-import {
-  buildWorld,
-  type MujocoWorld,
-  type MujocoOptions,
-} from "../src/index.js";
-import { Scene } from "../src/scene.js";
-const worlds: MujocoWorld[] = [];
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
-});
-async function world(options: MujocoOptions = {}) {
-  const value = await buildWorld({
-    gravity: [0, 0, 0],
-    fixedDelta: 0.01,
-    ...options,
-  });
-  worlds.push(value);
-  return value;
-}
-function body(type: "dynamic" | "static" | "kinematic" = "dynamic") {
-  const result = new RigidBody({ type, mass: 2 });
-  result.add(new BoxCollider());
-  return result;
-}
-function steps(value: MujocoWorld, count: number) {
-  for (let i = 0; i < count; i++) value.update(value.fixedDelta);
+import { Matrix4, Object3D, Vector3 } from "three";
+import { body, createWorld, resetScene, scene, steps } from "./fixtures.js";
+
+function add<T extends Object3D>(object: T): T {
+  scene.add(object);
+  return object;
 }
 
 test("loads the real WASM in Node, falls, contacts, resets, and disposes", async () => {
-  const value = await world({ gravity: [0, -10, 0] });
+  const value = await createWorld({ gravity: [0, -10, 0] });
   const floor = body("static");
   floor.scale.set(10, 1, 10);
   floor.position.y = -0.5;
@@ -57,13 +36,14 @@ test("loads the real WASM in Node, falls, contacts, resets, and disposes", async
   expect(box.position.y).toBe(2);
   expect(value.time).toBe(0);
   value.dispose();
-  expect(box.disposed).toBe(true);
+  expect(box.parent).toBe(scene);
   expect(() => value.update(0)).toThrow("disposed");
 });
 
 test("force lasts one step, impulses act at the COM or at a world point", async () => {
-  const value = await world();
+  const value = await createWorld();
   const box = body();
+  value.update(0);
   box.applyForce(new Vector3(20, 0, 0));
   steps(value, 2);
   expect(box.getVelocity().linear.x).toBeCloseTo(0.1);
@@ -74,7 +54,7 @@ test("force lasts one step, impulses act at the COM or at a world point", async 
 });
 
 test("a gravity scale change acts on the very next step", async () => {
-  const value = await world({ gravity: [0, -10, 0] });
+  const value = await createWorld({ gravity: [0, -10, 0] });
   const box = body();
   steps(value, 2);
   box.setGravityScale(0);
@@ -86,12 +66,13 @@ test("a gravity scale change acts on the very next step", async () => {
 });
 
 test("queries exact primitives and collision masks, including triggers", async () => {
-  const value = await world();
+  const value = await createWorld();
   const box = body();
   box.position.x = 3;
   const trigger = new Trigger();
   trigger.position.x = 1;
   trigger.add(new SphereCollider({ radius: 0.4 }));
+  scene.add(trigger);
   const ray = () => value.raycast(new Vector3(), new Vector3(1, 0, 0), 10);
   expect(ray()?.distance).toBeCloseTo(2.5);
   expect(
@@ -115,10 +96,11 @@ test("queries exact primitives and collision masks, including triggers", async (
 });
 
 test("triggers emit aggregate enter/exit events without contact forces", async () => {
-  const value = await world();
+  const value = await createWorld();
   const box = body();
   const trigger = new Trigger();
   trigger.add(new BoxCollider({ size: [2, 2, 2] }));
+  scene.add(trigger);
   const events: string[] = [];
   trigger.addEventListener("enter", () => events.push("enter"));
   trigger.addEventListener("exit", () => events.push("exit"));
@@ -131,7 +113,7 @@ test("triggers emit aggregate enter/exit events without contact forces", async (
 });
 
 test("preserves live state when adding and removing objects or editing material", async () => {
-  const value = await world();
+  const value = await createWorld();
   const first = body().setVelocity({ linear: new Vector3(2, 0, 0) });
   value.update(0.01);
   const second = body();
@@ -140,23 +122,25 @@ test("preserves live state when adding and removing objects or editing material"
   value.update(0.01);
   expect(first.position.x).toBeCloseTo(0.04);
   expect(first.getVelocity().linear.x).toBeCloseTo(2);
-  second.dispose();
+  second.removeFromParent();
   value.update(0.01);
   expect(first.position.x).toBeCloseTo(0.06);
 });
 
 for (const Type of [RevoluteJoint, PrismaticJoint])
   test(`${Type.name} drive targets, effort limits, and disable/re-enable`, async () => {
-    const value = await world();
+    const value = await createWorld();
     const box = body();
-    const joint = new Type({
-      body0: null,
-      body1: box,
-      axis: "X",
-      frame0: new Matrix4(),
-      frame1: new Matrix4(),
-      limits: [-1, 1],
-    });
+    const joint = add(
+      new Type({
+        body0: null,
+        body1: box,
+        axis: "X",
+        frame0: new Matrix4(),
+        frame1: new Matrix4(),
+        limits: [-1, 1],
+      }),
+    );
     const drive = new JointDrive({
       stiffness: 100,
       damping: 20,
@@ -176,53 +160,62 @@ for (const Type of [RevoluteJoint, PrismaticJoint])
   });
 
 test("fixed and spherical joints keep anchors together", async () => {
-  const value = await world({ gravity: [0, -10, 0] });
+  const value = await createWorld({ gravity: [0, -10, 0] });
   const fixed = body();
   fixed.position.x = -2;
-  new FixedJoint({
-    body0: null,
-    body1: fixed,
-    frame0: new Matrix4().makeTranslation(-2, 0, 0),
-    frame1: new Matrix4(),
-  });
+  add(
+    new FixedJoint({
+      body0: null,
+      body1: fixed,
+      frame0: new Matrix4().makeTranslation(-2, 0, 0),
+      frame1: new Matrix4(),
+    }),
+  );
   const ball = body();
   ball.position.set(2, -1, 0);
-  const joint = new SphericalJoint({
-    body0: null,
-    body1: ball,
-    frame0: new Matrix4().makeTranslation(2, 0, 0),
-    frame1: new Matrix4().makeTranslation(0, 1, 0),
-  });
+  add(
+    new SphericalJoint({
+      body0: null,
+      body1: ball,
+      frame0: new Matrix4().makeTranslation(2, 0, 0),
+      frame1: new Matrix4().makeTranslation(0, 1, 0),
+    }),
+  );
   steps(value, 100);
   expect(fixed.position.y).toBeCloseTo(0);
-  expect(value.readJoint(joint).translation.length()).toBeLessThan(1e-6);
+  const anchor1 = new Vector3(0, 1, 0).applyMatrix4(ball.matrixWorld);
+  expect(anchor1.distanceTo(new Vector3(2, 0, 0))).toBeLessThan(1e-6);
 });
 
 test("distance tendon holds a rope length", async () => {
-  const value = await world({ gravity: [0, -10, 0] });
+  const value = await createWorld({ gravity: [0, -10, 0] });
   const box = body();
   box.position.y = -2;
-  const joint = new DistanceJoint({
-    body0: null,
-    body1: box,
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-    limits: [2, 2],
-  });
+  const joint = add(
+    new DistanceJoint({
+      body0: null,
+      body1: box,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      limits: [2, 2],
+    }),
+  );
   steps(value, 100);
   expect(joint.getState().distance).toBeCloseTo(2, 2);
 });
 
 test("generic joint exposes a driven linear degree of freedom", async () => {
-  const value = await world();
+  const value = await createWorld();
   const box = body();
-  const joint = new GenericJoint({
-    body0: null,
-    body1: box,
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-    dofs: { transY: [-1, 1] },
-  });
+  const joint = add(
+    new GenericJoint({
+      body0: null,
+      body1: box,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      dofs: { transY: [-1, 1] },
+    }),
+  );
   joint.setDrive(
     "transY",
     new JointDrive({ stiffness: 100, damping: 20 }).setTarget({
@@ -234,21 +227,21 @@ test("generic joint exposes a driven linear degree of freedom", async () => {
 });
 
 test("validates options, ownership, scales, and unsupported closed joint chains", async () => {
-  await expect(buildWorld({ fixedDelta: 0 })).rejects.toThrow("fixedDelta");
-  const a = await world();
+  await expect(createWorld({ fixedDelta: 0 })).rejects.toThrow("fixedDelta");
+  const a = await createWorld();
   const box = body();
-  await expect(world()).rejects.toThrow("already built");
   a.update(0);
+  await expect(createWorld()).rejects.toThrow("already has a physics world");
   box.scale.x = 2;
   expect(() => a.update(0)).toThrow("scale cannot change");
   box.scale.x = 1;
-  new FixedJoint({ body0: null, body1: box });
-  new FixedJoint({ body0: null, body1: box });
+  add(new FixedJoint({ body0: null, body1: box }));
+  add(new FixedJoint({ body0: null, body1: box }));
   expect(() => a.update(0)).toThrow("two parent joints");
 });
 
 test("step callbacks have committed times and can safely dispose the world", async () => {
-  const value = await world({ maxSubsteps: 2 });
+  const value = await createWorld({ maxSubsteps: 2 });
   body();
   const times: number[] = [];
   value.onAfterStep(() => times.push(value.time));
@@ -260,15 +253,21 @@ test("step callbacks have committed times and can safely dispose the world", asy
 });
 
 test("preserves an initial hinge velocity and continuous turns across recompilation", async () => {
-  const value = await world();
-  const box = body().setVelocity({ angular: new Vector3(0, 0, 8) });
-  const joint = new RevoluteJoint({
-    body0: null,
-    body1: box,
-    axis: "Z",
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-  });
+  const value = await createWorld();
+  const box = add(
+    new RigidBody({ mass: 2, velocity: { angular: [0, 0, 8] } }).add(
+      new BoxCollider(),
+    ),
+  );
+  const joint = add(
+    new RevoluteJoint({
+      body0: null,
+      body1: box,
+      axis: "Z",
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+    }),
+  );
   steps(value, 100);
   expect(joint.getState().position).toBeCloseTo(8, 3);
   box.setMaterial({ staticFriction: 0.7, dynamicFriction: 0.7 });
@@ -280,7 +279,7 @@ test("preserves an initial hinge velocity and continuous turns across recompilat
 });
 
 test("moves attached triggers in the completed step and refreshes static raycasts", async () => {
-  const value = await world();
+  const value = await createWorld();
   const moving = body().setVelocity({ linear: new Vector3(100, 0, 0) });
   const trigger = new Trigger();
   trigger.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
@@ -296,16 +295,18 @@ test("moves attached triggers in the completed step and refreshes static raycast
 });
 
 test("generic angular drives use frame coordinates across scene rebuilds", async () => {
-  const value = await world();
+  const value = await createWorld();
   const box = body();
   box.rotation.set(0.3, 0.2, -0.1);
-  const joint = new GenericJoint({
-    body0: null,
-    body1: box,
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-    dofs: { rotX: "free", rotY: "free", rotZ: "free" },
-  });
+  const joint = add(
+    new GenericJoint({
+      body0: null,
+      body1: box,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      dofs: { rotX: "free", rotY: "free", rotZ: "free" },
+    }),
+  );
   for (const axis of ["rotX", "rotY", "rotZ"] as const)
     joint.setDrive(
       axis,
@@ -322,46 +323,20 @@ test("generic angular drives use frame coordinates across scene rebuilds", async
     expect(joint.getState(axis).position).toBeCloseTo(0.4, 2);
 });
 
-test("raycasts leave initial scale editable and explicit mass supports zero density", async () => {
-  const value = await world();
+test("raycasts include bodies added since the last step and explicit mass supports zero density", async () => {
+  const value = await createWorld();
   const box = body();
   box.setMaterial({ density: 0 });
   expect(
     value.raycast(new Vector3(-3, 0, 0), new Vector3(1, 0, 0), 10)?.distance,
   ).toBeCloseTo(2.5);
-  box.scale.setScalar(2);
   box.applyImpulse(new Vector3(2, 0, 0));
   value.update(0.01);
   expect(box.getVelocity().linear.x).toBeCloseTo(1);
 });
 
-test("raycasts reuse the live model and only compile a preview once the scene changed", async () => {
-  const value = await world();
-  const shelf = body("static");
-  shelf.position.set(4, 0, 0);
-  steps(value, 1);
-  const preview = vi.spyOn(Scene.prototype, "preview");
-  try {
-    const origin = new Vector3(0, 0.5, 0);
-    for (let i = 0; i < 36; i++) {
-      const angle = (i / 36) * Math.PI * 2;
-      value.raycast(
-        origin,
-        new Vector3(Math.cos(angle), 0, Math.sin(angle)),
-        12,
-      );
-    }
-    expect(preview).not.toHaveBeenCalled();
-    body("static").position.x = 2;
-    value.raycast(origin, new Vector3(1, 0, 0), 12);
-    expect(preview).toHaveBeenCalledTimes(1);
-  } finally {
-    preview.mockRestore();
-  }
-});
-
 test("raycasts see bodies added and moved between steps", async () => {
-  const value = await world();
+  const value = await createWorld();
   const ray = () =>
     value.raycast(new Vector3(), new Vector3(1, 0, 0), 20)?.distance;
   const near = body("static");
@@ -377,35 +352,39 @@ test("raycasts see bodies added and moved between steps", async () => {
 
 for (const frictionImpedanceRatio of [0.9, 0, -1, NaN, Infinity]) {
   test(`rejects the friction impedance ratio ${frictionImpedanceRatio}`, async () => {
-    await expect(world({ frictionImpedanceRatio })).rejects.toThrow(
+    await expect(createWorld({ frictionImpedanceRatio })).rejects.toThrow(
       "frictionImpedanceRatio must be at least 1",
     );
   });
 }
 
 test("a friction impedance ratio above 1 needs elliptic cones", async () => {
-  await expect(world({ frictionImpedanceRatio: 2 })).rejects.toThrow(
+  await expect(createWorld({ frictionImpedanceRatio: 2 })).rejects.toThrow(
     "needs elliptic friction cones",
   );
+  // The rejected options leave the scene free for a world.
+  expect((await createWorld()).disposed).toBe(false);
 });
 
 test("a stiffer friction impedance slows resting creep without raising the slide limit", async () => {
   // A 0.5 friction coefficient holds a resting box below 26.6 degrees and slides it above.
   async function ramp(degrees: number, frictionImpedanceRatio: number) {
-    const value = await world({
+    resetScene();
+    const value = await createWorld({
       gravity: [0, -9.81, 0],
       fixedDelta: 1 / 1000,
       frictionCone: "elliptic",
       frictionImpedanceRatio,
     });
     const tilt = new Matrix4().makeRotationZ((degrees * Math.PI) / 180);
-    const slope = new RigidBody({ type: "static" });
+    const slope = new RigidBody({ bodyType: "static" });
     slope.add(new BoxCollider({ size: [2, 0.1, 2] }));
     slope.applyMatrix4(tilt);
     const box = new RigidBody({ mass: 0.1 });
     box.add(new BoxCollider({ size: [0.05, 0.05, 0.05] }));
     box.position.y = 0.076;
     box.applyMatrix4(tilt);
+    scene.add(slope, box);
     for (const object of [slope, box])
       object.setMaterial({
         staticFriction: 0.5,
@@ -429,9 +408,10 @@ test("a stiffer friction impedance slows resting creep without raising the slide
 
 test("a drive cannot drive its joint past its rated speed", async () => {
   async function spin(maxVelocity?: number) {
-    const value = await world({ fixedDelta: 1 / 1000 });
+    resetScene();
+    const value = await createWorld({ fixedDelta: 1 / 1000 });
     const arm = body();
-    const joint = new RevoluteJoint({ body0: null, body1: arm });
+    const joint = add(new RevoluteJoint({ body0: null, body1: arm }));
     // A far target keeps the motor saturated, so only its rating can limit the speed.
     joint.setDrive(
       new JointDrive({
@@ -467,11 +447,11 @@ test("a drive velocity limit needs a force limit to fall away from", () => {
 });
 
 test("teleporting a jointed body carries its assembly", async () => {
-  const value = await world();
+  const value = await createWorld();
   const root = body();
   const child = body();
   child.position.x = 2;
-  const joint = new RevoluteJoint({ body0: root, body1: child });
+  const joint = add(new RevoluteJoint({ body0: root, body1: child }));
   joint.position.x = 1;
   steps(value, 1);
   child.teleport(new Matrix4().makeTranslation(2, 5, 0));
@@ -482,24 +462,75 @@ test("teleporting a jointed body carries its assembly", async () => {
   expect(child.position.x).toBeCloseTo(2);
 });
 
+test("teleports along a joint that waits to join", async () => {
+  const value = await createWorld();
+  const root = body();
+  const child = body();
+  child.position.x = 2;
+  steps(value, 1);
+  const joint = add(new FixedJoint({ body0: root, body1: child }));
+  joint.position.x = 1;
+  root.teleport(new Matrix4().makeTranslation(0, 5, 0));
+  expect(child.position.y).toBeCloseTo(5);
+  steps(value, 1);
+  expect(root.position.y).toBeCloseTo(5);
+  expect(child.position.y).toBeCloseTo(5);
+  expect(child.position.x).toBeCloseTo(2);
+});
+
+test("teleporting a kinematic base carries the arm articulated to it", async () => {
+  const value = await createWorld();
+  const base = body("kinematic");
+  const arm = body();
+  arm.position.x = 2;
+  const joint = add(new RevoluteJoint({ body0: base, body1: arm }));
+  joint.position.x = 1;
+  steps(value, 1);
+  base.teleport(new Matrix4().makeTranslation(0, 5, 0));
+  expect(arm.position.toArray().map((v) => +v.toFixed(5))).toEqual([2, 5, 0]);
+  steps(value, 1);
+  expect(base.position.y).toBeCloseTo(5);
+  expect(arm.position.y).toBeCloseTo(5);
+});
+
+test("a joint a teleport straddles counts turns again from the new pose", async () => {
+  const value = await createWorld();
+  const wheel = body();
+  wheel.setVelocity({ angular: new Vector3(0, 0, 8) });
+  const joint = add(
+    new RevoluteJoint({ body0: null, body1: wheel, axis: "Z" }).setEnabled(
+      false,
+    ),
+  );
+  steps(value, 200);
+  expect(joint.getState().position).toBeCloseTo(16, 1);
+  wheel.teleport(new Matrix4().makeRotationZ(0.25));
+  expect(joint.getState().position).toBeCloseTo(0.25, 5);
+  value.reset();
+  expect(joint.getState().position).toBeCloseTo(0, 5);
+});
+
 test("a force-driven free joint settles at its drive's rated speed", async () => {
   async function slide(maxVelocity?: number) {
-    const value = await world({ fixedDelta: 1 / 1000 });
+    resetScene();
+    const value = await createWorld({ fixedDelta: 1 / 1000 });
     const box = body();
-    const joint = new GenericJoint({
-      body0: null,
-      body1: box,
-      frame0: new Matrix4(),
-      frame1: new Matrix4(),
-      dofs: {
-        transX: "free",
-        transY: "free",
-        transZ: "free",
-        rotX: "free",
-        rotY: "free",
-        rotZ: "free",
-      },
-    });
+    const joint = add(
+      new GenericJoint({
+        body0: null,
+        body1: box,
+        frame0: new Matrix4(),
+        frame1: new Matrix4(),
+        dofs: {
+          transX: "free",
+          transY: "free",
+          transZ: "free",
+          rotX: "free",
+          rotY: "free",
+          rotZ: "free",
+        },
+      }),
+    );
     joint.setDrive(
       "transX",
       new JointDrive({
@@ -521,22 +552,29 @@ test("a force-driven free joint settles at its drive's rated speed", async () =>
 });
 
 test("rejects teleporting a body articulated to the world", async () => {
-  const value = await world();
+  const value = await createWorld();
   const arm = body();
   arm.position.x = 1;
-  new RevoluteJoint({ body0: null, body1: arm });
+  add(new RevoluteJoint({ body0: null, body1: arm }));
   steps(value, 1);
+  const before = arm.matrixWorld.clone();
   expect(() => arm.teleport(new Matrix4().makeTranslation(1, 5, 0))).toThrow(
-    "free root body",
+    "articulated to the world",
   );
+  expect(arm.matrixWorld.equals(before)).toBe(true);
+  // A rejected teleport leaves nothing for a rebuild to apply.
+  arm.setMaterial({ restitution: 0.1 });
+  steps(value, 1);
+  expect(arm.position.length()).toBeCloseTo(1, 3);
+  expect(arm.position.y).toBeLessThan(0.1);
 });
 
 test("rejects teleporting a body articulated to a kinematic base", async () => {
-  const value = await world();
+  const value = await createWorld();
   const base = body("kinematic");
   const arm = body();
   arm.position.x = 2;
-  const joint = new RevoluteJoint({ body0: base, body1: arm });
+  const joint = add(new RevoluteJoint({ body0: base, body1: arm }));
   joint.position.x = 1;
   steps(value, 1);
   expect(() => arm.teleport(new Matrix4().makeTranslation(2, 5, 0))).toThrow(
@@ -545,10 +583,11 @@ test("rejects teleporting a body articulated to a kinematic base", async () => {
 });
 
 test("collision groups collide only where each admits the other", async () => {
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({ bodyType: "static" });
   floor.add(new BoxCollider({ size: [10, 1, 10] }));
   floor.position.y = -0.5;
   floor.setCollisionGroups({ membership: 1, filter: 7 });
+  scene.add(floor);
   const drop = (membership: number, filter: number, x: number, y = 1) => {
     const box = body();
     box.position.set(x, y, 0);
@@ -561,7 +600,7 @@ test("collision groups collide only where each admits the other", async () => {
   // Group 4 admits the floor but not itself: the upper box falls onto the floor through it.
   const lower = drop(4, 1, -3);
   const upper = drop(4, 1, -3, 2.2);
-  const value = await world({ gravity: [0, -9.81, 0] });
+  const value = await createWorld({ gravity: [0, -9.81, 0] });
   for (let i = 0; i < 150; i++) value.update(0.01);
   expect(through.position.y).toBeLessThan(-2);
   expect(resting.position.y).toBeCloseTo(0.5, 1);
@@ -574,13 +613,40 @@ test("builds scenes of many colliders in time linear in their number", async () 
     const box = new RigidBody({ mass: 1 });
     box.add(new BoxCollider({ size: [0.1, 0.1, 0.1] }));
     box.position.set((i % 30) * 0.2, Math.floor(i / 30) * 0.2, 0);
+    scene.add(box);
   }
   const started = performance.now();
-  await world();
+  await createWorld();
   expect(performance.now() - started).toBeLessThan(5000);
 });
 
 test("fixed joints cannot collide the bodies they hold together", async () => {
-  new FixedJoint({ body0: body(), body1: body() }).setCollideConnected(true);
-  await expect(world()).rejects.toThrow(/collideConnected/);
+  add(new FixedJoint({ body0: body(), body1: body() })).setCollideConnected(
+    true,
+  );
+  await expect(createWorld()).rejects.toThrow(/collideConnected/);
+});
+
+for (const order of ["before", "after"] as const)
+  test(`applies an impulse right after a body is added, ${order} the world's update`, async () => {
+    const value = await createWorld();
+    const load = () => {
+      const box = body();
+      box.applyImpulse(new Vector3(4, 0, 0));
+      return box;
+    };
+    const early = order === "before" ? load() : undefined;
+    value.update(value.fixedDelta);
+    const box = early ?? load();
+    expect(box.getVelocity().linear.x).toBeCloseTo(2);
+  });
+
+test("reads a trigger's overlaps right after it is added", async () => {
+  const value = await createWorld();
+  const box = body();
+  steps(value, 1);
+  const zone = add(new Trigger().add(new BoxCollider({ size: [2, 2, 2] })));
+  expect(zone.getOverlappingBodies()).toEqual([]);
+  steps(value, 1);
+  expect(zone.overlaps(box)).toBe(true);
 });

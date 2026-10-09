@@ -4,9 +4,9 @@ import {
   CylinderCollider,
   MeshCollider,
   SphereCollider,
-  axisVector,
 } from "@drawcall/physics";
 import type { Collider, PhysicsMaterial } from "@drawcall/physics";
+import { axisVector } from "@drawcall/physics/backend";
 import { Mesh, Object3D, Quaternion, Vector3 } from "three";
 import { numeric, token } from "./layer.js";
 import type { Layer } from "./layer.js";

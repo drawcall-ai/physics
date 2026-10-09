@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   BoxCollider,
   MeshCollider,
@@ -15,25 +15,17 @@ import {
   PerspectiveCamera,
   Vector3,
 } from "three";
-import { buildWorld, type MujocoWorld } from "../src/index.js";
-
-const worlds: MujocoWorld[] = [];
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
-});
-async function createWorld() {
-  const world = await buildWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
-  worlds.push(world);
-  return world;
-}
+import { createWorld, scene } from "./fixtures.js";
 
 test("unchanged mesh steps and target edits reuse collision geometry; marked vertex edits rebuild it", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   const geometry = new BoxGeometry();
   body.add(new MeshCollider().setGeometry(geometry));
   const clone = vi.spyOn(geometry, "clone");
   const joint = new RevoluteJoint({ body0: null, body1: body });
+  scene.add(joint);
   const drive = new JointDrive({ stiffness: 1, damping: 1 });
   joint.setDrive(drive);
   world.update(0);
@@ -60,10 +52,12 @@ test("unchanged mesh steps and target edits reuse collision geometry; marked ver
 test("unchanged steps skip the change scan; moved and added colliders are still picked up", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   const holder = new Group();
   holder.add(new BoxCollider());
   body.add(holder);
   const joint = new RevoluteJoint({ body0: null, body1: body });
+  scene.add(joint);
   const drive = new JointDrive({ stiffness: 1, damping: 1 });
   joint.setDrive(drive);
   world.update(0);
@@ -88,7 +82,8 @@ test("unchanged steps skip the change scan; moved and added colliders are still 
 
 test("a body without explicit colliders picks up its moved mesh", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
+  scene.add(body);
   const mesh = new Mesh(new BoxGeometry());
   body.add(mesh);
   world.update(0);
@@ -105,7 +100,8 @@ test("a body without explicit colliders picks up its moved mesh", async () => {
 
 test("moving a child trigger or camera does not rescan its body", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody({ bodyType: "kinematic" });
+  scene.add(body);
   const trigger = new Trigger();
   trigger.add(new BoxCollider());
   const camera = new PerspectiveCamera();
@@ -124,6 +120,7 @@ test("moving a child trigger or camera does not rescan its body", async () => {
 test("a failed rebuild keeps live state and retries after correction", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  scene.add(body);
   body.add(new BoxCollider());
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.update(world.fixedDelta);
@@ -141,20 +138,104 @@ test("a failed rebuild keeps live state and retries after correction", async () 
   expect(body.getVelocity().linear.x).toBeCloseTo(2);
 });
 
-test("failed initial compilation and queries do not capture reset poses or scale", async () => {
+test("failed initial compilation does not capture reset poses or scale", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ mass: 1 });
+  const body = new RigidBody({ mass: 1, velocity: { linear: [1, 0, 0] } });
+  scene.add(body);
   body.add(new BoxCollider());
   body.position.x = 1;
   body.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.8 });
   expect(() => world.update(0)).toThrow("equal static and dynamic friction");
   body.setMaterial({ staticFriction: 0.4, dynamicFriction: 0.4 });
-  world.raycast(new Vector3(3, 0, 0), new Vector3(-1, 0, 0), 5);
   body.position.x = 2;
   body.scale.setScalar(2);
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.update(world.fixedDelta);
   world.reset();
   expect(body.position.x).toBe(2);
   expect(body.getVelocity().linear.x).toBe(1);
+});
+
+/** A body whose join fails: MuJoCo needs equal static and dynamic friction. */
+function unjoinable(): RigidBody {
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  body.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.8 });
+  return body;
+}
+
+test("restarts a body that left its world from its initial velocity", async () => {
+  const world = await createWorld();
+  const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  scene.add(leaving);
+  world.update(world.fixedDelta);
+  leaving.applyImpulse(new Vector3(3, 0, 0));
+  const simulated = leaving.getVelocity().linear;
+  expect(simulated.x).toBeCloseTo(3);
+  leaving.removeFromParent();
+  world.update(0);
+  expect(leaving.world).toBeUndefined();
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+  scene.add(leaving);
+  expect(leaving.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
+});
+
+test("a body leaves in the same refresh as a failed join", async () => {
+  const world = await createWorld();
+  const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  scene.add(leaving);
+  leaving.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.update(world.fixedDelta);
+  leaving.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  expect(leaving.world).toBeUndefined();
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+  bad.removeFromParent();
+  world.update(world.fixedDelta);
+  const ray = world.raycast(new Vector3(0, 5, 0), new Vector3(0, -1, 0), 10);
+  expect(ray).toBeNull();
+});
+
+test("a body that left during a failed refresh rejoins from its options and scene pose", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({
+    mass: 1,
+    velocity: { linear: [0, 0, 5] },
+  }).add(new BoxCollider());
+  scene.add(body);
+  body.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.update(world.fixedDelta);
+  body.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  body.position.set(10, 0, 0);
+  scene.add(body);
+  bad.removeFromParent();
+  world.update(0);
+  expect(body.getVelocity().linear.toArray()).toEqual([0, 0, 5]);
+  expect(body.position.x).toBe(10);
+});
+
+test("a teleport never moves a body that left during a failed refresh", async () => {
+  const world = await createWorld();
+  const rejoined = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const staying = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  staying.position.x = 3;
+  scene.add(rejoined, staying);
+  world.update(world.fixedDelta);
+  rejoined.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  rejoined.position.y = 10;
+  scene.add(rejoined);
+  bad.removeFromParent();
+  staying.teleport(new Matrix4().makeTranslation(3, -5, 0));
+  expect(rejoined.position.y).toBe(10);
+  expect(staying.position.y).toBe(-5);
 });

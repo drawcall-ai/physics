@@ -1,3 +1,7 @@
+export function tuple(values: readonly number[]): string {
+  return `(${values.join(", ")})`;
+}
+
 export class Prim {
   readonly schemas: string[] = [];
   readonly properties: string[] = [];

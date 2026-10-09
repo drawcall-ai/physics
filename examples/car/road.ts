@@ -16,7 +16,7 @@ export function createRoad() {
     color: "#d2d8d7",
     roughness: 1,
   });
-  const floor = new RigidBody({ type: "static" });
+  const floor = new RigidBody({ bodyType: "static" });
   floor.name = "Road";
   floor.position.set(0, -0.15, 30);
   const floorCollider = new BoxCollider({ size: [8, 0.3, 90] });
@@ -59,7 +59,7 @@ export function createRoad() {
     );
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const body = new RigidBody({ type: "static" });
+    const body = new RigidBody({ bodyType: "static" });
     body.name = name;
     body.position.set(x, 0.005, z);
     const mesh = new THREE.Mesh(geometry, yellow);

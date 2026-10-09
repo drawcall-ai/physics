@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { MeshCollider, RigidBody, registry } from "@drawcall/physics";
-import { BufferGeometry, Float32BufferAttribute, Vector3 } from "three";
+import { MeshCollider, RigidBody } from "@drawcall/physics";
+import { BufferGeometry, Float32BufferAttribute, Scene, Vector3 } from "three";
 import { heightfield } from "../src/model/heightfield.js";
 import { buildWorld } from "../src/index.js";
 
@@ -39,26 +39,26 @@ test.each([
 
 test("rejects overlapping open triangles during initial mesh preparation", async () => {
   const geometry = square([0, 2, 1, 0, 3, 1]);
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
   body.add(
     new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
   );
   try {
-    await expect(buildWorld()).rejects.toThrow("closed");
-    expect(registry.world).toBeUndefined();
-    expect(body.disposed).toBe(false);
+    await expect(buildWorld({ scene: new Scene().add(body) })).rejects.toThrow(
+      "closed",
+    );
+    expect(body.world).toBeUndefined();
   } finally {
-    body.dispose();
     geometry.dispose();
   }
 });
 
 test("prepares native terrain before the first step", async () => {
   const geometry = square([0, 2, 1, 1, 2, 3]);
-  new RigidBody({ type: "static" }).add(
+  const body = new RigidBody({ bodyType: "static" }).add(
     new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
   );
-  const world = await buildWorld();
+  const world = await buildWorld({ scene: new Scene().add(body) });
   try {
     expect(world.time).toBe(0);
     expect(

@@ -1,4 +1,4 @@
-import type { PhysicsOptions } from "@drawcall/physics";
+import type { PhysicsWorldOptions } from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
 import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
@@ -29,7 +29,7 @@ window.addEventListener("unhandledrejection", (event) => {
   if (status) status.textContent = String(event.reason);
 });
 
-export function buildWorld(options: PhysicsOptions = {}) {
+export function buildWorld(options: PhysicsWorldOptions) {
   return backend === "mujoco"
     ? buildMujoco({ ...options, wasmUrl })
     : buildRapier(options);

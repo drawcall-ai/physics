@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { BoxGeometry, Matrix4, Mesh } from "three";
+import { BoxGeometry, Matrix4, Mesh, Scene } from "three";
 import {
   DistanceJoint,
   JointDrive,
@@ -13,15 +13,18 @@ import { buildWorld } from "../src/index.js";
 
 for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
   it(`rejects invalid solver iteration count ${solverIterations}`, async () => {
-    await expect(buildWorld({ solverIterations })).rejects.toThrow(
-      "solverIterations must be a positive integer",
-    );
+    await expect(
+      buildWorld({ scene: new Scene(), solverIterations }),
+    ).rejects.toThrow("solverIterations must be a positive integer");
   });
 }
 
 it("rejects a drive velocity limit, which its constant motor force cannot model", async () => {
   const world = await createWorld();
-  const joint = new RevoluteJoint({ body0: null, body1: inertialBody() });
+  const body = inertialBody();
+  world.scene.add(body);
+  const joint = new RevoluteJoint({ body0: null, body1: body });
+  world.scene.add(joint);
   joint.setDrive(
     new JointDrive({ stiffness: 10, maxForce: 1, maxVelocity: 1.5 }).setTarget({
       position: 1,
@@ -34,6 +37,7 @@ it("rejects unequal static and dynamic friction", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
   body.add(new Mesh(new BoxGeometry()));
+  world.scene.add(body);
   body.setMaterial({ staticFriction: 1, dynamicFriction: 0.2 });
   expect(() => world.update(world.fixedDelta)).toThrow("friction");
   body.setMaterial({});
@@ -42,23 +46,30 @@ it("rejects unequal static and dynamic friction", async () => {
 
 it("rejects distance joints with a positive minimum distance", async () => {
   const world = await createWorld();
-  new DistanceJoint({
-    body0: null,
-    body1: inertialBody(),
-    frame0: new Matrix4(),
-    frame1: new Matrix4(),
-    limits: [0.5, 2],
-  });
+  const body = inertialBody();
+  world.scene.add(body);
+  world.scene.add(
+    new DistanceJoint({
+      body0: null,
+      body1: body,
+      frame0: new Matrix4(),
+      frame1: new Matrix4(),
+      limits: [0.5, 2],
+    }),
+  );
   expect(() => world.update(0)).toThrow("zero minimum distance");
 });
 
 it("rejects ambiguous revolute position goals before stepping, including huge finite targets", async () => {
   const world = await createWorld();
+  const body = inertialBody();
+  world.scene.add(body);
   const hinge = new RevoluteJoint({
     body0: null,
-    body1: inertialBody(),
+    body1: body,
     axis: "Z",
   });
+  world.scene.add(hinge);
   const drive = new JointDrive({ stiffness: 100, damping: 10 });
   hinge.setDrive(drive);
   for (const position of [
@@ -72,6 +83,7 @@ it("rejects ambiguous revolute position goals before stepping, including huge fi
     drive.setTarget({ position });
     expect(() => world.update(0.01)).toThrow("within pi");
     expect(world.time).toBe(0);
-    expect(hinge.getState().velocity).toBe(0);
+    // Reading the state joins the hinge first, which fails the same way.
+    expect(() => hinge.getState()).toThrow("within pi");
   }
 });

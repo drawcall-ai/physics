@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createWorld } from "./fixtures.js";
+import { buildWorld } from "../src/index.js";
 import { BoxGeometry, Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
@@ -10,43 +11,37 @@ import {
   PrismaticJoint,
   JointDrive,
   MeshCollider,
+  FixedJoint,
+  Trigger,
 } from "@drawcall/physics";
+import { setWorldPose } from "@drawcall/physics/backend";
 
 const setup = () => createWorld({ fixedDelta: 1 / 60 });
 
-it("reads and queries construction state without capturing unfinished scale or replaying impulses", async () => {
+it("commands a body as soon as it is under the world's scene", async () => {
   const world = await setup();
-  const body = new RigidBody({ mass: 2 });
-  const input = new Vector3(1, 0, 0);
-  body.setVelocity({ linear: input });
-  input.x = 99;
-  expect(body.getVelocity().linear.x).toBe(1);
-  body.getVelocity().linear.x = 99;
-  body.add(new BoxCollider());
+  const body = new RigidBody({ mass: 2, velocity: { linear: [1, 0, 0] } }).add(
+    new BoxCollider(),
+  );
+  expect(() => body.applyImpulse(new Vector3(2, 0, 0))).toThrow(
+    "not under a built world's scene",
+  );
+  world.scene.add(body);
   body.applyImpulse(new Vector3(2, 0, 0));
-  body.applyImpulse(new Vector3(2, 0, 0));
-  expect(body.getVelocity().linear.x).toBeCloseTo(3);
+  expect(body.world).toBe(world);
   expect(
     world.raycast(new Vector3(-4, 0, 0), new Vector3(1, 0, 0), 8),
   ).toMatchObject({ kind: "body", body });
-  body.setVelocity({ linear: new Vector3(2, 0, 0) });
-  body.applyImpulse(new Vector3(2, 0, 0));
-  body.position.set(1, 3, 0);
-  const parent = new Group().add(body);
-  parent.scale.setScalar(2);
-  expect(body.getVelocity().linear.x).toBeCloseTo(3);
+  expect(body.getVelocity().linear.x).toBeCloseTo(2);
+  body.getVelocity().linear.x = 99;
   world.update(world.fixedDelta);
-  expect(body.getWorldPosition(new Vector3()).x).toBeCloseTo(
-    2 + 3 * world.fixedDelta,
-  );
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeCloseTo(3);
-  expect(body.scale.distanceTo(new Vector3(1, 1, 1))).toBeLessThan(1e-6);
+  expect(body.position.x).toBeCloseTo(2 * world.fixedDelta);
 });
 
 it("initializes on a short update without advancing time and prepares before observers", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 2 });
+  world.scene.add(body);
   body.add(new BoxCollider());
   body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.update(world.fixedDelta / 2);
@@ -55,6 +50,7 @@ it("initializes on a short update without advancing time and prepares before obs
   const next = new RigidBody({ mass: 2 });
   next.add(new BoxCollider());
   next.position.x = 10;
+  world.scene.add(next);
   world.onBeforeStep(() => next.applyImpulse(new Vector3(2, 0, 0)));
   world.update(world.fixedDelta / 2);
   expect(body.position.x).toBeCloseTo(2 * world.fixedDelta);
@@ -63,7 +59,7 @@ it("initializes on a short update without advancing time and prepares before obs
 
 it("shares world-pose writeback before and after initialization and freezes reset state", async () => {
   const world = await setup();
-  const body = new RigidBody({ mass: 2 });
+  const body = new RigidBody({ mass: 2, velocity: { linear: [2, 0, 0] } });
   const parent = new Group().add(body);
   parent.position.set(3, 4, 5);
   parent.rotation.y = 0.4;
@@ -74,9 +70,9 @@ it("shares world-pose writeback before and after initialization and freezes rese
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.8),
     new Vector3(1, 1, 1),
   );
-  body.teleport(pose);
-  body.setVelocity({ linear: new Vector3(2, 0, 0) });
+  setWorldPose(body, pose);
   body.add(new BoxCollider());
+  world.scene.add(parent);
   world.update(0);
   body.teleport(new Matrix4().makeTranslation(20, 20, 20));
   body.setVelocity({ linear: new Vector3(9, 0, 0) });
@@ -90,14 +86,13 @@ it("shares world-pose writeback before and after initialization and freezes rese
 });
 
 for (const axis of ["X", "Y", "Z"] as const)
-  it(`reads authored joint state with scaled anchors and ${axis} axis before backend sync`, async () => {
+  it(`reads joint state with scaled anchors and ${axis} axis as the joint joins on demand`, async () => {
     const world = await setup();
-    const body = new RigidBody().setVelocity({
-      angular: new Vector3(2, 3, 4),
-    });
+    const body = new RigidBody({ velocity: { angular: [2, 3, 4] } });
     body.position.set(2, 3, 4);
     body.scale.setScalar(2);
     body.add(new BoxCollider());
+    world.scene.add(body);
     const joint = new RevoluteJoint({
       body0: null,
       body1: body,
@@ -105,6 +100,7 @@ for (const axis of ["X", "Y", "Z"] as const)
       frame0: new Matrix4(),
       frame1: new Matrix4().makeTranslation(0, 1, 0),
     });
+    world.scene.add(joint);
     const initial = joint.getState();
     expect(initial.velocity).toBeCloseTo(
       axis === "X" ? 2 : axis === "Y" ? 3 : 4,
@@ -118,9 +114,11 @@ for (const axis of ["X", "Y", "Z"] as const)
     expect(Number.isFinite(joint.getState().position)).toBe(true);
   });
 
-it("rejects disposed, foreign and invalid operations while accepting staged commands", async () => {
+it("rejects removed, foreign and invalid operations", async () => {
   const world = await setup();
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody({ bodyType: "kinematic" });
+  world.scene.add(body);
+  world.update(0);
   expect(() => body.setVelocity({ linear: new Vector3(NaN, 0, 0) })).toThrow(
     "finite",
   );
@@ -128,10 +126,19 @@ it("rejects disposed, foreign and invalid operations while accepting staged comm
   body.setKinematicTarget(new Matrix4());
   body.sleep();
   body.wake();
-  await expect(setup()).rejects.toThrow("already built");
-  body.dispose();
-  expect(() => body.getVelocity()).toThrow("disposed");
-  expect(() => body.teleport(new Matrix4())).toThrow("disposed");
+  await expect(buildWorld({ scene: world.scene })).rejects.toThrow(
+    "already has a physics world",
+  );
+  const other = await setup();
+  const foreign = new RigidBody({ bodyType: "kinematic" });
+  other.scene.add(foreign);
+  other.update(0);
+  expect(() => world.getVelocity(foreign)).toThrow(
+    "Physics object Group is outside the world's scene",
+  );
+  body.removeFromParent();
+  world.update(0);
+  expect(() => body.wake()).toThrow("not under a built world's scene");
   world.update(0);
 });
 
@@ -142,6 +149,7 @@ for (const kind of ["spherical", "distance"] as const)
     body.add(new BoxCollider());
     body.position.y = 2;
     body.rotation.z = 0.3;
+    world.scene.add(body);
     const options = {
       body0: null,
       body1: body,
@@ -152,6 +160,7 @@ for (const kind of ["spherical", "distance"] as const)
       kind === "spherical"
         ? new SphericalJoint(options)
         : new DistanceJoint({ ...options, limits: [0, 3] });
+    world.scene.add(joint);
     const initial = joint.getState();
     world.update(0);
     expect(joint.getState()).toEqual(initial);
@@ -159,9 +168,10 @@ for (const kind of ["spherical", "distance"] as const)
 
 it("preserves world scale through static teleport and reset under a nonuniform parent", async () => {
   const world = await setup();
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
   body.add(new BoxCollider());
   const parent = new Group().add(body);
+  world.scene.add(parent);
   parent.scale.set(2, 3, 4);
   world.update(0);
   const scale = body.getWorldScale(new Vector3());
@@ -187,7 +197,7 @@ it("preserves world scale through static teleport and reset under a nonuniform p
   expect(body.matrixWorld.elements).toEqual(pose.elements);
 });
 
-it("applies staged forces once and keeps replacing the drive effort held at each step", async () => {
+it("applies forces for one step and keeps replacing the drive effort held at each step", async () => {
   const world = await setup();
   const body = new RigidBody({
     colliders: false,
@@ -195,37 +205,43 @@ it("applies staged forces once and keeps replacing the drive effort held at each
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
+  world.scene.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
+  world.scene.add(joint);
   const drive = new JointDrive({});
   joint.setDrive(drive);
+  expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
+  world.update(0);
   body.applyForce(new Vector3(2, 0, 0));
   body.applyForce(new Vector3(4, 0, 0));
   drive.setTarget({ effort: 100 });
-  expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  world.update(0);
   world.update(world.fixedDelta / 2);
   expect(world.time).toBe(0);
   const unsubscribe = world.onBeforeStep(() => drive.setTarget({ effort: 2 }));
   world.update(world.fixedDelta / 2);
   unsubscribe();
   expect(body.getVelocity().linear.x).toBeCloseTo(4 * world.fixedDelta);
-  // Staged forces last one step; the drive's effort target persists.
+  // Forces last one step; the drive's effort target persists.
   world.update(world.fixedDelta);
   expect(body.getVelocity().linear.x).toBeCloseTo(5 * world.fixedDelta);
 });
 
-it("clears staged commands on reset and disposal, and replaces kinematic targets without replay", async () => {
+it("clears commands on reset and removal, and replaces kinematic targets", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider());
+  world.scene.add(body);
+  const discarded = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  world.scene.add(discarded);
+  const kinematic = new RigidBody({ bodyType: "kinematic", colliders: false });
+  world.scene.add(kinematic);
+  world.update(0);
   body.applyImpulse(new Vector3(5, 0, 0));
   body.applyForce(new Vector3(5, 0, 0));
   body.sleep();
   body.wake();
-  const discarded = new RigidBody({ mass: 1 });
   discarded.applyForce(new Vector3(1, 0, 0));
-  discarded.dispose();
-  const kinematic = new RigidBody({ type: "kinematic", colliders: false });
+  discarded.removeFromParent();
   kinematic.setKinematicTarget(new Matrix4().makeTranslation(5, 0, 0));
   world.reset();
   expect(body.getVelocity().linear.x).toBe(0);
@@ -239,28 +255,12 @@ it("clears staged commands on reset and disposal, and replaces kinematic targets
   expect(kinematic.position.x).toBeCloseTo(0);
 });
 
-it("recomputes rotating slider reads after construction edits without capturing anchors", async () => {
-  const world = await setup();
-  const body = new RigidBody({ mass: 1 });
-  const collider = new BoxCollider();
-  collider.position.x = 1;
-  body.add(collider);
-  body.setVelocity({ angular: new Vector3(0, 0, 2) });
-  const joint = new PrismaticJoint({ body0: null, body1: body, axis: "Y" });
-  expect(joint.getState().velocity).toBeCloseTo(-2);
-  collider.position.x = 2;
-  body.scale.setScalar(2);
-  expect(joint.getState().velocity).toBeCloseTo(-8);
-  joint.position.y = 1;
-  expect(joint.getState().position).toBeCloseTo(0);
-  world.update(world.fixedDelta);
-  expect(Number.isFinite(joint.getState().velocity)).toBe(true);
-});
-
-it("preserves staged sleep, wake and impulse ordering", async () => {
+it("preserves sleep, wake and impulse ordering", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 1 });
   body.add(new BoxCollider());
+  world.scene.add(body);
+  world.update(0);
   body.applyImpulse(new Vector3(5, 0, 0));
   body.sleep();
   expect(body.getVelocity().linear.x).toBe(0);
@@ -274,10 +274,11 @@ it("preserves staged sleep, wake and impulse ordering", async () => {
 it("rebuilds a mesh collider only for geometry edits marked with needsUpdate", async () => {
   const world = await setup();
   const geometry = new BoxGeometry();
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
   body.add(
     new MeshCollider({ approximation: "convexHull" }).setGeometry(geometry),
   );
+  world.scene.add(body);
   world.update(world.fixedDelta);
   const hits = () =>
     world.raycast(new Vector3(5, 5, 0), new Vector3(0, -1, 0), 10) !== null;
@@ -291,3 +292,108 @@ it("rebuilds a mesh collider only for geometry edits marked with needsUpdate", a
   world.update(world.fixedDelta);
   expect(hits()).toBe(true);
 });
+
+it("restarts a body that left its world from its initial velocity", async () => {
+  const world = await setup();
+  const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const staying = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  staying.position.x = 5;
+  world.scene.add(leaving, staying);
+  world.update(world.fixedDelta);
+  leaving.applyImpulse(new Vector3(3, 0, 0));
+  staying.applyImpulse(new Vector3(0, 0, 4));
+  const simulated = leaving.getVelocity().linear;
+  expect(simulated.x).toBeCloseTo(3);
+
+  leaving.removeFromParent();
+  world.update(0);
+  expect(leaving.world).toBeUndefined();
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+  world.scene.add(leaving);
+  expect(leaving.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
+
+  world.reset();
+  expect(staying.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
+  world.dispose();
+  expect(staying.world).toBeUndefined();
+  expect(() => staying.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+});
+
+for (const order of ["before", "after"] as const)
+  it(`applies an impulse right after a body is added, ${order} the world's update`, async () => {
+    const world = await setup();
+    const load = () => {
+      const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+      world.scene.add(body);
+      body.applyImpulse(new Vector3(2, 0, 0));
+      return body;
+    };
+    const early = order === "before" ? load() : undefined;
+    world.update(world.fixedDelta);
+    const body = early ?? load();
+    expect(body.getVelocity().linear.x).toBeCloseTo(2);
+  });
+
+it("reads a trigger's overlaps right after it is added", async () => {
+  const world = await setup();
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  world.scene.add(body);
+  world.update(world.fixedDelta);
+  const zone = new Trigger().add(new BoxCollider({ size: [2, 2, 2] }));
+  world.scene.add(zone);
+  expect(zone.getOverlappingBodies()).toEqual([]);
+  world.update(world.fixedDelta);
+  expect(zone.overlaps(body)).toBe(true);
+});
+
+it("teleports along a joint that waits to join", async () => {
+  const world = await createWorld({ fixedDelta: 1 / 60 });
+  const a = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const b = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  b.position.x = 2;
+  world.scene.add(a, b);
+  world.update(0);
+  const weld = new FixedJoint({ body0: a, body1: b });
+  weld.position.x = 1;
+  world.scene.add(weld);
+  a.teleport(new Matrix4().makeTranslation(0, 10, 0));
+  world.update(world.fixedDelta);
+  expect(a.position.y).toBeCloseTo(10, 3);
+  expect(b.position.y).toBeCloseTo(10, 3);
+  expect(b.position.x).toBeCloseTo(2, 3);
+});
+
+it("teleports without a joint that waits to leave", async () => {
+  const world = await createWorld({ fixedDelta: 1 / 60 });
+  const a = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const b = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  b.position.x = 2;
+  const weld = new FixedJoint({ body0: a, body1: b });
+  weld.position.x = 1;
+  world.scene.add(a, b, weld);
+  world.update(0);
+  weld.removeFromParent();
+  a.teleport(new Matrix4().makeTranslation(0, 10, 0));
+  world.update(world.fixedDelta);
+  expect(a.position.y).toBeCloseTo(10, 3);
+  expect(b.position.y).toBeCloseTo(0, 3);
+});
+
+it("requires world.decompose for a moving triangle mesh that joins after the build", async () => {
+  const world = await setup();
+  const body = new RigidBody().add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(
+      new BoxGeometry(),
+    ),
+  );
+  world.scene.add(body);
+  expect(() => world.update(0)).toThrow("await world.decompose(object)");
+  expect(body.world).toBeUndefined();
+  await world.decompose(body);
+  world.update(0);
+  expect(body.world).toBe(world);
+}, 15000);

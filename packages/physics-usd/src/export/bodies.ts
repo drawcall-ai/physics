@@ -1,9 +1,10 @@
+import { MathUtils } from "three";
 import { resolveCollider } from "@drawcall/physics";
+import { initialVelocity } from "@drawcall/physics/backend";
 import type { Collider, PhysicsMaterial, RigidBody } from "@drawcall/physics";
-import { degrees } from "../units.js";
 import type { Hierarchy } from "./hierarchy.js";
-import { Prim } from "./prim.js";
-import { shapePrim, tuple } from "./shapes.js";
+import { Prim, tuple } from "./prim.js";
+import { shapePrim } from "./shapes.js";
 
 /** One material prim per distinct authored material, shared by every collider that resolves to it. */
 export class Materials {
@@ -49,14 +50,20 @@ export function writeBody(
     );
   prim.schemas.push("PhysicsMassAPI");
   if (body.bodyType !== "static") {
-    const velocity = body.getVelocity();
     prim.schemas.push("PhysicsRigidBodyAPI");
     prim.properties.push(
       "bool physics:rigidBodyEnabled = true",
       `bool physics:kinematicEnabled = ${body.bodyType === "kinematic"}`,
+    );
+  }
+  if (body.bodyType === "dynamic") {
+    // The live velocity of a simulated body; the velocity option of a body not simulated now.
+    // A kinematic body's velocity follows its targets, so it is not authored.
+    const velocity = body.world?.getVelocity(body) ?? initialVelocity(body);
+    prim.properties.push(
       `vector3f physics:velocity = ${tuple(velocity.linear.toArray())}`,
       `vector3f physics:angularVelocity = ${tuple(
-        velocity.angular.toArray().map((value) => value * degrees),
+        velocity.angular.toArray().map((value) => value * MathUtils.RAD2DEG),
       )}`,
     );
   }

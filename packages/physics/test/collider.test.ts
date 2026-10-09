@@ -6,14 +6,12 @@ import {
   SphereCollider,
 } from "../src/index.js";
 
-it("captures immutable dimensions and independent material/group settings", () => {
-  const size: [number, number, number] = [1, 2, 3];
+it("keeps immutable dimensions and independent material/group settings", () => {
   const material = { density: 12 };
   const groups = { membership: 1, filter: 2 };
-  const box = new BoxCollider({ size })
+  const box = new BoxCollider({ size: [1, 2, 3] })
     .setMaterial(material)
     .setCollisionGroups(groups);
-  size[0] = 9;
   material.density = 99;
   groups.filter = 0;
   expect(box.size).toEqual([1, 2, 3]);
@@ -24,14 +22,13 @@ it("captures immutable dimensions and independent material/group settings", () =
     .clone()
     .setMaterial({ density: 20 })
     .setCollisionGroups(undefined);
-  expect(copy.size).not.toBe(box.size);
+  expect(copy.size).toEqual(box.size);
   expect(box.material?.density).toBe(12);
   expect(box.collisionGroups).toEqual({ membership: 1, filter: 2 });
   expect(() => box.setMaterial({ restitution: 2 })).toThrow("material");
-  expect(() => box.copy(new BoxCollider())).toThrow("immutable");
 });
 
-it("clones configured primitive dimensions and rejects mismatched copies", () => {
+it("clones configured primitive dimensions", () => {
   for (const collider of [
     new SphereCollider({ radius: 2 }),
     new CapsuleCollider({ radius: 2, height: 3 }),
@@ -42,15 +39,6 @@ it("clones configured primitive dimensions and rejects mismatched copies", () =>
       readonly radius: number;
     }>();
   }
-  expect(() =>
-    new SphereCollider().copy(new SphereCollider({ radius: 2 })),
-  ).toThrow("immutable");
-  expect(() =>
-    new CapsuleCollider().copy(new CapsuleCollider({ height: 2 })),
-  ).toThrow("immutable");
-  expect(() =>
-    new CylinderCollider().copy(new CylinderCollider({ height: 2 })),
-  ).toThrow("immutable");
 });
 
 it("rejects invalid dimensions at construction", () => {

@@ -2,346 +2,208 @@ import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   RigidBody,
   Trigger,
-  SteppedWorld,
+  PhysicsWorld,
   type Joint,
-  type PhysicsOptions,
+  type JointReading,
+  type PhysicsWorldOptions,
   type PhysicsVelocity,
+  type RaycastHit,
   type RaycastOptions,
-  authoredVelocity,
-  sceneJointReading,
-  assembly,
-  setAuthoredVelocity,
   splitTransform,
-  assertLive,
-  assertOwned,
-  ancestorBody,
-  cleanup,
 } from "@drawcall/physics";
+import { initialVelocity } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import {
-  synchronize,
-  createBody,
-  refreshBody,
-  writePose,
-  type BodyBinding,
-} from "./body.js";
-import { applyEfforts } from "./drives.js";
-import { prepareJoint, type JointBinding } from "./joints.js";
-import { Pending, type Command } from "./pending.js";
-import { raycast } from "./query.js";
-import { readBinding, rebaseAngle, trackAngle } from "./reading.js";
+import { BodyBinding, prepareBody, writePose, writeBack } from "./body.js";
+import { applyDrives } from "./drive.js";
 import { sampleInteractions } from "./interactions.js";
-import {
-  refreshTrigger,
-  removeTrigger,
-  type TriggerBinding,
-} from "./triggers.js";
+import { RapierJointBinding, prepareJoint } from "./joint.js";
+import { raycast, type Owner } from "./query.js";
+import { TriggerBinding, prepareTrigger, releaseTrigger } from "./trigger.js";
 
-export type RapierOptions = PhysicsOptions;
+/** Rapier collides triangle meshes on moving bodies as convex parts. */
+const decomposes = (body: RigidBody) => body.bodyType !== "static";
 
-export class RapierWorld extends SteppedWorld {
-  private readonly backend: Rapier.World;
-  private readonly objects = new Set<RigidBody>();
+export class RapierWorld extends PhysicsWorld {
+  private readonly simulation: Rapier.World;
   private readonly bodies = new Map<RigidBody, BodyBinding>();
-  private readonly joints = new Map<Joint, JointBinding | undefined>();
-  private readonly triggers = new Map<Trigger, TriggerBinding | undefined>();
-  private freed = false;
-  private readonly pending: Pending;
-  private anchor: Rapier.RigidBody | undefined;
+  private readonly joints = new Map<Joint, RapierJointBinding>();
+  private readonly triggers = new Map<Trigger, TriggerBinding>();
+  /** The fixed body that stands in for `body0: null`. */
+  private readonly ground: Rapier.RigidBody;
 
   constructor(
     private readonly api: typeof Rapier,
-    options: RapierOptions = {},
+    options: PhysicsWorldOptions,
   ) {
-    super(options);
-    this.backend = new api.World(new Vector3(...this.gravity));
+    super(options, decomposes);
+    this.simulation = new api.World(new Vector3(...this.gravity));
     if (this.solverIterations !== undefined)
-      this.backend.numSolverIterations = this.solverIterations;
-    this.backend.timestep = this.fixedDelta;
-    this.pending = new Pending(api, this.bodies);
+      this.simulation.numSolverIterations = this.solverIterations;
+    this.simulation.timestep = this.fixedDelta;
+    this.ground = this.simulation.createRigidBody(api.RigidBodyDesc.fixed());
   }
-  register(object: RigidBody | Joint | Trigger): void {
-    assertOwned(this, object);
-    if (object instanceof RigidBody) this.objects.add(object);
-    else if (object instanceof Trigger) {
-      if (!this.triggers.has(object)) this.triggers.set(object, undefined);
-    } else if (!this.joints.has(object)) this.joints.set(object, undefined);
-  }
-  unregister(object: RigidBody | Joint | Trigger): void {
+  protected add(object: RigidBody | Joint | Trigger): void {
     if (object instanceof RigidBody)
-      for (const trigger of this.triggers.keys())
-        if (ancestorBody(trigger) === object) this.interactions.remove(trigger);
-    if (object instanceof RigidBody || object instanceof Trigger)
-      this.interactions.remove(object);
-    cleanup(
-      [() => this.remove(object), () => this.dispatch()],
-      "Physics object removal failed",
-    );
-  }
-  private remove(object: RigidBody | Joint | Trigger): void {
-    if (object instanceof Trigger) {
-      const binding = this.triggers.get(object);
-      if (binding) removeTrigger(this.backend, binding);
-      this.triggers.delete(object);
-      return;
-    }
-    if (object instanceof RigidBody) {
-      cleanup(
-        [
-          ...[...this.triggers]
-            .filter(([trigger]) => ancestorBody(trigger) === object)
-            .map(([trigger, binding]) => () => {
-              if (binding) removeTrigger(this.backend, binding);
-              this.triggers.set(trigger, undefined);
-            }),
-          () => {
-            this.objects.delete(object);
-            this.pending.delete(object);
-            const binding = this.bodies.get(object);
-            if (binding) this.backend.removeRigidBody(binding.body);
-            this.bodies.delete(object);
-          },
-        ],
-        "Rigid body removal failed",
+      this.bodies.set(
+        object,
+        new BodyBinding(this.api, this.simulation, object),
       );
-      return;
+    else if (object instanceof Trigger)
+      this.triggers.set(object, new TriggerBinding());
+    else {
+      const { body0, body1 } = object.options;
+      const bodies = [
+        body0 ? this.body(body0) : this.ground,
+        this.body(body1),
+      ] as const;
+      this.joints.set(object, new RapierJointBinding(object, bodies));
     }
-    const joint = this.joints.get(object)?.joint;
-    if (joint) this.backend.removeImpulseJoint(joint, true);
-    this.joints.delete(object);
+  }
+  protected remove(object: RigidBody | Joint | Trigger): void {
+    if (object instanceof RigidBody) {
+      this.simulation.removeRigidBody(this.body(object));
+      this.bodies.delete(object);
+    } else if (object instanceof Trigger) {
+      releaseTrigger(this.simulation, need(this.triggers, object));
+      this.triggers.delete(object);
+    } else {
+      const { native } = need(this.joints, object);
+      if (native) this.simulation.removeImpulseJoint(native, true);
+      this.joints.delete(object);
+    }
   }
   protected prepare(): void {
-    this.reconcile("pending");
+    for (const [object, binding] of this.bodies)
+      prepareBody(this.api, this.simulation, object, binding);
+    for (const [object, binding] of this.triggers)
+      prepareTrigger(this.api, this.simulation, object, binding, this.bodies);
+    for (const binding of this.joints.values())
+      prepareJoint(this.api, this.simulation, binding);
   }
   protected step(): void {
-    this.reconcile("all");
-    for (const [object, binding] of this.joints) {
-      if (binding?.joint && object.enabled) applyEfforts(object, binding.joint);
-    }
-    this.backend.step();
-    for (const [object, { body }] of this.bodies) {
-      synchronize(object, body);
+    for (const [object, { native }] of this.joints)
+      if (native) applyDrives(object, native);
+    this.simulation.step();
+    for (const [object, { native: body }] of this.bodies) {
+      writeBack(object, body);
       body.resetForces(false);
       body.resetTorques(false);
     }
-    for (const [object, binding] of this.joints) {
-      if (binding) trackAngle(object, binding);
-    }
-    const triggers = new Map<Trigger, TriggerBinding>();
-    for (const [trigger, binding] of this.triggers) {
-      if (!binding) throw new Error("Missing prepared trigger");
-      triggers.set(trigger, binding);
-    }
-    sampleInteractions(this.interactions, this.backend, this.bodies, triggers);
+    for (const binding of this.joints.values()) binding.track();
+    sampleInteractions(this.interactions, this.simulation, this.owners());
   }
   protected restore(): void {
-    this.pending.clear();
     for (const [object, binding] of this.bodies) {
       object.validate();
-      const { body } = binding;
-      writePose(body, binding.initialPose);
-      body.setLinvel(binding.initialVelocity.linear, true);
-      body.setAngvel(binding.initialVelocity.angular, true);
+      const body = binding.native;
+      const velocity = initialVelocity(object);
+      writePose(body, binding.pose);
+      body.setLinvel(velocity.linear, true);
+      body.setAngvel(velocity.angular, true);
       if (object.bodyType === "kinematic") {
         body.setNextKinematicTranslation(body.translation());
         body.setNextKinematicRotation(body.rotation());
       }
       body.resetForces(false);
       body.resetTorques(false);
-      synchronize(object, body);
+      writeBack(object, body);
     }
-    for (const [object, binding] of this.joints) {
-      if (binding) rebaseAngle(object, binding);
-    }
-  }
-  protected disposeObjects(): void {
-    cleanup(
-      [...this.triggers.keys(), ...this.joints.keys(), ...this.objects].map(
-        (object) => () => object.dispose(),
-      ),
-      "Physics world disposal failed",
-    );
+    for (const binding of this.joints.values()) binding.rebase();
   }
   protected free(): void {
-    if (this.freed) return;
-    this.backend.free();
-    this.freed = true;
+    this.simulation.free();
   }
-  getVelocity(object: RigidBody): PhysicsVelocity {
-    assertOwned(this, object);
-    const body = this.bodies.get(object)?.body;
-    if (body) return velocity(body);
-    if (!this.pending.changesVelocity(object)) return authoredVelocity(object);
-    return this.pending.previewBody(object, velocity);
-  }
-  setVelocity(object: RigidBody, value: Partial<PhysicsVelocity>): void {
-    assertOwned(this, object);
-    const linear = value.linear?.clone(),
-      angular = value.angular?.clone();
-    if (!this.bodies.has(object)) {
-      setAuthoredVelocity(object, value);
-      if (!this.pending.has(object)) return;
-    }
-    this.command(object, (body) => {
-      if (linear) body.setLinvel(linear, true);
-      if (angular) body.setAngvel(angular, true);
-    });
-  }
-  teleport(object: RigidBody): void {
-    assertOwned(this, object);
-    const moved = assembly(object, this.joints.keys());
-    for (const body of moved) {
-      const backend = this.bodies.get(body)?.body;
-      if (backend) writePose(backend, splitTransform(body.matrixWorld).pose);
-    }
-    // Joints inside the assembly keep their turns; only those it straddles start over.
-    for (const [joint, binding] of this.joints) {
-      const ends = [joint.options.body0, joint.options.body1].filter(
-        (body) => body && moved.has(body),
-      ).length;
-      if (binding && ends === 1) rebaseAngle(joint, binding);
-    }
-  }
-  setKinematicTarget(object: RigidBody, matrix: Matrix4): void {
-    const position = new Vector3().setFromMatrixPosition(matrix);
-    const rotation = new Quaternion().setFromRotationMatrix(matrix);
-    this.command(object, (body) => {
-      body.setNextKinematicTranslation(position);
-      body.setNextKinematicRotation(rotation);
-    });
-  }
-  applyImpulse(object: RigidBody, impulse: Vector3, point?: Vector3): void {
-    const value = impulse.clone(),
-      at = point?.clone();
-    this.command(
-      object,
-      (body) => {
-        if (at) body.applyImpulseAtPoint(value, at, true);
-        else body.applyImpulse(value, true);
-      },
-      true,
-    );
-  }
-  applyForce(object: RigidBody, force: Vector3, point?: Vector3): void {
-    const value = force.clone(),
-      at = point?.clone();
-    this.command(object, (body) => {
-      if (at) body.addForceAtPoint(value, at, true);
-      else body.addForce(value, true);
-    });
-  }
-  wake(object: RigidBody): void {
-    this.command(object, (body) => body.wakeUp());
-  }
-  sleep(object: RigidBody): void {
-    this.command(object, (body) => body.sleep(), true);
-  }
-  readJoint(object: Joint) {
-    assertOwned(this, object);
-    const binding = this.joints.get(object);
-    if (binding) return readBinding(object, binding);
-    return sceneJointReading(object, undefined, (body, point) => {
-      const target = this.bodies.get(body)?.body;
-      if (target) return new Vector3().copy(target.velocityAtPoint(point));
-      const { linear, angular } = body.getVelocity();
-      if (angular.lengthSq() === 0) return linear;
-      return this.pending.previewBody(body, (preview) =>
-        new Vector3().copy(preview.velocityAtPoint(point)),
-      );
-    });
-  }
-  raycast(
+  protected cast(
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,
-    options?: RaycastOptions,
-  ) {
-    assertLive(this);
-    for (const body of options?.excludeBodies ?? []) assertOwned(this, body);
-    for (const [object, binding] of this.bodies) {
-      if (object.disposed) continue;
-      object.validate();
-      refreshBody(this.api, this.backend, object, binding);
-    }
-    this.backend.propagateModifiedBodyPositionsToColliders();
-    return this.pending.preview(this.objects, (bodies) =>
-      raycast(
-        this.api,
-        bodies,
-        origin,
-        direction,
-        maxDistance,
-        options,
-        [...this.triggers.keys()].filter((trigger) => !trigger.disposed),
-      ),
+    options: RaycastOptions,
+  ): RaycastHit | null {
+    this.simulation.propagateModifiedBodyPositionsToColliders();
+    return raycast(
+      this.api,
+      this.simulation,
+      this.owners(),
+      origin,
+      direction,
+      maxDistance,
+      options,
     );
   }
-  private command(
+  protected readVelocity(object: RigidBody): PhysicsVelocity {
+    const body = this.body(object);
+    return {
+      linear: new Vector3().copy(body.linvel()),
+      angular: new Vector3().copy(body.angvel()),
+    };
+  }
+  protected writeVelocity(
     object: RigidBody,
-    command: Command,
-    changesVelocity = false,
+    value: Partial<PhysicsVelocity>,
   ): void {
-    assertOwned(this, object);
-    const body = this.bodies.get(object)?.body;
-    if (body) command(body);
-    else this.pending.push(object, command, changesVelocity);
+    const body = this.body(object);
+    if (value.linear) body.setLinvel(value.linear, true);
+    if (value.angular) body.setAngvel(value.angular, true);
   }
-  /** Creates backend objects for unprepared bodies and joints; `"all"` also refreshes prepared ones. */
-  private reconcile(scope: "pending" | "all"): void {
-    assertLive(this);
-    for (const object of this.objects) {
-      const binding = this.bodies.get(object);
-      if (binding && scope === "pending") continue;
-      object.validate();
-      if (binding) {
-        refreshBody(this.api, this.backend, object, binding);
-        continue;
-      }
-      const created = createBody(this.api, this.backend, object);
-      this.bodies.set(object, created);
-      this.pending.replay(object, created.body);
-      this.pending.delete(object);
-    }
-    for (const [object, binding] of this.triggers) {
-      if (binding && scope === "pending") continue;
-      this.triggers.set(
-        object,
-        refreshTrigger(this.api, this.backend, object, this.bodies, binding),
-      );
-    }
-    for (const [object, binding] of this.joints) {
-      if (binding && scope === "pending") continue;
-      this.joints.set(
-        object,
-        prepareJoint(
-          this.api,
-          this.backend,
-          object,
-          this.jointBody(object.options.body0),
-          this.jointBody(object.options.body1),
-          binding,
-        ),
-      );
-    }
+  protected writePoses(bodies: ReadonlySet<RigidBody>): void {
+    for (const body of bodies)
+      writePose(this.body(body), splitTransform(body.matrixWorld).pose);
+    for (const binding of this.joints.values()) binding.rebaseIfSplit(bodies);
   }
-  /** The prepared body, or the shared fixed anchor that stands in for the world. */
-  private jointBody(object: RigidBody | null): Rapier.RigidBody {
-    if (!object) {
-      this.anchor ??= this.backend.createRigidBody(
-        this.api.RigidBodyDesc.fixed(),
-      );
-      return this.anchor;
-    }
-    assertOwned(this, object);
-    const binding = this.bodies.get(object);
-    if (!binding) throw new Error("Missing prepared body");
-    return binding.body;
+  protected writeTarget(object: RigidBody, pose: Matrix4): void {
+    const body = this.body(object);
+    body.setNextKinematicTranslation(new Vector3().setFromMatrixPosition(pose));
+    body.setNextKinematicRotation(new Quaternion().setFromRotationMatrix(pose));
+  }
+  protected writeImpulse(
+    object: RigidBody,
+    impulse: Vector3,
+    point?: Vector3,
+  ): void {
+    const body = this.body(object);
+    if (point) body.applyImpulseAtPoint(impulse, point, true);
+    else body.applyImpulse(impulse, true);
+  }
+  protected writeForce(
+    object: RigidBody,
+    force: Vector3,
+    point?: Vector3,
+  ): void {
+    const body = this.body(object);
+    if (point) body.addForceAtPoint(force, point, true);
+    else body.addForce(force, true);
+  }
+  protected writeSleeping(object: RigidBody, sleeping: boolean): void {
+    if (sleeping) this.body(object).sleep();
+    else this.body(object).wakeUp();
+  }
+  protected jointReading(object: Joint): JointReading {
+    return need(this.joints, object).read({
+      angular: (body) => new Vector3().copy(this.body(body).angvel()),
+      velocityAt: (body, point) =>
+        new Vector3().copy(this.body(body).velocityAtPoint(point)),
+    });
+  }
+  /** The Rapier body of a member. */
+  private body(object: RigidBody): Rapier.RigidBody {
+    return need(this.bodies, object).native;
+  }
+  /** The scene owner of every Rapier collider. */
+  private owners(): Map<number, Owner> {
+    const owners = new Map<number, Owner>();
+    for (const [body, { sources }] of this.bodies)
+      for (const [collider, object] of sources)
+        owners.set(collider.handle, { kind: "body", body, object });
+    for (const [trigger, { sources }] of this.triggers)
+      for (const [collider, object] of sources)
+        owners.set(collider.handle, { kind: "trigger", trigger, object });
+    return owners;
   }
 }
 
-function velocity(body: Rapier.RigidBody): PhysicsVelocity {
-  return {
-    linear: new Vector3().copy(body.linvel()),
-    angular: new Vector3().copy(body.angvel()),
-  };
+/** Every member has a binding from the moment it joins. */
+function need<K, V>(bindings: ReadonlyMap<K, V>, object: K): V {
+  const binding = bindings.get(object);
+  if (!binding) throw new Error("Physics object has no Rapier binding");
+  return binding;
 }

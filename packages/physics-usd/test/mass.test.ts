@@ -1,9 +1,10 @@
 import { expect, it } from "vitest";
 import { PrismaticJoint, RigidBody } from "@drawcall/physics";
-import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
+import { PhysicsUSDLoader } from "../src/index.js";
+import { roundtrip } from "./roundtrip.js";
 
 it("roundtrips independent USD mass properties, velocities and a linear braking drive", async () => {
-  const imported = new PhysicsUSDLoader().parse(`#usda 1.0
+  const { scene: imported } = new PhysicsUSDLoader().parse(`#usda 1.0
 (
  metersPerUnit = 1
 )
@@ -32,42 +33,33 @@ def PhysicsPrismaticJoint "Slider" (
  float drive:linear:physics:damping = 3
  float drive:linear:physics:maxForce = inf
 }`);
-  const scenes = [imported];
-  try {
-    scenes.push(
-      new PhysicsUSDLoader().parse(
-        await new PhysicsUSDExporter().parseAsync(imported),
-      ),
-    );
-    for (const scene of scenes) {
-      const body = scene.getObjectByName("Body");
-      const joint = scene
-        .getObjectsByProperty("isObject3D", true)
-        .find((object) => object instanceof PrismaticJoint);
-      if (!(body instanceof RigidBody) || !(joint instanceof PrismaticJoint))
-        throw new Error("Missing body or joint");
-      expect(body.getColliders()).toEqual([]);
-      expect(body.options.mass).toBe(2);
-      expect(body.options.centerOfMass).toEqual([2, 6, 12]);
-      expect(body.options.diagonalInertia).toEqual([3, 4, 5]);
-      expect(body.options.principalAxes).toEqual([0, 0.6, 0, 0.8]);
-      expect(body.getVelocity().linear.toArray()).toEqual([1, 2, 3]);
-      expect(body.getVelocity().angular.y).toBeCloseTo(Math.PI);
-      expect(joint.limits).toEqual([-2, 3]);
-      expect(joint.enabled).toBe(false);
-      expect(joint.collideConnected).toBe(true);
-      expect(joint.drive?.options.model).toBe("force");
-      expect(joint.drive?.options.stiffness).toBe(0);
-      expect(joint.drive?.options.damping).toBe(3);
-      expect(joint.drive?.options.maxForce).toBeUndefined();
-      expect(joint.drive?.target).toEqual({
-        position: 0,
-        velocity: 0,
-        effort: 0,
-      });
-    }
-  } finally {
-    for (const scene of scenes) scene.dispose();
+  const scenes = [imported, (await roundtrip(imported)).scene];
+  for (const scene of scenes) {
+    const body = scene.getObjectByName("Body");
+    const joint = scene
+      .getObjectsByProperty("isObject3D", true)
+      .find((object) => object instanceof PrismaticJoint);
+    if (!(body instanceof RigidBody) || !(joint instanceof PrismaticJoint))
+      throw new Error("Missing body or joint");
+    expect(body.getColliders()).toEqual([]);
+    expect(body.options.mass).toBe(2);
+    expect(body.options.centerOfMass).toEqual([2, 6, 12]);
+    expect(body.options.diagonalInertia).toEqual([3, 4, 5]);
+    expect(body.options.principalAxes).toEqual([0, 0.6, 0, 0.8]);
+    expect(body.options.velocity?.linear).toEqual([1, 2, 3]);
+    expect(body.options.velocity?.angular?.[1]).toBeCloseTo(Math.PI);
+    expect(joint.limits).toEqual([-2, 3]);
+    expect(joint.enabled).toBe(false);
+    expect(joint.collideConnected).toBe(true);
+    expect(joint.drive?.options.model).toBe("force");
+    expect(joint.drive?.options.stiffness).toBe(0);
+    expect(joint.drive?.options.damping).toBe(3);
+    expect(joint.drive?.options.maxForce).toBeUndefined();
+    expect(joint.drive?.target).toEqual({
+      position: 0,
+      velocity: 0,
+      effort: 0,
+    });
   }
 });
 
@@ -97,3 +89,25 @@ ${Object.entries(properties)
     );
   },
 );
+
+it("imports velocity only onto dynamic bodies", () => {
+  const layer = (velocity: string) => `#usda 1.0
+(
+ metersPerUnit = 1
+)
+def Xform "Body" (
+ prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+ bool physics:kinematicEnabled = true
+ vector3f physics:velocity = ${velocity}
+}`;
+  const { scene } = new PhysicsUSDLoader().parse(layer("(0, 0, 0)"));
+  const body = scene.getObjectByName("Body");
+  if (!(body instanceof RigidBody)) throw new Error("Missing body");
+  expect(body.bodyType).toBe("kinematic");
+  expect(body.options.velocity).toBeUndefined();
+  expect(() => new PhysicsUSDLoader().parse(layer("(1, 0, 0)"))).toThrow(
+    "Velocity on a non-dynamic body is unsupported: /Body",
+  );
+});
