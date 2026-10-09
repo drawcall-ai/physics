@@ -1,4 +1,4 @@
-import { Group, MathUtils, Object3D, Vector3 } from "three";
+import { Group, MathUtils, Object3D } from "three";
 import type { LoadingManager } from "three";
 import { USDComposer } from "three/addons/loaders/usd/USDComposer.js";
 import {
@@ -124,26 +124,26 @@ class LayerImport {
     if (!object)
       throw new Error(`Missing visual transform for rigid body ${path}`);
     if (!rigid && ancestorBody(object)) return;
-    const body = wrapBody(
-      object,
-      bodyType(this.layer, path, rigid),
-      massProperties(this.layer, path, object),
-    );
-    const angular = vector(
+    const type = bodyType(this.layer, path, rigid);
+    const linear = vector(this.layer, path, "physics:velocity", [0, 0, 0]);
+    const degrees = vector(
       this.layer,
       path,
       "physics:angularVelocity",
       [0, 0, 0],
     );
-    const velocity = {
-      linear: new Vector3(
-        ...vector(this.layer, path, "physics:velocity", [0, 0, 0]),
-      ),
-      angular: new Vector3(...angular).multiplyScalar(MathUtils.DEG2RAD),
-    };
-    if (body.bodyType === "dynamic") body.setVelocity(velocity);
-    else if (velocity.linear.lengthSq() || velocity.angular.lengthSq())
+    if (type !== "dynamic" && [...linear, ...degrees].some((v) => v !== 0))
       throw new Error(`Velocity on a non-dynamic body is unsupported: ${path}`);
+    const angular: Vec3 = [
+      degrees[0] * MathUtils.DEG2RAD,
+      degrees[1] * MathUtils.DEG2RAD,
+      degrees[2] * MathUtils.DEG2RAD,
+    ];
+    const body = wrapBody(object, {
+      ...massProperties(this.layer, path, object),
+      bodyType: type,
+      velocity: type === "dynamic" ? { linear, angular } : undefined,
+    });
     this.bodies.set(path, body);
   }
 
@@ -191,7 +191,7 @@ class LayerImport {
     if (!object) throw new Error(`Missing collision geometry ${path}`);
     let body = this.bodies.get(path) ?? ancestorBody(object);
     if (!body) {
-      body = wrapBody(object, "static");
+      body = wrapBody(object, { bodyType: "static" });
       this.bodies.set(path, body);
     }
     const material = materialFor(this.layer, path, this.materials);

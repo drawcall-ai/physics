@@ -1,11 +1,10 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import { splitTransform, type RigidBody } from "@drawcall/physics";
 import {
-  authoredVelocity,
+  initialVelocity,
   lockScale,
   rollback,
   setWorldPose,
-  type Initial,
 } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
@@ -17,7 +16,8 @@ import {
 
 export class BodyBinding {
   readonly native: Rapier.RigidBody;
-  readonly initial: Initial;
+  /** The pose the body joined with, which reset returns it to. */
+  readonly pose: Matrix4;
   readonly scale: Vector3;
   /** The authored collider or mesh behind each Rapier collider. */
   sources = new Map<Rapier.Collider, Object3D>();
@@ -28,8 +28,8 @@ export class BodyBinding {
   constructor(api: typeof Rapier, simulation: Rapier.World, object: RigidBody) {
     object.validate();
     const { pose, scale } = splitTransform(object.matrixWorld);
-    this.initial = { pose, velocity: authoredVelocity(object) };
-    const { linear, angular } = this.initial.velocity;
+    this.pose = pose;
+    const { linear, angular } = initialVelocity(object);
     this.scale = scale;
     const desc =
       object.bodyType === "static"

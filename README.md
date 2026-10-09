@@ -61,7 +61,8 @@ under `options.scene` and prepares them, without advancing time. `scene` may be 
 
 Before every `update`, step, and query, the world traverses `scene`: objects added
 under it join, objects removed from it leave. Joining prepares the object in the
-backend and sets the read-only `object.world`. Leaving clears it.
+backend and sets the read-only `object.world`, which is undefined again as soon as
+the scene no longer holds the object.
 
 - A scene has at most one live world; building a second throws until the first is
   disposed.
@@ -89,32 +90,31 @@ backend and sets the read-only `object.world`. Leaving clears it.
 callback added during a step first runs at the next step. A step that throws ends
 the update; the steps it completed count, and the rest of its time is dropped.
 
-### Commands inside and outside a world
+### Simulation commands
 
-| Method                                        | Outside every world's scene  | Under a world's scene   |
-| --------------------------------------------- | ---------------------------- | ----------------------- |
-| `getVelocity()`, `setVelocity()`              | Read/write authored velocity | Live                    |
-| `teleport(pose)`                              | Moves the object             | Moves it in the backend |
-| `setKinematicTarget(pose)`                    | Places the body there        | Moves it over next step |
-| `applyImpulse`, `applyForce`, `wake`, `sleep` | Throws                       | Live                    |
-| `trigger.overlaps`, `getOverlappingBodies`    | Throws                       | Live                    |
-| joint `getState()`                            | Reads the authored scene     | Live                    |
+The simulation reads and commands on objects need a world: `getVelocity`,
+`setVelocity`, `teleport`, `setKinematicTarget`, `applyImpulse`, `applyForce`,
+`wake`, `sleep`, `trigger.overlaps`, `getOverlappingBodies`, and joint `getState`. They
+go to the world the object joined while that world's scene still holds it, or else to
+the built world whose scene holds it, which the object joins right then. Anywhere else,
+including while its world is still building, they throw: add the object under a built
+world's scene first.
 
 An object joins at the world's next `update`, step, or query, or at the first command
 that reaches it, so a command right after adding an object works in any loop order
 and inside step callbacks. Before-step callbacks see the objects added since the last
-step. A body joins with the velocity it was authored with outside a world, which
-`reset()` restores, and keeps its simulated velocity when it leaves. If joining fails,
+step. A body joins with its join pose and its `velocity` option, which `reset()`
+restores; a body that leaves and rejoins starts from them again. If joining fails,
 the object stays unjoined, the command throws, and the object joins afresh once the
 error is fixed. Until the object is fixed or removed, `update`, queries, and commands
 on objects that have not joined yet throw too: a failed join is not isolated to its
-object. An object's reads and commands sync the world it sits under, and the world it
-left, so they can throw the join errors of those worlds' other objects.
+object. A command on an object moved under another world's scene syncs the world it
+left, so it can throw the join errors of either world's other objects.
 
 The world methods `getVelocity`, `setVelocity`, `teleport`, `setKinematicTarget`,
 `applyImpulse`, `applyForce`, `wake`, `sleep`, and `getOverlappingBodies` take the
-object as their first argument. Unlike the object's methods, they only act on objects
-under the world's scene and throw for any other.
+object as their first argument. They only act on objects under that world's scene
+and throw for any other.
 
 Velocity, forces, and impulses require a dynamic body. `teleport` moves every
 dynamic body jointed to the body along with it, following the joints that have
@@ -140,6 +140,7 @@ new RigidBody({
   colliders: "auto", // "box", "convexHull", "trimesh", or false
   canSleep: true,
   mass: 2, // optional
+  velocity: { linear: [0, 0, 2], angular: [0, 1, 0] }, // optional, rad/s
 });
 ```
 
@@ -147,6 +148,9 @@ new RigidBody({
   `mass`, `centerOfMass`, `diagonalInertia`, and optional `principalAxes`
   (`[x, y, z, w]`) in body-local units. Explicit values are not scaled by
   transforms. A dynamic body without colliders needs complete mass properties.
+- `velocity` is the velocity a dynamic body joins a world with and `reset()` returns
+  it to. Other body types throw for any `velocity`, as do unknown keys in it and
+  parts that are not three finite numbers.
 - Unknown option keys throw.
 - Methods: `setVelocity`, `setLinearDamping`, `setAngularDamping` (rates in 1/s),
   `setGravityScale`, `setMaterial`, `setCollisionGroups`, plus the commands above.
@@ -396,9 +400,9 @@ geometry)` selects the triangle meshes it collides as convex parts.
    The base class syncs membership with the scene, sets `object.world`, runs the fixed
    clock and callbacks, dispatches events, and validates every command: hooks are
    called only for joined members, with finite vectors, rigid poses, a unit ray
-   direction, valid collision groups, and the body type the command needs. A body's
-   join velocity is `authoredVelocity(body)`; `Initial` types the pose and velocity
-   `restore()` returns it to.
+   direction, valid collision groups, and the body type the command needs. A body
+   joins with `initialVelocity(body)`, which `restore()` returns it to along with its
+   join pose.
 
 3. Exports `buildWorld(options)`: await the engine, then return
    `build(new MyWorld(...))`, which decomposes the scene's meshes and joins its objects.
@@ -408,8 +412,9 @@ setting changes in `version`; `geometryVersion(geometry)` tracks geometry edits.
 `step()` should write poses back with `setWorldPose` and report overlaps and contacts
 through `this.interactions.replace(...)`.
 
-Helpers: `authoredJointReading`, `JointBinding`, `wrapAngle`,
-`dofState` (joint readings); `treeJoint`, `unconstrained` (joint graphs);
+Helpers: `initialVelocity`; `JointBinding` (a joint's captured frames and
+continuous angle: `read(motion)`, pose-only `pose()`), `wrapAngle`, `dofState`,
+`dofPosition` (joint readings); `treeJoint`, `unconstrained` (joint graphs);
 `convexParts`; `lockScale` (scale fixed on joining); `resolveCollisionGroups`,
 `axisVector`; `cleanup` and `rollback` (error aggregation).
 

@@ -11,9 +11,7 @@ it("captures scale at initialization, including bodies added and removed during 
   world.scene.add(floor);
   const spawn = (x: number, factor: number) => {
     const body = new RigidBody({ mass: 2 });
-    expect(body.getVelocity().linear.length()).toBe(0);
     world.reset();
-    expect(body.getVelocity().linear.length()).toBe(0);
     const mesh = new Mesh(new BoxGeometry());
     body.add(mesh);
     mesh.scale.setScalar(0.5);
@@ -31,7 +29,7 @@ it("captures scale at initialization, including bodies added and removed during 
   first.body.removeFromParent();
   world.update(0);
   expect(() => first.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
   const second = spawn(4, 3);
   for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
@@ -40,7 +38,7 @@ it("captures scale at initialization, including bodies added and removed during 
   pending.body.removeFromParent();
   world.update(world.fixedDelta);
   expect(() => pending.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
   second.group.scale.setScalar(4);
   expect(() => world.update(world.fixedDelta)).toThrow("scale cannot change");

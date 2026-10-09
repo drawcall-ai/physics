@@ -1,5 +1,5 @@
 import { readJoint } from "../world.js";
-import type { AxisJointState, JointReading } from "./reading.js";
+import type { AxisJointState, JointPose, JointReading } from "./reading.js";
 import { Euler, Vector3 } from "three";
 import { Joint, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";
@@ -77,14 +77,19 @@ export function dofState(
   axis: JointDof,
 ): AxisJointState {
   const index = jointDofs.indexOf(axis) % 3;
-  if (axis.startsWith("trans"))
-    return {
-      position: reading.translation.getComponent(index),
-      velocity: reading.linearVelocity.getComponent(index),
-    };
-  const euler = new Euler().setFromQuaternion(reading.rotation, "XYZ");
+  const velocity = axis.startsWith("trans")
+    ? reading.linearVelocity
+    : reading.angularVelocity;
   return {
-    position: new Vector3(euler.x, euler.y, euler.z).getComponent(index),
-    velocity: reading.angularVelocity.getComponent(index),
+    position: dofPosition(reading, axis),
+    velocity: velocity.getComponent(index),
   };
+}
+
+/** The position of one degree of freedom, as `dofState` reads it. */
+export function dofPosition(pose: JointPose, axis: JointDof): number {
+  const index = jointDofs.indexOf(axis) % 3;
+  if (axis.startsWith("trans")) return pose.translation.getComponent(index);
+  const euler = new Euler().setFromQuaternion(pose.rotation, "XYZ");
+  return new Vector3(euler.x, euler.y, euler.z).getComponent(index);
 }

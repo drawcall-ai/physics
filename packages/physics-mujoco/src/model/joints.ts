@@ -6,12 +6,11 @@ import {
   jointDofs,
   type Joint,
   type JointDrive,
-  type JointReading,
+  type JointPose,
 } from "@drawcall/physics";
 import {
   axisVector,
-  dofState,
-  still,
+  dofPosition,
   type JointBinding,
 } from "@drawcall/physics/backend";
 import { Euler, Quaternion, Vector3 } from "three";
@@ -29,8 +28,8 @@ export function jointXml(
   binding: JointBinding,
   coordinates: Coordinate[],
 ): string {
-  const reading = binding.read(still);
-  validateAlignment(joint, reading);
+  const pose = binding.pose();
+  validateAlignment(joint, pose);
   const frame = binding.frames[1];
   const position = new Vector3()
     .setFromMatrixPosition(frame)
@@ -74,7 +73,7 @@ export function jointXml(
         kind: "axis",
         joint,
         name: name(joint),
-        position: joint.dof === "rotX" ? reading.angle : reading.translation.x,
+        position: joint.dof === "rotX" ? binding.angle : pose.translation.x,
       },
     );
   if (joint instanceof GenericJoint)
@@ -83,7 +82,7 @@ export function jointXml(
         const motion = joint.dofs[axis];
         if (motion === "locked") return "";
         const direction = new Vector3().setComponent(i % 3, 1);
-        const state = dofState(reading, axis);
+
         return scalar(
           i < 3 ? "slide" : "hinge",
           direction,
@@ -93,7 +92,7 @@ export function jointXml(
             joint,
             axis,
             name: name(joint) + axis,
-            position: state.position,
+            position: dofPosition(pose, axis),
           },
         );
       })
@@ -106,8 +105,8 @@ export function driveOf(coordinate: Coordinate): JointDrive | undefined {
     : coordinate.joint.getDrive(coordinate.axis);
 }
 
-function validateAlignment(joint: Joint, reading: JointReading): void {
-  const { translation, rotation } = reading;
+function validateAlignment(joint: Joint, pose: JointPose): void {
+  const { translation, rotation } = pose;
   const angles = new Euler().setFromQuaternion(rotation, "XYZ");
   const values = [...translation.toArray(), angles.x, angles.y, angles.z];
   const locked =

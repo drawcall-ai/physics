@@ -11,6 +11,7 @@ import {
   type RaycastOptions,
   splitTransform,
 } from "@drawcall/physics";
+import { initialVelocity } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import { BodyBinding, prepareBody, writePose, writeBack } from "./body.js";
 import { applyDrives } from "./drive.js";
@@ -95,8 +96,8 @@ export class RapierWorld extends PhysicsWorld {
     for (const [object, binding] of this.bodies) {
       object.validate();
       const body = binding.native;
-      const { pose, velocity } = binding.initial;
-      writePose(body, pose);
+      const velocity = initialVelocity(object);
+      writePose(body, binding.pose);
       body.setLinvel(velocity.linear, true);
       body.setAngvel(velocity.angular, true);
       if (object.bodyType === "kinematic") {
@@ -178,7 +179,7 @@ export class RapierWorld extends PhysicsWorld {
   }
   protected jointReading(object: Joint): JointReading {
     return need(this.joints, object).read({
-      velocity: (body) => this.readVelocity(body),
+      angular: (body) => new Vector3().copy(this.body(body).angvel()),
       velocityAt: (body, point) =>
         new Vector3().copy(this.body(body).velocityAtPoint(point)),
     });

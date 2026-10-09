@@ -75,9 +75,10 @@ for (const Joint of [RevoluteJoint, PrismaticJoint])
 
 it("measures offset COM and moving reference-axis velocity", async () => {
   const world = await createWorld({ fixedDelta: 0.0001 });
-  const first = inertialBody().setVelocity({ angular: new Vector3(0, 0, 2) });
-  const second = inertialBody({ centerOfMass: [1, 0, 0] }).setVelocity({
-    angular: new Vector3(0, 0, 3),
+  const first = inertialBody({ velocity: { angular: [0, 0, 2] } });
+  const second = inertialBody({
+    centerOfMass: [1, 0, 0],
+    velocity: { angular: [0, 0, 3] },
   });
   second.position.set(2, 1, 0);
   world.scene.add(first, second);
@@ -110,9 +111,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
 for (const speed of [8, -8])
   it(`tracks turns without getters at ${speed} rad/s and rebases teleport/reset`, async () => {
     const world = await createWorld();
-    const body = inertialBody().setVelocity({
-      angular: new Vector3(0, 0, speed),
-    });
+    const body = inertialBody({ velocity: { angular: [0, 0, speed] } });
     world.scene.add(body);
     const hinge = new RevoluteJoint({
       body0: null,
@@ -131,9 +130,9 @@ for (const speed of [8, -8])
 
 it("applies runtime damping/gravity settings while preserving the initialized velocity baseline", async () => {
   const world = await createWorld({ gravity: [0, -10, 0] });
-  const body = inertialBody()
-    .setVelocity({ linear: new Vector3(2, 0, 0) })
-    .setGravityScale(0);
+  const body = inertialBody({
+    velocity: { linear: [2, 0, 0] },
+  }).setGravityScale(0);
   world.scene.add(body);
   world.update(0.01);
   expect(body.getVelocity().linear.toArray()).toEqual([2, 0, 0]);

@@ -11,8 +11,8 @@ import { createWorld, box, earth } from "./fixtures.js";
 it("adds bodies after stepping without resetting existing velocities or poses", async () => {
   const world = await createWorld({ fixedDelta: 1 / 60 });
   const first = box();
-  first.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.scene.add(first);
+  first.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.update(world.fixedDelta);
   const previous = first.position.x;
   const second = box();
@@ -188,8 +188,8 @@ it("rejects copying joint identity and preserves the live constraint", async () 
 it("uses one update path for preparation, fractional time, catch-up and explicit advancement", async () => {
   const world = await createWorld({ fixedDelta: 0.125, maxSubsteps: 2 });
   const body = box();
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.scene.add(body);
+  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   const steps: number[] = [];
   world.onAfterStep((delta) => steps.push(delta));
   world.update(0);

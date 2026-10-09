@@ -2,6 +2,7 @@ export {
   type RigidBodyEventMap,
   type RigidBodyType,
   type RigidBodyOptions,
+  type InitialVelocity,
   RigidBody,
   ancestorBody,
 } from "./body.js";
@@ -47,6 +48,7 @@ export {
   type AxisJointState,
   type SphericalJointState,
   type DistanceJointState,
+  type JointPose,
   type JointReading,
 } from "./joints/reading.js";
 export { type RaycastOptions, type RaycastHit } from "./raycast.js";

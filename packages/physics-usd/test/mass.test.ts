@@ -46,8 +46,8 @@ def PhysicsPrismaticJoint "Slider" (
     expect(body.options.centerOfMass).toEqual([2, 6, 12]);
     expect(body.options.diagonalInertia).toEqual([3, 4, 5]);
     expect(body.options.principalAxes).toEqual([0, 0.6, 0, 0.8]);
-    expect(body.getVelocity().linear.toArray()).toEqual([1, 2, 3]);
-    expect(body.getVelocity().angular.y).toBeCloseTo(Math.PI);
+    expect(body.options.velocity?.linear).toEqual([1, 2, 3]);
+    expect(body.options.velocity?.angular?.[1]).toBeCloseTo(Math.PI);
     expect(joint.limits).toEqual([-2, 3]);
     expect(joint.enabled).toBe(false);
     expect(joint.collideConnected).toBe(true);
@@ -89,3 +89,25 @@ ${Object.entries(properties)
     );
   },
 );
+
+it("imports velocity only onto dynamic bodies", () => {
+  const layer = (velocity: string) => `#usda 1.0
+(
+ metersPerUnit = 1
+)
+def Xform "Body" (
+ prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+ bool physics:kinematicEnabled = true
+ vector3f physics:velocity = ${velocity}
+}`;
+  const { scene } = new PhysicsUSDLoader().parse(layer("(0, 0, 0)"));
+  const body = scene.getObjectByName("Body");
+  if (!(body instanceof RigidBody)) throw new Error("Missing body");
+  expect(body.bodyType).toBe("kinematic");
+  expect(body.options.velocity).toBeUndefined();
+  expect(() => new PhysicsUSDLoader().parse(layer("(1, 0, 0)"))).toThrow(
+    "Velocity on a non-dynamic body is unsupported: /Body",
+  );
+});

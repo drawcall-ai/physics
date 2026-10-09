@@ -37,7 +37,7 @@ export abstract class Joint<
       frame1: options.frame1?.clone(),
     };
   }
-  /** The world simulating this joint; set as the joint joins and leaves a world. */
+  /** The world simulating this joint, while that world's scene holds it. */
   get world(): PhysicsWorld | undefined {
     return joinedWorld(this);
   }

@@ -255,9 +255,9 @@ test("step callbacks have committed times and can safely dispose the world", asy
 test("preserves an initial hinge velocity and continuous turns across recompilation", async () => {
   const value = await createWorld();
   const box = add(
-    new RigidBody({ mass: 2 })
-      .add(new BoxCollider())
-      .setVelocity({ angular: new Vector3(0, 0, 8) }),
+    new RigidBody({ mass: 2, velocity: { angular: [0, 0, 8] } }).add(
+      new BoxCollider(),
+    ),
   );
   const joint = add(
     new RevoluteJoint({

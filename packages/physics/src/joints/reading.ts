@@ -1,10 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "../body.js";
-import { AxisJoint, DistanceJoint, PrismaticJoint } from "./kinds.js";
-import { GenericJoint } from "./generic.js";
+import { AxisJoint } from "./kinds.js";
 import type { Joint } from "./joint.js";
 import { axisVector, splitTransform } from "../transforms.js";
-import type { PhysicsVelocity } from "../world.js";
 
 export interface AxisJointState {
   position: number;
@@ -20,13 +18,16 @@ export interface DistanceJointState {
   distance: number;
   velocity: number;
 }
-/**
- * Backend integration: frame 1 relative to frame 0, in frame 0 coordinates. Velocities are relative
- * to frame 0 as a moving frame. Typed joint states derive from this one reading.
- */
-export interface JointReading {
+/** Frame 1 relative to frame 0, in frame 0 coordinates. */
+export interface JointPose {
   translation: Vector3;
   rotation: Quaternion;
+}
+/**
+ * Backend integration: the joint's pose, and velocities relative to frame 0 as a moving frame.
+ * Typed joint states derive from this one reading.
+ */
+export interface JointReading extends JointPose {
   /** Anchor 1 relative to anchor 0. */
   linearVelocity: Vector3;
   /** Body 1 relative to body 0. */
@@ -35,121 +36,25 @@ export interface JointReading {
   angle: number;
 }
 
-/** Where a joint reading takes its bodies' motion from. */
+/** Where a joint reading takes its bodies' motion from; each call returns a new vector. */
 export interface Motion {
-  velocity(body: RigidBody): PhysicsVelocity;
+  angular(body: RigidBody): Vector3;
   velocityAt(body: RigidBody, point: Vector3): Vector3;
 }
 
-/** Motion for readings that only need poses. */
-export const still: Motion = {
-  velocity: () => ({ linear: new Vector3(), angular: new Vector3() }),
-  velocityAt: () => new Vector3(),
-};
-
-/**
- * The joint's reading from the scene graph as it stands: body poses from their world matrices
- * and velocities from the bodies. Backends pass the frames they captured and the motion they
- * measure.
- */
-export function authoredJointReading(
-  object: Joint,
-  frames?: readonly [Matrix4, Matrix4],
-  motion?: Motion,
-): JointReading {
-  object.validate();
-  const { body0, body1 } = object.options;
-  const frame = (index: 0 | 1): Matrix4 => {
-    const body = index === 0 ? body0 : body1;
-    const matrix = frames
-      ? frames[index].clone()
-      : object.getFrame(index, new Matrix4());
-    if (body) matrix.premultiply(splitTransform(body.matrixWorld).pose);
-    return matrix;
-  };
-  const a = frame(0),
-    b = frame(1);
-  if (object instanceof AxisJoint) {
-    const rotation = new Matrix4().makeRotationFromQuaternion(
-      new Quaternion().setFromUnitVectors(
-        new Vector3(1, 0, 0),
-        axisVector(object.options.axis),
-      ),
-    );
-    a.multiply(rotation);
-    b.multiply(rotation);
-  }
-  const velocityOf = (body: RigidBody) =>
-    motion ? motion.velocity(body) : body.getVelocity();
-  const velocity0 = body0 ? velocityOf(body0) : still.velocity(body1);
-  const velocity1 = velocityOf(body1);
-  // Without a backend measurement, only translational readings need anchor velocities, which
-  // authoring can infer solely from explicit mass properties.
-  const anchors =
-    motion !== undefined ||
-    object instanceof PrismaticJoint ||
-    object instanceof DistanceJoint ||
-    object instanceof GenericJoint;
-  const velocityAt = motion?.velocityAt ?? velocityAtPoint;
-  const anchor0 = new Vector3().setFromMatrixPosition(a);
-  const anchor1 = new Vector3().setFromMatrixPosition(b);
-  const linear0 = anchors && body0 ? velocityAt(body0, anchor0) : new Vector3();
-  const linear1 = anchors ? velocityAt(body1, anchor1) : new Vector3();
-  return jointReading(
-    a,
-    b,
-    velocity0.angular,
-    velocity1.angular,
-    linear0,
-    linear1,
-  );
-}
-
-/** Frame-0 reading from world-frame inputs. The angle is wrapped to [-pi, pi]. */
-function jointReading(
-  a: Matrix4,
-  b: Matrix4,
-  angular0: Vector3,
-  angular1: Vector3,
-  linear0: Vector3,
-  linear1: Vector3,
-): JointReading {
-  const inverse0 = new Quaternion().setFromRotationMatrix(a).invert();
-  const rotation = inverse0
-    .clone()
-    .multiply(new Quaternion().setFromRotationMatrix(b))
-    .normalize();
-  const translation = new Vector3()
-    .setFromMatrixPosition(b)
-    .sub(new Vector3().setFromMatrixPosition(a));
-  // Anchor 1 as seen from frame 0, which rotates with body 0.
-  const linear = linear1
-    .clone()
-    .sub(linear0)
-    .sub(angular0.clone().cross(translation));
-  const angle = 2 * Math.atan2(rotation.x, rotation.w);
+/** Frame `b` relative to frame `a`, in `a` coordinates. */
+function relativePose(a: Matrix4, b: Matrix4): JointPose {
+  const inverse = new Quaternion().setFromRotationMatrix(a).invert();
   return {
-    translation: translation.applyQuaternion(inverse0),
-    rotation,
-    linearVelocity: linear.applyQuaternion(inverse0),
-    angularVelocity: angular1.clone().sub(angular0).applyQuaternion(inverse0),
-    angle: wrapAngle(angle),
+    translation: new Vector3()
+      .setFromMatrixPosition(b)
+      .sub(new Vector3().setFromMatrixPosition(a))
+      .applyQuaternion(inverse),
+    rotation: inverse
+      .clone()
+      .multiply(new Quaternion().setFromRotationMatrix(b))
+      .normalize(),
   };
-}
-
-/** The body's velocity at a world point, from its velocity and its explicit center of mass. */
-function velocityAtPoint(body: RigidBody, point: Vector3): Vector3 {
-  const { linear, angular } = body.getVelocity();
-  if (angular.lengthSq() === 0) return linear;
-  const center = body.options.centerOfMass;
-  if (!center)
-    throw new Error(
-      "Authoring the anchor velocity of a rotating body requires explicit mass properties",
-    );
-  const worldCenter = new Vector3(...center).applyMatrix4(
-    splitTransform(body.matrixWorld).pose,
-  );
-  return linear.add(angular.cross(point.clone().sub(worldCenter)));
 }
 
 /** Wraps an angle into [-π, π]. */
@@ -179,8 +84,32 @@ export class JointBinding {
   }
   /** The reading from the scene's poses and the backend's motion, with the continuous angle. */
   read(motion: Motion): JointReading {
-    const reading = authoredJointReading(this.joint, this.frames, motion);
-    return { ...reading, angle: this.continuous };
+    const { body0, body1 } = this.joint.options;
+    const [a, b] = this.placedFrames();
+    const anchor0 = new Vector3().setFromMatrixPosition(a);
+    const anchor1 = new Vector3().setFromMatrixPosition(b);
+    const angular0 = body0 ? motion.angular(body0) : new Vector3();
+    const linear0 = body0 ? motion.velocityAt(body0, anchor0) : new Vector3();
+    // Anchor 1 as seen from frame 0, which rotates with body 0.
+    const linear = motion
+      .velocityAt(body1, anchor1)
+      .sub(linear0)
+      .sub(angular0.clone().cross(anchor1.sub(anchor0)));
+    const inverse0 = new Quaternion().setFromRotationMatrix(a).invert();
+    return {
+      ...relativePose(a, b),
+      linearVelocity: linear.applyQuaternion(inverse0),
+      angularVelocity: motion
+        .angular(body1)
+        .sub(angular0)
+        .applyQuaternion(inverse0),
+      angle: this.continuous,
+    };
+  }
+  /** The joint's pose from the scene's poses of its bodies. */
+  pose(): JointPose {
+    const [a, b] = this.placedFrames();
+    return relativePose(a, b);
   }
   /** Restarts turn counting from the current angle, as creation, teleport and reset do. */
   rebase(): void {
@@ -198,8 +127,32 @@ export class JointBinding {
     this.continuous += wrapAngle(angle - this.sampled);
     this.sampled = angle;
   }
-  /** The wrapped angle the scene's poses give the joint now. */
+  /** The wrapped angle about the frame X axis the scene's poses give the joint now. */
   private measure(): number {
-    return authoredJointReading(this.joint, this.frames, still).angle;
+    const { x, w } = this.pose().rotation;
+    return wrapAngle(2 * Math.atan2(x, w));
+  }
+  /** The captured frames placed on their bodies' poses in the scene, X along an axis joint's axis. */
+  private placedFrames(): [Matrix4, Matrix4] {
+    this.joint.validate();
+    const { body0, body1 } = this.joint.options;
+    const place = (frame: Matrix4, body: RigidBody | null): Matrix4 => {
+      const matrix = frame.clone();
+      if (body) matrix.premultiply(splitTransform(body.matrixWorld).pose);
+      return matrix;
+    };
+    const a = place(this.frames[0], body0);
+    const b = place(this.frames[1], body1);
+    if (this.joint instanceof AxisJoint) {
+      const rotation = new Matrix4().makeRotationFromQuaternion(
+        new Quaternion().setFromUnitVectors(
+          new Vector3(1, 0, 0),
+          axisVector(this.joint.options.axis),
+        ),
+      );
+      a.multiply(rotation);
+      b.multiply(rotation);
+    }
+    return [a, b];
   }
 }

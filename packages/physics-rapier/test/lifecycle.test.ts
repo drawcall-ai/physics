@@ -14,18 +14,17 @@ import {
   FixedJoint,
   Trigger,
 } from "@drawcall/physics";
+import { setWorldPose } from "@drawcall/physics/backend";
 
 const setup = () => createWorld({ fixedDelta: 1 / 60 });
 
 it("commands a body as soon as it is under the world's scene", async () => {
   const world = await setup();
-  const body = new RigidBody({ mass: 2 }).add(new BoxCollider());
-  const input = new Vector3(1, 0, 0);
-  body.setVelocity({ linear: input });
-  input.x = 99;
-  expect(body.getVelocity().linear.x).toBe(1);
+  const body = new RigidBody({ mass: 2, velocity: { linear: [1, 0, 0] } }).add(
+    new BoxCollider(),
+  );
   expect(() => body.applyImpulse(new Vector3(2, 0, 0))).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
   world.scene.add(body);
   body.applyImpulse(new Vector3(2, 0, 0));
@@ -60,7 +59,7 @@ it("initializes on a short update without advancing time and prepares before obs
 
 it("shares world-pose writeback before and after initialization and freezes reset state", async () => {
   const world = await setup();
-  const body = new RigidBody({ mass: 2 });
+  const body = new RigidBody({ mass: 2, velocity: { linear: [2, 0, 0] } });
   const parent = new Group().add(body);
   parent.position.set(3, 4, 5);
   parent.rotation.y = 0.4;
@@ -71,8 +70,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.8),
     new Vector3(1, 1, 1),
   );
-  body.teleport(pose);
-  body.setVelocity({ linear: new Vector3(2, 0, 0) });
+  setWorldPose(body, pose);
   body.add(new BoxCollider());
   world.scene.add(parent);
   world.update(0);
@@ -88,11 +86,9 @@ it("shares world-pose writeback before and after initialization and freezes rese
 });
 
 for (const axis of ["X", "Y", "Z"] as const)
-  it(`reads authored joint state with scaled anchors and ${axis} axis before backend sync`, async () => {
+  it(`reads joint state with scaled anchors and ${axis} axis as the joint joins on demand`, async () => {
     const world = await setup();
-    const body = new RigidBody().setVelocity({
-      angular: new Vector3(2, 3, 4),
-    });
+    const body = new RigidBody({ velocity: { angular: [2, 3, 4] } });
     body.position.set(2, 3, 4);
     body.scale.setScalar(2);
     body.add(new BoxCollider());
@@ -142,7 +138,7 @@ it("rejects removed, foreign and invalid operations", async () => {
   );
   body.removeFromParent();
   world.update(0);
-  expect(() => body.wake()).toThrow("outside every world's scene");
+  expect(() => body.wake()).toThrow("not under a built world's scene");
   world.update(0);
 });
 
@@ -297,7 +293,7 @@ it("rebuilds a mesh collider only for geometry edits marked with needsUpdate", a
   expect(hits()).toBe(true);
 });
 
-it("keeps the simulated velocity of a body that leaves its world", async () => {
+it("restarts a body that left its world from its initial velocity", async () => {
   const world = await setup();
   const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
   const staying = new RigidBody({ mass: 1 }).add(new BoxCollider());
@@ -312,13 +308,19 @@ it("keeps the simulated velocity of a body that leaves its world", async () => {
   leaving.removeFromParent();
   world.update(0);
   expect(leaving.world).toBeUndefined();
-  expect(leaving.getVelocity().linear).toEqual(simulated);
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+  world.scene.add(leaving);
+  expect(leaving.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
 
   world.reset();
   expect(staying.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
-  staying.applyImpulse(new Vector3(0, 0, 4));
   world.dispose();
-  expect(staying.getVelocity().linear.z).toBeCloseTo(4);
+  expect(staying.world).toBeUndefined();
+  expect(() => staying.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
 });
 
 for (const order of ["before", "after"] as const)

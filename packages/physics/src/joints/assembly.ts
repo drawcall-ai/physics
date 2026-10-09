@@ -1,7 +1,7 @@
 import type { Matrix4, Object3D } from "three";
 import type { RigidBody } from "../body.js";
 import { setWorldPose, splitTransform } from "../transforms.js";
-import { Joint } from "./joint.js";
+import type { Joint } from "./joint.js";
 import { DistanceJoint } from "./kinds.js";
 import { GenericJoint, jointDofs } from "./generic.js";
 
@@ -65,19 +65,6 @@ export function placeAssembly(
   const restores = [...moved].map(saveTransform);
   for (const [member, memberPose] of poses) setWorldPose(member, memberPose);
   return { moved, restores };
-}
-
-/** The joints in the whole hierarchy that holds `body`. */
-export function hierarchyJoints(body: RigidBody): Joint[] {
-  const joints: Joint[] = [];
-  top(body).traverse((node) => {
-    if (node instanceof Joint) joints.push(node);
-  });
-  return joints;
-}
-
-function top(object: Object3D): Object3D {
-  return object.parent ? top(object.parent) : object;
 }
 
 /** Returns a function that puts the object's local transform back as it is now. */

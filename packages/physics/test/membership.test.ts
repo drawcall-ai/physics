@@ -10,12 +10,9 @@ import {
   type Joint,
   type PhysicsVelocity,
   type PhysicsWorldOptions,
+  type RigidBodyOptions,
 } from "../src/index.js";
-import {
-  authoredJointReading,
-  authoredVelocity,
-  build,
-} from "../src/backend.js";
+import { build, initialVelocity, JointBinding } from "../src/backend.js";
 
 type Member = RigidBody | Joint | Trigger;
 
@@ -26,7 +23,7 @@ class RecordingWorld extends PhysicsWorld {
   rejectTeleport = false;
   /** Steps left before a step throws; negative never throws. */
   failStepIn = -1;
-  /** Each body's simulated velocity, from its authored one as it joins. */
+  /** Each body's simulated velocity, from its initial one as it joins. */
   readonly velocities = new Map<RigidBody, PhysicsVelocity>();
   constructor(options: PhysicsWorldOptions) {
     super(options, () => false);
@@ -38,7 +35,7 @@ class RecordingWorld extends PhysicsWorld {
   protected add(object: Member): void {
     this.events.push(`add ${object.name}`);
     if (object instanceof RigidBody)
-      this.velocities.set(object, authoredVelocity(object));
+      this.velocities.set(object, initialVelocity(object));
   }
   protected remove(object: Member): void {
     this.events.push(`remove ${object.name}`);
@@ -67,7 +64,15 @@ class RecordingWorld extends PhysicsWorld {
     this.events.push(`teleport ${[...bodies].map(({ name }) => name)}`);
   }
   protected jointReading(object: Joint) {
-    return authoredJointReading(object);
+    return new JointBinding(object).read({
+      angular: (body) => this.readVelocity(body).angular,
+      // About the body origin, which serves as its center of mass here.
+      velocityAt: (body, point) => {
+        const { linear, angular } = this.readVelocity(body);
+        const origin = body.getWorldPosition(new Vector3());
+        return linear.add(angular.cross(point.clone().sub(origin)));
+      },
+    });
   }
   protected cast = () => null;
   protected writeTarget(): void {}
@@ -82,14 +87,16 @@ class RecordingWorld extends PhysicsWorld {
   }
   protected restore(): void {
     this.events.push("restore");
+    for (const body of this.velocities.keys())
+      this.velocities.set(body, initialVelocity(body));
   }
   protected free(): void {
     this.freed++;
   }
 }
 
-function body(name: string): RigidBody {
-  const result = new RigidBody({ colliders: false });
+function body(name: string, options: RigidBodyOptions = {}): RigidBody {
+  const result = new RigidBody({ ...options, colliders: false });
   result.name = name;
   return result;
 }
@@ -160,16 +167,27 @@ it("rejects a joint under the scene whose body is outside it", async () => {
   expect(base.world).toBeUndefined();
 });
 
-it("keeps authored state outside every scene and rejects simulation commands there", async () => {
+it("rejects simulation commands outside every built world's scene", async () => {
   const scene = new Scene();
   const outside = body("outside");
+  const joint = hinge("hinge", null, outside);
+  const trigger = new Trigger();
+  new Group().add(outside, joint, trigger);
   const world = await create(scene);
 
-  outside.setVelocity({ linear: new Vector3(1, 0, 0) });
-  expect(outside.getVelocity().linear.x).toBe(1);
-  expect(() => outside.applyImpulse(new Vector3(0, 1, 0))).toThrow(
-    "outside every world's scene; add it under the scene of a built world",
-  );
+  const commands = [
+    () => outside.getVelocity(),
+    () => outside.setVelocity({ linear: new Vector3(1, 0, 0) }),
+    () => outside.teleport(new Matrix4()),
+    () => outside.applyImpulse(new Vector3(0, 1, 0)),
+    () => outside.wake(),
+    () => joint.getState(),
+    () => trigger.getOverlappingBodies(),
+  ];
+  for (const command of commands)
+    expect(command).toThrow(
+      "is not under a built world's scene; add it under one",
+    );
   expect(world.events).toEqual([]);
 
   scene.add(outside);
@@ -185,7 +203,6 @@ it("keeps authored state outside every scene and rejects simulation commands the
     "Physics object stray is outside the world's scene",
   );
 });
-
 it("simulates an object in one world at a time", async () => {
   const left = new Scene();
   const right = new Scene();
@@ -232,47 +249,66 @@ it("delivers removal events to prepared members and frees a world its listener d
   expect(world.freed).toBe(1);
 });
 
-it("authors poses and velocities before building and rejects simulation commands", async () => {
-  const body = new RigidBody();
-  body.setVelocity({ linear: new Vector3(2, 0, 0) });
-  body.teleport(new Matrix4().makeTranslation(1, 2, 3));
-  expect(body.position.toArray()).toEqual([1, 2, 3]);
-  expect(body.getVelocity().linear.x).toBe(2);
-  const joint = new RevoluteJoint({ body0: null, body1: body });
-  expect(joint.getState().position).toBeCloseTo(0);
-  expect(() => body.applyImpulse(new Vector3(3, 0, 0))).toThrow(
-    "outside every world's scene",
+it("starts a body from its velocity option as it joins and on reset", async () => {
+  const scene = new Scene();
+  const ball = body("ball", { velocity: { linear: [2, 0, 0] } });
+  expect(() => ball.getVelocity()).toThrow("not under a built world's scene");
+  scene.add(ball);
+  const world = await create(scene);
+  expect(ball.getVelocity().linear.x).toBe(2);
+  ball.setVelocity({ linear: new Vector3(5, 0, 0) });
+  world.reset();
+  expect(ball.getVelocity().linear.x).toBe(2);
+
+  expect(() => new RigidBody({ velocity: { angular: [0, NaN, 0] } })).toThrow(
+    "finite",
   );
-  expect(() => body.setKinematicTarget(new Matrix4())).toThrow("kinematic");
-  const hand = new RigidBody({ bodyType: "kinematic" });
-  hand.setKinematicTarget(new Matrix4().makeTranslation(4, 5, 6));
-  expect(hand.position.toArray()).toEqual([4, 5, 6]);
-  expect(() =>
-    new RigidBody({ bodyType: "static" }).setVelocity({
-      linear: new Vector3(),
-    }),
+  expect(
+    () =>
+      new RigidBody({ bodyType: "static", velocity: { linear: [1, 0, 0] } }),
   ).toThrow("dynamic body");
-  expect(() => body.teleport(new Matrix4().makeScale(2, 2, 2))).toThrow(
-    "unit scale",
-  );
+  expect(
+    () =>
+      new RigidBody({ bodyType: "kinematic", velocity: { linear: [0, 0, 0] } }),
+  ).toThrow("dynamic body");
 });
-
-it("teleports an authored assembly before a world exists", async () => {
-  const root = new RigidBody();
-  const child = new RigidBody();
-  child.position.x = 2;
-  const joint = new RevoluteJoint({ body0: root, body1: child });
-  joint.position.x = 1;
-  new Group().add(root, child, joint);
-  root.teleport(new Matrix4().makeTranslation(0, 5, 0));
-  expect(child.position.toArray()).toEqual([2, 5, 0]);
-  expect(joint.getState().position).toBeCloseTo(0);
+it("keeps a normalized, frozen copy of the velocity option", () => {
+  const linear: [number, number, number] = [1, 2, 3];
+  const ball = new RigidBody({ velocity: { linear } });
+  linear[0] = 9;
+  expect(ball.options.velocity).toEqual({
+    linear: [1, 2, 3],
+    angular: [0, 0, 0],
+  });
+  expect(Object.isFrozen(ball.options.velocity?.linear)).toBe(true);
+  expect(initialVelocity(ball).linear.x).toBe(1);
+  expect(initialVelocity(ball.clone()).linear.x).toBe(1);
+  expect(new RigidBody({ bodyType: "static" }).clone().bodyType).toBe("static");
+  // Untyped callers.
+  expect(() =>
+    Reflect.construct(RigidBody, [{ velocity: { spin: [1, 0, 0] } }]),
+  ).toThrow("Unknown rigid body velocity option: spin");
+  expect(() =>
+    Reflect.construct(RigidBody, [{ velocity: { linear: [1, 2] } }]),
+  ).toThrow("three components");
 });
-
-it("undoes a failed join so objects join afresh with their authored state", async () => {
+it("forgets the world of a body its scene no longer holds", async () => {
+  const scene = new Scene();
+  const ball = body("ball");
+  scene.add(ball);
+  const world = await create(scene);
+  expect(ball.world).toBe(world);
+  scene.remove(ball);
+  expect(ball.world).toBeUndefined();
+  expect(() => {
+    if (ball.world) ball.getVelocity();
+  }).not.toThrow();
+  expect(() => ball.getVelocity()).toThrow("not under a built world's scene");
+});
+it("undoes a failed join so objects join afresh from their options", async () => {
   const scene = new Scene();
   const world = await create(scene);
-  const ball = body("ball").setVelocity({ linear: new Vector3(2, 0, 0) });
+  const ball = body("ball", { velocity: { linear: [2, 0, 0] } });
   scene.add(ball);
   world.failPrepare = true;
   expect(() => world.update(0)).toThrow("prepare failed");
@@ -289,7 +325,6 @@ it("undoes a failed join so objects join afresh with their authored state", asyn
   expect(ball.getVelocity().linear.x).toBe(2);
   expect(ball.world).toBe(world);
 });
-
 it("lets before-step callbacks command objects added after the previous step", async () => {
   const scene = new Scene();
   const world = await create(scene);
@@ -380,28 +415,6 @@ it("puts the scene back when the backend rejects a teleport", async () => {
     "teleport rejected",
   );
   expect(a.position.toArray()).toEqual([0, 0, 0]);
-});
-
-it("finishes leaving and disposal when a simulated velocity is not finite", async () => {
-  const scene = new Scene();
-  const a = body("a");
-  const b = body("b");
-  scene.add(a, b);
-  const world = await create(scene);
-  for (const object of [a, b])
-    world.velocities.get(object)?.linear.set(NaN, 0, 0);
-
-  a.removeFromParent();
-  world.update(0);
-  expect(world.events.at(-1)).toBe("remove a");
-  expect(a.world).toBeUndefined();
-  expect(a.getVelocity().linear.x).toBeNaN();
-
-  world.dispose();
-  expect(world.disposed).toBe(true);
-  expect(world.freed).toBe(1);
-  expect(b.world).toBeUndefined();
-  expect(b.getVelocity().linear.x).toBeNaN();
 });
 
 it("delivers the events listeners queue while another listener throws", async () => {
@@ -520,37 +533,35 @@ it("marks physics objects and keeps their world read-only", () => {
     ).toBeUndefined();
 });
 
-it("acts on a body removed from the scene as authored once its old world lets it go", async () => {
+it("rejects commands on a removed body and restarts it from its options as it rejoins", async () => {
   const scene = new Scene();
-  const ball = body("ball");
-  const hand = new RigidBody({ bodyType: "kinematic", colliders: false });
-  hand.name = "hand";
-  scene.add(ball, hand);
+  const ball = body("ball", { velocity: { linear: [1, 0, 0] } });
+  scene.add(ball);
   const world = await create(scene);
-  world.velocities.get(ball)?.linear.set(3, 0, 0);
+  ball.setVelocity({ linear: new Vector3(3, 0, 0) });
   world.events.length = 0;
 
   ball.removeFromParent();
-  hand.removeFromParent();
-  ball.teleport(new Matrix4().makeTranslation(0, 5, 0));
-  hand.setKinematicTarget(new Matrix4().makeTranslation(0, 7, 0));
-  expect(world.events).toEqual(["remove ball", "remove hand"]);
-  expect([ball.world, hand.world]).toEqual([undefined, undefined]);
-  expect([ball.position.y, hand.position.y]).toEqual([5, 7]);
-  expect(ball.getVelocity().linear.x).toBe(3);
-});
+  expect(() => ball.teleport(new Matrix4())).toThrow(
+    "ball is not under a built world's scene",
+  );
+  world.update(0);
+  expect(world.events).toEqual(["remove ball"]);
+  expect(ball.world).toBeUndefined();
 
+  scene.add(ball);
+  expect(ball.getVelocity().linear.x).toBe(1);
+});
 it("clones a body waiting under the scene without joining it", async () => {
   const scene = new Scene();
   const world = await create(scene);
-  const ball = body("ball").setVelocity({ linear: new Vector3(2, 0, 0) });
+  const ball = body("ball", { velocity: { linear: [2, 0, 0] } });
   scene.add(ball);
   const copy = ball.clone();
-  expect(copy.getVelocity().linear.x).toBe(2);
+  expect(copy.options).toBe(ball.options);
   expect(ball.world).toBeUndefined();
   expect(world.events).toEqual([]);
 });
-
 it("raycasts excluding bodies outside the world", async () => {
   const world = await create(new Scene());
   expect(
@@ -647,18 +658,16 @@ it("delivers the events leavers queued when joining fails", async () => {
   expect(exits).toEqual([ball]);
 });
 
-it("leaves objects authored while a world is still building", async () => {
+it("rejects commands until the world is built and then joins on demand", async () => {
   const scene = new Scene();
   const ball = body("ball");
   scene.add(ball);
   const building = create(scene);
-  ball.setVelocity({ linear: new Vector3(1, 0, 0) });
+  expect(() => ball.getVelocity()).toThrow("not under a built world's scene");
   expect(ball.world).toBeUndefined();
   const world = await building;
   expect(ball.world).toBe(world);
-  expect(ball.getVelocity().linear.x).toBe(1);
 });
-
 it("drops the unspent time of a failed update", async () => {
   const scene = new Scene();
   const world = await create(scene);
@@ -668,17 +677,4 @@ it("drops the unspent time of a failed update", async () => {
   world.failPrepare = false;
   world.update(0);
   expect(world.time).toBe(0);
-});
-
-it("clones a body removed since the last sync with its simulated velocity", async () => {
-  const scene = new Scene();
-  const world = await create(scene);
-  const ball = body("ball");
-  scene.add(ball);
-  world.update(0);
-  ball.setVelocity({ linear: new Vector3(3, 0, 0) });
-  ball.removeFromParent();
-  const copy = ball.clone();
-  expect(ball.world).toBeUndefined();
-  expect(copy.getVelocity().linear.x).toBe(3);
 });

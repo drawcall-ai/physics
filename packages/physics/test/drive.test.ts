@@ -127,7 +127,6 @@ it("locks generic joint axes by default and drives each axis separately", () => 
   expect(() => joint.setDrive("rotX", lift)).toThrow("already attached");
   expect(joint.drives.size).toBe(1);
   expect(clone(joint).getDrive("transY")?.target).toEqual(lift.target);
-  expect(joint.getState("transY")).toEqual({ position: 0, velocity: 0 });
   joint.setDrive("transY", undefined);
   expect(lift.joint).toBeUndefined();
   expect(

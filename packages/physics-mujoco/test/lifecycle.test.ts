@@ -140,8 +140,7 @@ test("a failed rebuild keeps live state and retries after correction", async () 
 
 test("failed initial compilation does not capture reset poses or scale", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ mass: 1 });
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
+  const body = new RigidBody({ mass: 1, velocity: { linear: [1, 0, 0] } });
   scene.add(body);
   body.add(new BoxCollider());
   body.position.x = 1;
@@ -163,7 +162,7 @@ function unjoinable(): RigidBody {
   return body;
 }
 
-test("keeps the simulated velocity of a body that leaves its world", async () => {
+test("restarts a body that left its world from its initial velocity", async () => {
   const world = await createWorld();
   const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
   scene.add(leaving);
@@ -174,7 +173,11 @@ test("keeps the simulated velocity of a body that leaves its world", async () =>
   leaving.removeFromParent();
   world.update(0);
   expect(leaving.world).toBeUndefined();
-  expect(leaving.getVelocity().linear).toEqual(simulated);
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
+  scene.add(leaving);
+  expect(leaving.getVelocity().linear.toArray()).toEqual([0, 0, 0]);
 });
 
 test("a body leaves in the same refresh as a failed join", async () => {
@@ -188,16 +191,21 @@ test("a body leaves in the same refresh as a failed join", async () => {
   scene.add(bad);
   expect(() => world.update(world.fixedDelta)).toThrow("equal static");
   expect(leaving.world).toBeUndefined();
-  expect(leaving.getVelocity().linear.x).toBeCloseTo(2);
+  expect(() => leaving.getVelocity()).toThrow(
+    "not under a built world's scene",
+  );
   bad.removeFromParent();
   world.update(world.fixedDelta);
   const ray = world.raycast(new Vector3(0, 5, 0), new Vector3(0, -1, 0), 10);
   expect(ray).toBeNull();
 });
 
-test("a body that left during a failed refresh rejoins with its authored state", async () => {
+test("a body that left during a failed refresh rejoins from its options and scene pose", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const body = new RigidBody({
+    mass: 1,
+    velocity: { linear: [0, 0, 5] },
+  }).add(new BoxCollider());
   scene.add(body);
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   world.update(world.fixedDelta);
@@ -205,7 +213,6 @@ test("a body that left during a failed refresh rejoins with its authored state",
   const bad = unjoinable();
   scene.add(bad);
   expect(() => world.update(world.fixedDelta)).toThrow("equal static");
-  body.setVelocity({ linear: new Vector3(0, 0, 5) });
   body.position.set(10, 0, 0);
   scene.add(body);
   bad.removeFromParent();
@@ -231,19 +238,4 @@ test("a teleport never moves a body that left during a failed refresh", async ()
   staying.teleport(new Matrix4().makeTranslation(3, -5, 0));
   expect(rejoined.position.y).toBe(10);
   expect(staying.position.y).toBe(-5);
-});
-
-test("joins with the velocity authored after a failed join", async () => {
-  const world = await createWorld();
-  const body = unjoinable();
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
-  scene.add(body);
-  expect(() => world.update(0)).toThrow("equal static");
-  body.removeFromParent();
-  body.setVelocity({ linear: new Vector3(3, 0, 0) });
-  body.setMaterial({ staticFriction: 0.4, dynamicFriction: 0.4 });
-  scene.add(body);
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeCloseTo(3);
-  expect(body.position.x).toBeCloseTo(0.03);
 });

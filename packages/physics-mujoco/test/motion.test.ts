@@ -213,7 +213,7 @@ test("colliderless kinematic targets remain valid moving anchors", async () => {
 });
 
 test.each([false, true])(
-  "reads rotating anchor velocity about the %s explicit center before and after joining",
+  "reads rotating anchor velocity about the %s explicit center as the joint joins",
   async (explicit) => {
     const value = await createWorld();
     const body = new RigidBody(
@@ -222,13 +222,13 @@ test.each([false, true])(
             mass: 1,
             centerOfMass: [1, 0, 0],
             diagonalInertia: [1, 1, 1],
+            velocity: { angular: [0, 0, 2] },
           }
-        : { mass: 1 },
+        : { mass: 1, velocity: { angular: [0, 0, 2] } },
     );
     const collider = new BoxCollider();
     collider.position.x = 1;
     body.add(collider);
-    body.setVelocity({ angular: new Vector3(0, 0, 2) });
     const joint = new PrismaticJoint({
       body0: null,
       body1: body,
@@ -236,10 +236,8 @@ test.each([false, true])(
       frame0: new Matrix4(),
       frame1: new Matrix4(),
     }).setEnabled(false);
-    // Outside a world, readings come from authored state, which needs explicit mass properties.
-    if (explicit) expect(joint.getState().velocity).toBeCloseTo(-2);
-    else expect(() => joint.getState()).toThrow("explicit mass properties");
     scene.add(body, joint);
+    expect(joint.getState().velocity).toBeCloseTo(-2);
     value.update(0);
     expect(joint.getState().velocity).toBeCloseTo(-2);
   },

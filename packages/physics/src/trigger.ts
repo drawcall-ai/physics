@@ -22,7 +22,7 @@ export class Trigger extends Group<TriggerEventMap> {
   version = 0;
   private currentGroups?: CollisionGroups;
 
-  /** The world simulating this trigger; set as the trigger joins and leaves a world. */
+  /** The world simulating this trigger, while that world's scene holds it. */
   get world(): PhysicsWorld | undefined {
     return joinedWorld(this);
   }

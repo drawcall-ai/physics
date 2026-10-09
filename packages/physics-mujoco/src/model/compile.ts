@@ -9,7 +9,6 @@ import {
 import {
   cleanup,
   rollback,
-  still,
   type JointBinding,
 } from "@drawcall/physics/backend";
 import { Quaternion } from "three";
@@ -88,7 +87,7 @@ export function compile(
         const frame = new Quaternion().setFromRotationMatrix(binding.frames[1]);
         const value = frame
           .clone()
-          .multiply(binding.read(still).rotation)
+          .multiply(binding.pose().rotation)
           .multiply(frame.invert());
         const index = id(api.mjtObj.mjOBJ_JOINT.value, name(joint));
         array(data.qpos).set(rotation(value), at(model.jnt_qposadr, index));

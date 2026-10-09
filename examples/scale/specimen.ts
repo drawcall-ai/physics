@@ -34,9 +34,10 @@ export function specimen(spec: Case, spin = false) {
       bodyType,
       colliders,
       ...(bodyType === "static" ? {} : { mass: 2 }),
+      ...(spin && bodyType === "dynamic"
+        ? { velocity: { angular: [1.4, 0.7, 1.1] } }
+        : {}),
     });
-    if (spin && bodyType === "dynamic")
-      body.setVelocity({ angular: new THREE.Vector3(1.4, 0.7, 1.1) });
     body.add(visual);
     return body;
   }

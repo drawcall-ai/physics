@@ -42,8 +42,13 @@ it("reads joint velocity about the inferred COM under a transformed assembly", a
   parent.position.set(10, 20, 30);
   parent.rotation.set(0.2, 0.3, 0.4);
   parent.scale.setScalar(2);
-  const body = new RigidBody({ mass: 1 }).setVelocity({
-    angular: new Vector3(0, 0, 3).applyQuaternion(parent.quaternion),
+  const body = new RigidBody({
+    mass: 1,
+    velocity: {
+      angular: new Vector3(0, 0, 3)
+        .applyQuaternion(parent.quaternion)
+        .toArray(),
+    },
   });
   const collider = new BoxCollider();
   collider.position.x = 2;
@@ -87,10 +92,12 @@ it("keeps explicit COM and inertia authoritative across geometry changes", async
   }
 });
 
-it("joins afresh with its authored velocity after a failed join", async () => {
+it("joins afresh with its initial velocity after a failed join", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ colliders: false });
-  body.setVelocity({ linear: new Vector3(3, 0, 0) });
+  const body = new RigidBody({
+    colliders: false,
+    velocity: { linear: [3, 0, 0] },
+  });
   world.scene.add(body);
   expect(() => world.update(0)).toThrow(/mass|inertia/);
   expect(() => body.getVelocity()).toThrow(/mass|inertia/);

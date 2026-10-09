@@ -19,9 +19,7 @@ import {
 it("queries authored and simulated surfaces, exits, source identity and multiple exclusions after motion/teleport", async () => {
   const world = await createWorld();
   const bodies = [0, 3, 6].map((x) => {
-    const body = new RigidBody({ mass: 1 }).setVelocity({
-      linear: new Vector3(1, 0, 0),
-    });
+    const body = new RigidBody({ mass: 1, velocity: { linear: [1, 0, 0] } });
     body.position.x = x;
     body.add(new Mesh(new BoxGeometry(2, 2, 2)));
     world.scene.add(body);

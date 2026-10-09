@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { Group, Vector3 } from "three";
+import { Group } from "three";
 import { JointDrive, RigidBody, RevoluteJoint, clone } from "../src/index.js";
 
 it("clones assemblies and remaps joint references", () => {
@@ -39,15 +39,12 @@ it("clones assemblies and remaps joint references", () => {
   expect(() => hinge.clone()).toThrow("clone(root)");
 });
 
-it("copies velocity tuples and throws when Three.js copy fails", () => {
-  const source = new RigidBody().setVelocity({
-    linear: new Vector3(1, 2, 3),
-    angular: new Vector3(4, 5, 6),
+it("shares the velocity option with clones and throws when Three.js copy fails", () => {
+  const source = new RigidBody({
+    velocity: { linear: [1, 2, 3], angular: [4, 5, 6] },
   });
   const copy = clone(source);
-  expect(copy.getVelocity()).toEqual(source.getVelocity());
-  copy.setVelocity({ linear: new Vector3(9, 9, 9) });
-  expect(source.getVelocity().linear.toArray()).toEqual([1, 2, 3]);
+  expect(copy.options.velocity).toBe(source.options.velocity);
   source.userData.self = source.userData;
   expect(() => clone(source)).toThrow();
 });

@@ -31,9 +31,10 @@ export function setJoined(object: Member, world: PhysicsWorld | undefined) {
   else joined.delete(object);
 }
 
-/** The world `object` has joined. */
+/** The world `object` has joined, while that world's scene still holds it. */
 export function joinedWorld(object: Member): PhysicsWorld | undefined {
-  return joined.get(object);
+  const world = joined.get(object);
+  return world && holds(world.scene, object) ? world : undefined;
 }
 
 /**
@@ -91,30 +92,27 @@ export function scan(
 }
 
 /**
- * The world whose scene holds `object`. May sync the world the object joined whose scene no
- * longer holds it, so commands outside every scene act on the object as authored.
+ * The world simulation commands on `object` go to: the world it joined, or else the built
+ * world whose scene holds it, which the object then joins.
  */
-export function sceneWorld(object: Member): PhysicsWorld | undefined {
-  for (let node: Object3D | null = object; node; node = node.parent) {
-    const world = scenes.get(node);
-    if (world) return world;
-  }
-  const owner = joined.get(object);
-  if (owner) refresh(owner);
-  return undefined;
-}
-
-/** The world simulation commands on `object` go to, which they need; may sync, as `sceneWorld`. */
 export function commandWorld(object: Member): PhysicsWorld {
-  const world = sceneWorld(object);
+  const world = joinedWorld(object) ?? ancestorWorld(object);
   if (!world)
     throw new Error(
-      `Physics object ${object.name || object.type} is outside every world's scene; add it under the scene of a built world`,
+      `Physics object ${object.name || object.type} is not under a built world's scene; add it under one`,
     );
   return world;
 }
 
-export function holds(scene: Object3D, object: Object3D): boolean {
+function ancestorWorld(object: Object3D): PhysicsWorld | undefined {
+  for (let node: Object3D | null = object; node; node = node.parent) {
+    const world = scenes.get(node);
+    if (world) return world;
+  }
+  return undefined;
+}
+
+function holds(scene: Object3D, object: Object3D): boolean {
   for (let node: Object3D | null = object; node; node = node.parent)
     if (node === scene) return true;
   return false;

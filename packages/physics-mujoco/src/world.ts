@@ -10,13 +10,11 @@ import {
   type RaycastOptions,
 } from "@drawcall/physics";
 import {
-  authoredVelocity,
   rollback,
   setWorldPose,
   treeJoint,
   JointBinding,
   type Decomposes,
-  type Initial,
 } from "@drawcall/physics/backend";
 import type { BufferGeometry, Matrix4, Object3D, Vector3 } from "three";
 import { heightfield } from "./model/heightfield.js";
@@ -59,8 +57,8 @@ const decomposes: Decomposes = (body: RigidBody, geometry: BufferGeometry) =>
  */
 export class MujocoWorld extends PhysicsWorld {
   private readonly options: ModelOptions;
-  /** Each body's pose and velocity when a model first held it, which reset returns it to. */
-  private readonly bodies = new Map<RigidBody, Initial>();
+  /** Each body's pose when a model first held it, which reset returns it to. */
+  private readonly bodies = new Map<RigidBody, Matrix4>();
   private readonly joints = new Map<Joint, JointBinding>();
   private readonly triggers = new Set<Trigger>();
   /** Bodies and joints no model has held yet; a successful rebuild binds them. */
@@ -142,9 +140,9 @@ export class MujocoWorld extends PhysicsWorld {
   protected restore(): void {
     this.forces.length = 0;
     this.targets.clear();
-    for (const [body, { pose }] of this.bodies) setWorldPose(body, pose);
+    for (const [body, pose] of this.bodies) setWorldPose(body, pose);
     for (const binding of this.joints.values()) binding.rebase();
-    // A rebuild without the previous model starts every body from its authored motion.
+    // A rebuild without the previous model starts every body from its initial velocity.
     this.rebuild(undefined, this.fingerprints());
   }
   protected free(): void {
@@ -242,11 +240,7 @@ export class MujocoWorld extends PhysicsWorld {
     const joints = new Map(this.joints);
     for (const object of this.joining)
       if (object instanceof Joint) joints.set(object, new JointBinding(object));
-      else
-        bodies.set(object, {
-          pose: splitTransform(object.matrixWorld).pose,
-          velocity: authoredVelocity(object),
-        });
+      else bodies.set(object, splitTransform(object.matrixWorld).pose);
     const triggers = [...this.triggers];
     const scales = lockScales([...bodies.keys(), ...triggers], this.scales);
     const next = compile(
@@ -257,14 +251,14 @@ export class MujocoWorld extends PhysicsWorld {
       this.options,
     );
     try {
-      carryState(this.api, previous, next, joints.keys(), bodies);
+      carryState(this.api, previous, next, joints);
       this.api.mj_forward(next.model, next.data);
     } catch (error) {
       rollback(error, [() => next.free()], "MuJoCo model replacement failed");
     }
     this.simulation.free();
     this.simulation = next;
-    for (const [body, initial] of bodies) this.bodies.set(body, initial);
+    for (const [body, pose] of bodies) this.bodies.set(body, pose);
     for (const [joint, binding] of joints) this.joints.set(joint, binding);
     this.joining.clear();
     this.compiled = fingerprints;

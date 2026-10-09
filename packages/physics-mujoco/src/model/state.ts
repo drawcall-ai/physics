@@ -7,9 +7,9 @@ import {
   type RigidBody,
 } from "@drawcall/physics";
 import {
-  authoredJointReading,
   dofState,
-  type Initial,
+  initialVelocity,
+  type JointBinding,
   type Motion,
 } from "@drawcall/physics/backend";
 import { Quaternion } from "three";
@@ -27,13 +27,12 @@ export function carryState(
   api: MainModule,
   previous: Simulation | undefined,
   next: Simulation,
-  joints: Iterable<Joint>,
-  initial: ReadonlyMap<RigidBody, Initial>,
+  bindings: ReadonlyMap<Joint, JointBinding>,
 ): void {
   const carried = previous
     ? copyShared(api, previous, next)
     : new Set<number>();
-  const motion = carriedMotion(api, previous, next, initial);
+  const motion = carriedMotion(api, previous, next);
   const qvel = array(next.data.qvel);
   for (const [body, id] of next.bodies) {
     const joint = at(next.model.body_jntadr, id);
@@ -42,18 +41,17 @@ export function carryState(
       !carried.has(joint) &&
       at(next.model.jnt_type, joint) === api.mjtJoint.mjJNT_FREE.value
     )
-      writeVelocity(api, next, id, motion.velocity(body));
+      writeVelocity(api, next, id, carriedVelocity(api, previous, body));
   }
   for (const [j, coordinate] of next.coordinates) {
     if (carried.has(j)) continue;
     const axis =
       coordinate.kind === "axis" ? coordinate.joint.dof : coordinate.axis;
-    qvel[coordinate.dof] = dofState(
-      authoredJointReading(coordinate.joint, undefined, motion),
-      axis,
-    ).velocity;
+    const binding = bindings.get(coordinate.joint);
+    if (!binding) throw new Error("Missing MuJoCo joint binding");
+    qvel[coordinate.dof] = dofState(binding.read(motion), axis).velocity;
   }
-  for (const joint of joints) {
+  for (const joint of bindings.keys()) {
     if (!(joint instanceof SphericalJoint) || !joint.enabled) continue;
     const j = api.mj_name2id(
       next.model,
@@ -63,8 +61,8 @@ export function carryState(
     if (j < 0) throw new Error(`Missing MuJoCo ball joint: ${name(joint)}`);
     if (carried.has(j)) continue;
     const { body0, body1 } = joint.options;
-    const angular = motion.velocity(body1).angular;
-    if (body0) angular.sub(motion.velocity(body0).angular);
+    const angular = motion.angular(body1);
+    if (body0) angular.sub(motion.angular(body0));
     angular.applyQuaternion(
       new Quaternion()
         .setFromRotationMatrix(splitTransform(body1.matrixWorld).pose)
@@ -129,28 +127,28 @@ function carriedMotion(
   api: MainModule,
   previous: Simulation | undefined,
   next: Simulation,
-  initial: ReadonlyMap<RigidBody, Initial>,
 ): Motion {
-  const start = (body: RigidBody): PhysicsVelocity => {
-    const velocity = initial.get(body)?.velocity;
-    if (!velocity) throw new Error("Missing MuJoCo initial velocity");
-    return velocity;
-  };
   return {
-    velocity: (body) => {
-      const id = previous?.bodies.get(body);
-      if (previous && id !== undefined) return velocity(api, previous, id);
-      const { linear, angular } = start(body);
-      return { linear: linear.clone(), angular: angular.clone() };
-    },
+    angular: (body) => carriedVelocity(api, previous, body).angular,
     velocityAt: (body, point) => {
       const id = previous?.bodies.get(body);
       if (previous && id !== undefined)
         return pointVelocity(api, previous, id, point);
-      const { linear, angular } = start(body);
+      const { linear, angular } = initialVelocity(body);
       const center = vector(next.model.body_ipos, bodyId(next, body) * 3);
       center.applyMatrix4(splitTransform(body.matrixWorld).pose);
-      return angular.clone().cross(point.clone().sub(center)).add(linear);
+      return angular.cross(point.clone().sub(center)).add(linear);
     },
   };
+}
+
+/** The simulated velocity of a body the previous model held; the initial one of the rest. */
+function carriedVelocity(
+  api: MainModule,
+  previous: Simulation | undefined,
+  body: RigidBody,
+): PhysicsVelocity {
+  const id = previous?.bodies.get(body);
+  if (previous && id !== undefined) return velocity(api, previous, id);
+  return initialVelocity(body);
 }

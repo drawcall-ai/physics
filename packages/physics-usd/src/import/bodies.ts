@@ -4,7 +4,12 @@ import {
   RigidBody,
   splitTransform,
 } from "@drawcall/physics";
-import type { MassProperties, RigidBodyType, Vec3 } from "@drawcall/physics";
+import type {
+  MassProperties,
+  RigidBodyOptions,
+  RigidBodyType,
+  Vec3,
+} from "@drawcall/physics";
 import {
   attribute,
   boolean,
@@ -43,12 +48,11 @@ export function bodyType(
 /** Replaces the visual transform with a body carrying its pose, children, or mesh. */
 export function wrapBody(
   object: Object3D,
-  type: RigidBodyType,
-  mass: MassProperties = {},
+  options: RigidBodyOptions,
 ): RigidBody {
   const parent = object.parent;
   if (!parent) throw new Error("Cannot reconstruct an orphan rigid body");
-  const body = new RigidBody({ ...mass, bodyType: type, colliders: false });
+  const body = new RigidBody({ ...options, colliders: false });
   body.name = object.name;
   body.position.copy(object.position);
   body.quaternion.copy(object.quaternion);

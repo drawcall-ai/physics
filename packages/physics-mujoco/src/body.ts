@@ -59,7 +59,7 @@ export function pointVelocity(
 /** Motion as the simulation measures it. */
 export function motionOf(api: MainModule, sim: Simulation): Motion {
   return {
-    velocity: (body) => velocity(api, sim, bodyId(sim, body)),
+    angular: (body) => velocity(api, sim, bodyId(sim, body)).angular,
     velocityAt: (body, point) =>
       pointVelocity(api, sim, bodyId(sim, body), point),
   };

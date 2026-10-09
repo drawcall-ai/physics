@@ -90,7 +90,7 @@ it("keeps objects moved within the scene simulated and exits occupants that leav
   world.scene.remove(goal);
   world.update(world.fixedDelta);
   expect(() => goal.getOverlappingBodies()).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
 });
 
@@ -350,7 +350,7 @@ it("does not dispatch teardown exits while disposing the world", async () => {
   world.dispose();
   expect(exit).not.toHaveBeenCalled();
   expect(() => goal.getOverlappingBodies()).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
 });
 
@@ -372,9 +372,9 @@ it("finishes body removal even when its exit listener throws", async () => {
   expect(() => world.update(world.fixedDelta)).toThrow("exit failed");
   expect(goal.getOverlappingBodies()).toEqual([]);
   expect(() => attached.getOverlappingBodies()).toThrow(
-    "outside every world's scene",
+    "not under a built world's scene",
   );
-  expect(() => body.wake()).toThrow("outside every world's scene");
+  expect(() => body.wake()).toThrow("not under a built world's scene");
   goal.removeEventListener("exit", fail);
   world.update(world.fixedDelta);
   expect(goal.getOverlappingBodies()).toEqual([]);

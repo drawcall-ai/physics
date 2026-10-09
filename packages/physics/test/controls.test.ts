@@ -1,17 +1,17 @@
 import { expect, expectTypeOf, it } from "vitest";
-import { Group, Matrix4, Vector3 } from "three";
+import { Group, Matrix4 } from "three";
 import {
   DistanceJoint,
   MeshCollider,
   PrismaticJoint,
   RevoluteJoint,
   RigidBody,
-  SphericalJoint,
   type RigidBodyOptions,
   type JointOptions,
   type Vec3,
   clone,
 } from "../src/index.js";
+import { initialVelocity, JointBinding, type Motion } from "../src/backend.js";
 
 const mass = {
   mass: 1,
@@ -87,13 +87,10 @@ it.each(invalidMass)(
 );
 
 it("copies settings into a clone and rejects bodies constructed separately", () => {
-  const source = new RigidBody(mass).setVelocity({
-    linear: new Vector3(2, 0, 0),
-  });
+  const source = new RigidBody(mass);
   const target = source.clone();
-  source.setVelocity({ linear: new Vector3(3, 0, 0) }).setLinearDamping(1);
+  source.setLinearDamping(1);
   target.copy(source);
-  expect(target.getVelocity().linear.x).toBe(3);
   expect(target.linearDamping).toBe(1);
   expect(source.getColliders()).toEqual([]);
   expect(() => new RigidBody(mass).copy(source)).toThrow("immutable");
@@ -102,7 +99,7 @@ it("copies settings into a clone and rejects bodies constructed separately", () 
   expect(mesh.clone().geometry).toBe(mesh.geometry);
 });
 
-it("validates runtime controls before storing and checks the authoring world boundary", () => {
+it("validates runtime controls before storing and needs a world to simulate", () => {
   const body = new RigidBody().setLinearDamping(2).setGravityScale(-1);
   expect(() => body.setLinearDamping(-1)).toThrow("nonnegative");
   expect(() => body.setGravityScale(Infinity)).toThrow("finite");
@@ -113,18 +110,23 @@ it("validates runtime controls before storing and checks the authoring world bou
     body1: body,
   }).setCollideConnected(true);
   joint.setEnabled(false).setEnabled(true);
-  expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  expect(() => body.wake()).toThrow("outside every world's scene");
+  expect(() => joint.getState()).toThrow("not under a built world's scene");
+  expect(() => body.wake()).toThrow("not under a built world's scene");
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
-  const body0 = new RigidBody(mass).setVelocity({
-    angular: new Vector3(0, 0, 2),
+  const body0 = new RigidBody({ velocity: { angular: [0, 0, 2] } });
+  const body1 = new RigidBody({
+    velocity: { linear: [3, 0, 0], angular: [0, 0, 4] },
   });
-  const body1 = new RigidBody(mass).setVelocity({
-    linear: new Vector3(3, 0, 0),
-    angular: new Vector3(0, 0, 4),
-  });
+  // Both bodies rotate about their origins, which sit at the world origin.
+  const motion: Motion = {
+    angular: (body) => initialVelocity(body).angular,
+    velocityAt: (body, point) => {
+      const { linear, angular } = initialVelocity(body);
+      return linear.add(angular.cross(point));
+    },
+  };
   const joint = new PrismaticJoint({
     body0,
     body1,
@@ -133,23 +135,8 @@ it("measures prismatic anchor velocity relative to the rotating reference axis",
     frame1: new Matrix4().makeTranslation(0, 3, 0),
   });
   // Anchor velocities are -2 and 3-12 along X; axis rotation contributes 2*2.
-  expect(joint.getState()).toEqual({ position: 0, velocity: -3 });
-});
-
-it("reads unfinished joints without inferring collider mass", () => {
-  const body = new RigidBody().setVelocity({ angular: new Vector3(0, 2, 0) });
-  body.add(new MeshCollider());
-  expect(
-    new RevoluteJoint({ body0: null, body1: body }).getState().velocity,
-  ).toBeCloseTo(2);
-  expect(
-    new SphericalJoint({ body0: null, body1: body }).getState().angularVelocity
-      .y,
-  ).toBeCloseTo(2);
-  const slider = new PrismaticJoint({ body0: null, body1: body });
-  expect(() => slider.getState()).toThrow("requires explicit mass properties");
-  body.setVelocity({ angular: new Vector3(), linear: new Vector3(0, 3, 0) });
-  expect(slider.getState().velocity).toBeCloseTo(3);
+  const { translation, linearVelocity } = new JointBinding(joint).read(motion);
+  expect([translation.x, linearVelocity.x]).toEqual([0, -3]);
 });
 
 it("rejects standalone joint cloning, which would keep the original bodies", () => {
@@ -159,17 +146,12 @@ it("rejects standalone joint cloning, which would keep the original bodies", () 
   expect(() => new Group().add(body, hinge).clone()).toThrow("clone(root)");
 });
 
-it("copies immutable body type and clones independent velocity", () => {
+it("copies immutable body type into clones", () => {
   const options: { bodyType: "dynamic" | "static" } = { bodyType: "dynamic" };
-  const body = new RigidBody(options).setVelocity({
-    linear: new Vector3(3, 0, 0),
-  });
+  const body = new RigidBody(options);
   options.bodyType = "static";
   expect(body.bodyType).toBe("dynamic");
-  const copy = body.clone();
-  expect(copy.bodyType).toBe("dynamic");
-  copy.setVelocity({ linear: new Vector3(5, 0, 0) });
-  expect(body.getVelocity().linear.x).toBe(3);
+  expect(body.clone().bodyType).toBe("dynamic");
   expect(() => new RigidBody({ bodyType: "static" }).copy(body)).toThrow(
     "immutable",
   );

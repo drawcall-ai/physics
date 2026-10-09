@@ -12,9 +12,7 @@ import { createWorld, inertialBody } from "./fixtures.js";
 
 it("keeps an untargeted drive passive, brakes at zero velocity, and removes actuation when detached", async () => {
   const world = await createWorld();
-  const moving = inertialBody().setVelocity({
-    linear: new Vector3(1, 0, 0),
-  });
+  const moving = inertialBody({ velocity: { linear: [1, 0, 0] } });
   world.scene.add(moving);
   const slider = new PrismaticJoint({
     body0: null,
@@ -164,9 +162,7 @@ it("adds the effort term to a velocity drive and caps it by the same maximum for
   world.update(0.01);
   expect(pushed.getState().velocity).toBeCloseTo(0.1, 5);
   expect(capped.getState().velocity).toBeCloseTo(0.02, 5);
-  const combinedBody = inertialBody().setVelocity({
-    linear: new Vector3(1, 0, 0),
-  });
+  const combinedBody = inertialBody({ velocity: { linear: [1, 0, 0] } });
   world.scene.add(combinedBody);
   const combined = new PrismaticJoint({
     body0: null,
@@ -186,9 +182,7 @@ it("adds the effort term to a velocity drive and caps it by the same maximum for
 for (const direction of [-1, 1])
   it(`tracks nearby continuous targets across wraps and holds after several turns (${direction})`, async () => {
     const world = await createWorld();
-    const body = inertialBody().setVelocity({
-      angular: new Vector3(0, 0, direction * 4),
-    });
+    const body = inertialBody({ velocity: { angular: [0, 0, direction * 4] } });
     world.scene.add(body);
     const hinge = new RevoluteJoint({
       body0: null,
@@ -262,16 +256,13 @@ it("drives distance joints as force-limited springs that keep their rope limit",
 
 it("locks, limits, and frees generic joint axes and drives each axis independently", async () => {
   const world = await createWorld();
-  const welded = inertialBody().setVelocity({
-    linear: new Vector3(1, 0, 0),
-    angular: new Vector3(0, 2, 0),
+  const welded = inertialBody({
+    velocity: { linear: [1, 0, 0], angular: [0, 2, 0] },
   });
   welded.position.y = 1;
   world.scene.add(welded);
   world.scene.add(new GenericJoint({ body0: null, body1: welded }));
-  const hinged = inertialBody().setVelocity({
-    angular: new Vector3(0, 0, 4),
-  });
+  const hinged = inertialBody({ velocity: { angular: [0, 0, 4] } });
   world.scene.add(hinged);
   const hinge = new GenericJoint({
     body0: null,
@@ -279,9 +270,7 @@ it("locks, limits, and frees generic joint axes and drives each axis independent
     dofs: { rotZ: [-0.25, 0.25] },
   });
   world.scene.add(hinge);
-  const sliding = inertialBody().setVelocity({
-    linear: new Vector3(0, 0, 1),
-  });
+  const sliding = inertialBody({ velocity: { linear: [0, 0, 1] } });
   world.scene.add(sliding);
   const slider = new GenericJoint({
     body0: null,

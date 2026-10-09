@@ -23,8 +23,9 @@ Three's `USDZExporter` writes visuals, materials, and textures; physics is added
 standard USDA root layer over them. The scene is not mutated, and object names survive
 as USD `displayName`.
 
-Export captures the current transforms. Call `world.reset()` first to export the
-authored pose.
+Export captures the current transforms, and the live velocity of bodies that have
+joined a world and the `velocity` option of the rest. Call `world.reset()` first to
+export the join state.
 
 ## Import
 
@@ -52,7 +53,7 @@ Or add `scene` under an existing world's scene. Use `clone(scene)` from
 ## Mapping
 
 - Static, dynamic, and kinematic bodies; total or complete mass, center of mass, and
-  inertia; linear and angular velocity. Static bodies export without
+  inertia; linear and angular velocity, imported as the `velocity` option. Static bodies export without
   `PhysicsRigidBodyAPI`.
 - Box, sphere, capsule, cylinder, convex hull, and triangle mesh colliders
   (`convexDecomposition` approximation on moving bodies).

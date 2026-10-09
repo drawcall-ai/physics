@@ -1,5 +1,6 @@
 import { MathUtils } from "three";
 import { resolveCollider } from "@drawcall/physics";
+import { initialVelocity } from "@drawcall/physics/backend";
 import type { Collider, PhysicsMaterial, RigidBody } from "@drawcall/physics";
 import type { Hierarchy } from "./hierarchy.js";
 import { Prim, tuple } from "./prim.js";
@@ -49,7 +50,8 @@ export function writeBody(
     );
   prim.schemas.push("PhysicsMassAPI");
   if (body.bodyType !== "static") {
-    const velocity = body.getVelocity();
+    // The live velocity of a simulated body; the velocity option of a body not simulated now.
+    const velocity = body.world?.getVelocity(body) ?? initialVelocity(body);
     prim.schemas.push("PhysicsRigidBodyAPI");
     prim.properties.push(
       "bool physics:rigidBodyEnabled = true",

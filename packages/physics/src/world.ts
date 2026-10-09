@@ -1,12 +1,7 @@
 import type { BufferGeometry, Matrix4, Object3D, Vector3 } from "three";
-import {
-  RigidBody,
-  assertBodyType,
-  keepVelocity,
-  validateVelocity,
-} from "./body.js";
+import { type RigidBody, assertBodyType, validateVelocity } from "./body.js";
 import { Joint } from "./joints/joint.js";
-import { authoredJointReading, type JointReading } from "./joints/reading.js";
+import type { JointReading } from "./joints/reading.js";
 import { placeAssembly } from "./joints/assembly.js";
 import type { Trigger } from "./trigger.js";
 import type { Vec3 } from "./colliders/collider.js";
@@ -22,10 +17,9 @@ import { Interactions } from "./interactions.js";
 import {
   claim,
   claimScene,
-  holds,
+  commandWorld,
   releaseScene,
   scan,
-  sceneWorld,
   setJoined,
   type Member,
 } from "./membership.js";
@@ -48,13 +42,7 @@ export interface PhysicsVelocity {
 /** Selects the triangle meshes a backend collides as convex parts rather than as triangles. */
 export type Decomposes = (body: RigidBody, geometry: BufferGeometry) => boolean;
 
-/** A body's pose and velocity as it joined, which `reset()` returns it to. */
-export interface Initial {
-  readonly pose: Matrix4;
-  readonly velocity: PhysicsVelocity;
-}
-
-/** The live reading of a joint under a world's scene, or else the authored one; for joints. */
+/** The live reading of a joint, from the world that simulates it; for joints. */
 export let readJoint: (joint: Joint) => JointReading;
 /** Syncs a world's members with its scene, as before a query; for membership. */
 export let refresh: (world: PhysicsWorld) => void;
@@ -110,8 +98,7 @@ export abstract class PhysicsWorld {
   static {
     refresh = (world) => world.refresh();
     readJoint = (joint) => {
-      const world = sceneWorld(joint);
-      if (!world) return authoredJointReading(joint);
+      const world = commandWorld(joint);
       world.join(joint);
       return world.jointReading(joint);
     };
@@ -305,7 +292,7 @@ export abstract class PhysicsWorld {
     this.elapsed = 0;
     this.completed = 0;
   }
-  /** Frees the world; members leave it, dynamic bodies keeping their simulated velocity. */
+  /** Frees the world; its members leave it. */
   dispose(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;
@@ -313,15 +300,9 @@ export abstract class PhysicsWorld {
     this.before.clear();
     this.after.clear();
     releaseScene(this);
-    cleanup(
-      [
-        ...[...this.members].map((object) => () => this.release(object)),
-        () => {
-          if (!this.busy) this.free();
-        },
-      ],
-      "Physics world disposal failed",
-    );
+    for (const object of this.members) setJoined(object, undefined);
+    this.members.clear();
+    if (!this.busy) this.free();
   }
   onBeforeStep(callback: (delta: number) => void): () => void {
     this.assertLive();
@@ -382,33 +363,17 @@ export abstract class PhysicsWorld {
     }
     for (const object of joining) setJoined(object, this);
   }
-  /** Removes a member from the world and the backend, even if keeping its velocity fails. */
+  /** Removes a member from the world and the backend. */
   private leave(object: Member): void {
-    cleanup(
-      [
-        () => this.release(object),
-        () => {
-          if (!(object instanceof Joint)) this.interactions.remove(object);
-          this.remove(object);
-        },
-      ],
-      "Physics object removal failed",
-    );
-  }
-  /** Ends membership; a dynamic body keeps its simulated velocity, unchecked, as its authored one. */
-  private release(object: Member): void {
     this.members.delete(object);
-    try {
-      if (object instanceof RigidBody && object.bodyType === "dynamic")
-        keepVelocity(object, this.readVelocity(object));
-    } finally {
-      setJoined(object, undefined);
-    }
+    setJoined(object, undefined);
+    if (!(object instanceof Joint)) this.interactions.remove(object);
+    this.remove(object);
   }
-  /** Joins `object` unless it is a member still under the scene, then throws unless it is one. */
+  /** Joins `object` unless it is a member, then throws unless it is one. */
   private join(object: Member): void {
     this.assertLive();
-    if (object.world !== this || !holds(this.scene, object)) this.refresh();
+    if (object.world !== this) this.refresh();
     this.assertMember(object);
   }
   private assertMember(object: Member): void {
@@ -451,7 +416,7 @@ export async function build<World extends PhysicsWorld>(
 ): Promise<World> {
   try {
     await world.decompose(world.scene);
-    // Claimed once decomposed, so commands during the build still act on authored state.
+    // Claimed once decomposed, so commands join objects only once their meshes are ready.
     claimScene(world);
     world.update(0);
   } catch (error) {
