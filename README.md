@@ -233,14 +233,12 @@ world) to `body1`.
 
 | Joint               | State                                                              |
 | ------------------- | ------------------------------------------------------------------ |
-| Revolute, prismatic | `{ position, velocity }`; joined revolute angles count turns       |
+| Revolute, prismatic | `{ position, velocity }`; revolute angles count turns              |
 | Spherical           | `{ rotation, angularVelocity }` of frame 1 relative to frame 0     |
 | Distance            | `{ distance, velocity }`                                           |
 | Generic             | `getState(axis)`: `{ position, velocity }`, rotations as XYZ Euler |
 
 Revolute angles track turns per step, so a joint must turn less than π per step.
-Before joining, translational readings (prismatic, distance, generic) of a rotating
-body need its explicit `centerOfMass`.
 
 ### Drives
 

@@ -50,12 +50,17 @@ export function writeBody(
     );
   prim.schemas.push("PhysicsMassAPI");
   if (body.bodyType !== "static") {
-    // The live velocity of a simulated body; the velocity option of a body not simulated now.
-    const velocity = body.world?.getVelocity(body) ?? initialVelocity(body);
     prim.schemas.push("PhysicsRigidBodyAPI");
     prim.properties.push(
       "bool physics:rigidBodyEnabled = true",
       `bool physics:kinematicEnabled = ${body.bodyType === "kinematic"}`,
+    );
+  }
+  if (body.bodyType === "dynamic") {
+    // The live velocity of a simulated body; the velocity option of a body not simulated now.
+    // A kinematic body's velocity follows its targets, so it is not authored.
+    const velocity = body.world?.getVelocity(body) ?? initialVelocity(body);
+    prim.properties.push(
       `vector3f physics:velocity = ${tuple(velocity.linear.toArray())}`,
       `vector3f physics:angularVelocity = ${tuple(
         velocity.angular.toArray().map((value) => value * MathUtils.RAD2DEG),
