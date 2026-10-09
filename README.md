@@ -94,9 +94,11 @@ backend and sets `object.world`. Leaving clears it.
 | `trigger.overlaps`, `getOverlappingBodies`    | Throws                       | Live                    |
 | joint `getState()`                            | Reads the authored scene     | Live                    |
 
-An object joins at the world's next `update` or query; `world.update(0)` joins it now
-without advancing time. A body joins with its authored velocity, which `reset()`
-restores, and keeps its simulated velocity when it leaves.
+An object joins at the world's next `update`, step, or query; `world.update(0)` joins it
+now without advancing time. Before-step callbacks see the objects added since the last
+step. A body joins with its authored velocity, which `reset()` restores, and keeps its
+simulated velocity when it leaves. If joining fails, the object stays unjoined and joins
+afresh, with its current authored state, once the error is fixed.
 
 Velocity, forces, and impulses require a dynamic body. `teleport` moves every
 dynamic body jointed to the body along with it. An assembly jointed to the world or

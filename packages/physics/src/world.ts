@@ -144,10 +144,12 @@ export abstract class PhysicsWorld {
         this.elapsed + delta,
         this.fixedDelta * this.maxSubsteps,
       );
-      // Every step refreshes before it runs; before that, only before-step callbacks need the
-      // objects that joined since the last update.
-      if (elapsed < this.fixedDelta || this.before.size) this.refresh();
+      if (elapsed < this.fixedDelta) this.refresh();
       while (!this.isDisposed && elapsed >= this.fixedDelta) {
+        // Before-step callbacks see the objects that joined since the last step, and the step
+        // sees the objects those callbacks added.
+        if (this.before.size) this.refresh();
+        if (this.isDisposed) return;
         for (const callback of this.before) {
           callback(this.fixedDelta);
           if (this.isDisposed) return;
@@ -227,12 +229,33 @@ export abstract class PhysicsWorld {
   }
   /**
    * Syncs and prepares the members, then delivers the events their removal queued. Listeners
-   * may dispose the world, so callers check before going on.
+   * may dispose the world, so callers check before going on. Joining is all or nothing: if
+   * preparing fails, the objects that were joining leave again and join afresh next time.
    */
   private refresh(): void {
     this.run(() => {
-      this.sync();
-      this.prepare();
+      const joining: (RigidBody | Joint | Trigger)[] = [];
+      try {
+        for (const object of this.sync()) {
+          if (object.world)
+            throw new Error(
+              "Physics object is already simulated by another world; remove it from that world's scene and update or dispose that world first",
+            );
+          this.add(object);
+          this.members.add(object);
+          joining.push(object);
+        }
+        this.prepare();
+      } catch (error) {
+        rollback(
+          error,
+          joining.reverse().map((object) => () => {
+            this.members.delete(object);
+            this.remove(object);
+          }),
+          "Physics object join failed",
+        );
+      }
       for (const object of this.members) object.world = this;
       this.interactions.dispatch();
     });
@@ -250,8 +273,8 @@ export abstract class PhysicsWorld {
     for (const object of objects) object.world = undefined;
     for (const [body, velocity] of velocities) body.setVelocity(velocity);
   }
-  /** Adds the objects now under the scene and removes those that left it. */
-  private sync(): void {
+  /** Removes the objects that left the scene; returns those that entered it, joints last. */
+  private sync(): (RigidBody | Joint | Trigger)[] {
     const current = new Set<RigidBody | Joint | Trigger>();
     const joints: Joint[] = [];
     this.scene.traverse((object) => {
@@ -277,15 +300,7 @@ export abstract class PhysicsWorld {
       }),
       "Physics object removal failed",
     );
-    for (const object of current) {
-      if (this.members.has(object)) continue;
-      if (object.world)
-        throw new Error(
-          "Physics object is already simulated by another world; remove it from that world's scene and update or dispose that world first",
-        );
-      this.add(object);
-      this.members.add(object);
-    }
+    return [...current].filter((object) => !this.members.has(object));
   }
 }
 

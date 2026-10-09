@@ -15,6 +15,7 @@ type Member = RigidBody | Joint | Trigger;
 class RecordingWorld extends PhysicsWorld {
   readonly events: string[] = [];
   freed = 0;
+  failPrepare = false;
   /** Samples one overlap, as a backend step would. */
   overlap(trigger: Trigger, body: RigidBody): void {
     this.interactions.replace(new Map([[trigger, new Set([body])]]), new Map());
@@ -53,7 +54,9 @@ class RecordingWorld extends PhysicsWorld {
   applyForce(): void {}
   wake(): void {}
   sleep(): void {}
-  protected prepare(): void {}
+  protected prepare(): void {
+    if (this.failPrepare) throw new Error("prepare failed");
+  }
   protected step(): void {}
   protected restore(): void {}
   protected free(): void {
@@ -238,4 +241,36 @@ it("teleports an authored assembly before a world exists", () => {
   root.teleport(new Matrix4().makeTranslation(0, 5, 0));
   expect(child.position.toArray()).toEqual([2, 5, 0]);
   expect(joint.getState().position).toBeCloseTo(0);
+});
+
+it("undoes a failed join so objects join afresh with their authored state", () => {
+  const scene = new Scene();
+  const world = create(scene);
+  const ball = body("ball");
+  scene.add(ball);
+  world.failPrepare = true;
+  expect(() => world.update(0)).toThrow("prepare failed");
+  expect(world.events).toEqual(["add ball", "remove ball"]);
+  expect(ball.world).toBeUndefined();
+
+  world.failPrepare = false;
+  ball.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.update(0);
+  expect(ball.world).toBe(world);
+  expect(ball.getVelocity().linear.x).toBe(2);
+});
+
+it("lets before-step callbacks command objects added after the previous step", () => {
+  const scene = new Scene();
+  const world = create(scene);
+  const spawned = body("spawned");
+  const seen: unknown[] = [];
+  world.onAfterStep(() => {
+    if (!spawned.parent) scene.add(spawned);
+  });
+  world.onBeforeStep(() => {
+    if (spawned.parent) seen.push(spawned.world);
+  });
+  world.update(2 * world.fixedDelta);
+  expect(seen).toEqual([world]);
 });

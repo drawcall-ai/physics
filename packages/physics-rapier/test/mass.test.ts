@@ -87,6 +87,17 @@ it("keeps explicit COM and inertia authoritative across geometry changes", async
   }
 });
 
+it("joins afresh with the velocity authored after a failed join", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({ colliders: false });
+  world.scene.add(body);
+  expect(() => world.update(0)).toThrow(/mass|inertia/);
+  body.setVelocity({ linear: new Vector3(3, 0, 0) });
+  body.add(new BoxCollider());
+  world.update(0);
+  expect(body.getVelocity().linear.x).toBeCloseTo(3);
+});
+
 it("requires dynamic inertia, permits colliderless anchors, and ignores surface volume for explicit mass", async () => {
   const world = await createWorld();
   for (const mass of [undefined, 1]) {
