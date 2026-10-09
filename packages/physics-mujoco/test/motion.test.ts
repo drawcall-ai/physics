@@ -228,7 +228,6 @@ test.each([false, true])(
     const collider = new BoxCollider();
     collider.position.x = 1;
     body.add(collider);
-    scene.add(body);
     body.setVelocity({ angular: new Vector3(0, 0, 2) });
     const joint = new PrismaticJoint({
       body0: null,
@@ -237,10 +236,10 @@ test.each([false, true])(
       frame0: new Matrix4(),
       frame1: new Matrix4(),
     }).setEnabled(false);
-    scene.add(joint);
     // Outside a world, readings come from authored state, which needs explicit mass properties.
     if (explicit) expect(joint.getState().velocity).toBeCloseTo(-2);
     else expect(() => joint.getState()).toThrow("explicit mass properties");
+    scene.add(body, joint);
     value.update(0);
     expect(joint.getState().velocity).toBeCloseTo(-2);
   },

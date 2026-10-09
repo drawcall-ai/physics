@@ -36,9 +36,7 @@ it("clones assemblies and remaps joint references", () => {
   expect(copiedDrive.target).toEqual(drive.target);
   copiedDrive.setTarget({ velocity: 5 });
   expect(drive.target).toEqual({ position: 1, velocity: 0, effort: 0 });
-  const standalone = hinge.clone();
-  expect(standalone.options.body0).toBe(body0);
-  expect(standalone.options.body1).toBe(body1);
+  expect(() => hinge.clone()).toThrow("clone(root)");
 });
 
 it("copies velocity tuples and throws when Three.js copy fails", () => {
@@ -81,18 +79,11 @@ it("remaps joints across nested groups and retains references outside an assembl
   expect(joint.options.body1).toBe(copy.children[0]?.children[0]);
 });
 
-it("native Group.copy retains the joint references", () => {
+it("rejects native Group.copy of joints, pointing to clone(root)", () => {
   const source = new Group();
   const body = new RigidBody();
   source.add(body, new RevoluteJoint({ body0: null, body1: body }));
-  const target = new Group();
-  const existing = new RigidBody();
-  target.add(existing);
-  target.copy(source);
-  const joint = target.children[2];
-  if (!(joint instanceof RevoluteJoint)) throw new Error("Expected a joint");
-  expect(target.children[0]).toBe(existing);
-  expect(joint.options.body1).toBe(body);
+  expect(() => new Group().copy(source)).toThrow("clone(root)");
 });
 
 it("clones a body with a child joint and remaps the joint to the copy", () => {

@@ -31,7 +31,7 @@ it("captures scale at initialization, including bodies added and removed during 
   first.body.removeFromParent();
   world.update(0);
   expect(() => first.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
   const second = spawn(4, 3);
   for (let i = 0; i < 180; i++) world.update(world.fixedDelta);
@@ -40,7 +40,7 @@ it("captures scale at initialization, including bodies added and removed during 
   pending.body.removeFromParent();
   world.update(world.fixedDelta);
   expect(() => pending.body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
   second.group.scale.setScalar(4);
   expect(() => world.update(world.fixedDelta)).toThrow("scale cannot change");
@@ -103,7 +103,7 @@ it("captures new collider scale while rejecting edits to an existing collider's 
   world.update(world.fixedDelta / 2);
   mesh.scale.setScalar(3);
   expect(() => world.update(world.fixedDelta)).toThrow(
-    "Collider scale cannot change",
+    "scale cannot change after joining",
   );
   body.remove(mesh);
   const replacement = new Mesh(new BoxGeometry());

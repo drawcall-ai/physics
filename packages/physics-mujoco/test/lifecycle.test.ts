@@ -141,6 +141,7 @@ test("a failed rebuild keeps live state and retries after correction", async () 
 test("failed initial compilation does not capture reset poses or scale", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
+  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   scene.add(body);
   body.add(new BoxCollider());
   body.position.x = 1;
@@ -149,9 +150,100 @@ test("failed initial compilation does not capture reset poses or scale", async (
   body.setMaterial({ staticFriction: 0.4, dynamicFriction: 0.4 });
   body.position.x = 2;
   body.scale.setScalar(2);
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
   world.update(world.fixedDelta);
   world.reset();
   expect(body.position.x).toBe(2);
   expect(body.getVelocity().linear.x).toBe(1);
+});
+
+/** A body whose join fails: MuJoCo needs equal static and dynamic friction. */
+function unjoinable(): RigidBody {
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  body.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.8 });
+  return body;
+}
+
+test("keeps the simulated velocity of a body that leaves its world", async () => {
+  const world = await createWorld();
+  const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  scene.add(leaving);
+  world.update(world.fixedDelta);
+  leaving.applyImpulse(new Vector3(3, 0, 0));
+  const simulated = leaving.getVelocity().linear;
+  expect(simulated.x).toBeCloseTo(3);
+  leaving.removeFromParent();
+  world.update(0);
+  expect(leaving.world).toBeUndefined();
+  expect(leaving.getVelocity().linear).toEqual(simulated);
+});
+
+test("a body leaves in the same refresh as a failed join", async () => {
+  const world = await createWorld();
+  const leaving = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  scene.add(leaving);
+  leaving.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.update(world.fixedDelta);
+  leaving.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  expect(leaving.world).toBeUndefined();
+  expect(leaving.getVelocity().linear.x).toBeCloseTo(2);
+  bad.removeFromParent();
+  world.update(world.fixedDelta);
+  const ray = world.raycast(new Vector3(0, 5, 0), new Vector3(0, -1, 0), 10);
+  expect(ray).toBeNull();
+});
+
+test("a body that left during a failed refresh rejoins with its authored state", async () => {
+  const world = await createWorld();
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  scene.add(body);
+  body.setVelocity({ linear: new Vector3(2, 0, 0) });
+  world.update(world.fixedDelta);
+  body.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  body.setVelocity({ linear: new Vector3(0, 0, 5) });
+  body.position.set(10, 0, 0);
+  scene.add(body);
+  bad.removeFromParent();
+  world.update(0);
+  expect(body.getVelocity().linear.toArray()).toEqual([0, 0, 5]);
+  expect(body.position.x).toBe(10);
+});
+
+test("a teleport never moves a body that left during a failed refresh", async () => {
+  const world = await createWorld();
+  const rejoined = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const staying = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  staying.position.x = 3;
+  scene.add(rejoined, staying);
+  world.update(world.fixedDelta);
+  rejoined.removeFromParent();
+  const bad = unjoinable();
+  scene.add(bad);
+  expect(() => world.update(world.fixedDelta)).toThrow("equal static");
+  rejoined.position.y = 10;
+  scene.add(rejoined);
+  bad.removeFromParent();
+  staying.teleport(new Matrix4().makeTranslation(3, -5, 0));
+  expect(rejoined.position.y).toBe(10);
+  expect(staying.position.y).toBe(-5);
+});
+
+test("joins with the velocity authored after a failed join", async () => {
+  const world = await createWorld();
+  const body = unjoinable();
+  body.setVelocity({ linear: new Vector3(1, 0, 0) });
+  scene.add(body);
+  expect(() => world.update(0)).toThrow("equal static");
+  body.removeFromParent();
+  body.setVelocity({ linear: new Vector3(3, 0, 0) });
+  body.setMaterial({ staticFriction: 0.4, dynamicFriction: 0.4 });
+  scene.add(body);
+  world.update(world.fixedDelta);
+  expect(body.getVelocity().linear.x).toBeCloseTo(3);
+  expect(body.position.x).toBeCloseTo(0.03);
 });

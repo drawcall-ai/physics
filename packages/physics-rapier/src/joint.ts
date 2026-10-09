@@ -32,7 +32,7 @@ export class RapierJointBinding extends JointBinding {
 /** Reconciles the native joint with the authored settings and drives. */
 export function prepareJoint(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   binding: RapierJointBinding,
 ): void {
   const { joint } = binding;
@@ -41,13 +41,13 @@ export function prepareJoint(
   if (binding.version === joint.version) return;
   if (joint.enabled) {
     validateDrives(joint);
-    binding.native ??= createJoint(api, native, binding);
+    binding.native ??= createJoint(api, simulation, binding);
     binding.native.setContactsEnabled(joint.collideConnected);
-    configureDrives(api, native, joint, binding.native);
+    configureDrives(api, simulation, joint, binding.native);
     binding.native.body1().wakeUp();
     binding.native.body2().wakeUp();
   } else if (binding.native) {
-    native.removeImpulseJoint(binding.native, true);
+    simulation.removeImpulseJoint(binding.native, true);
     binding.native = undefined;
   }
   binding.version = joint.version;
@@ -68,7 +68,7 @@ function assertReachableTarget(binding: RapierJointBinding): void {
 /** Creates the native joint with its anchors and limits, which never change afterwards. */
 function createJoint(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   binding: RapierJointBinding,
 ): Rapier.ImpulseJoint {
   const object = binding.joint;
@@ -78,8 +78,8 @@ function createJoint(
   const rotation0 = new Quaternion().setFromRotationMatrix(frame0);
   const rotation1 = new Quaternion().setFromRotationMatrix(frame1);
   const data = jointData(api, object, a, rotation0, b, rotation1);
-  const joint = native.createImpulseJoint(data, ...binding.bodies, true);
-  const raw = native.impulseJoints.raw;
+  const joint = simulation.createImpulseJoint(data, ...binding.bodies, true);
+  const raw = simulation.impulseJoints.raw;
   if (object instanceof DistanceJoint && Number.isFinite(object.limits[1]))
     raw.jointSetLimits(
       joint.handle,

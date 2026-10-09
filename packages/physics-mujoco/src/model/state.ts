@@ -9,19 +9,14 @@ import {
 import {
   authoredJointReading,
   dofState,
+  type Initial,
   type Motion,
 } from "@drawcall/physics/backend";
-import { Quaternion, type Matrix4 } from "three";
+import { Quaternion } from "three";
 import type { Simulation } from "./compile.js";
 import { name } from "./markup.js";
 import { array, at, vector } from "../heap.js";
 import { bodyId, pointVelocity, velocity, writeVelocity } from "../body.js";
-
-/** A body's pose and velocity as it joined, which reset returns it to. */
-export interface Initial {
-  readonly pose: Matrix4;
-  readonly velocity: PhysicsVelocity;
-}
 
 /**
  * Carries motion and kinematic targets from the model a rebuild replaces into `next`. Joints
@@ -80,8 +75,8 @@ export function carryState(
 }
 
 /**
- * Copies the velocities of the joints both models share, matched by name, and the kinematic
- * targets; returns the joints it covered.
+ * Copies the velocities of the joints both models share on bodies `previous` still holds,
+ * matched by name, and the kinematic targets; returns the joints it covered.
  */
 function copyShared(
   api: MainModule,
@@ -89,6 +84,8 @@ function copyShared(
   next: Simulation,
 ): Set<number> {
   const carried = new Set<number>();
+  // A member that left no longer appears in `previous.bodies`, though its joints remain.
+  const held = new Set(previous.bodies.values());
   for (let j = 0; j < next.model.njnt; j++) {
     const key = api.mj_id2name(next.model, api.mjtObj.mjOBJ_JOINT.value, j);
     const from = api.mj_name2id(
@@ -96,7 +93,7 @@ function copyShared(
       api.mjtObj.mjOBJ_JOINT.value,
       key,
     );
-    if (from < 0) continue;
+    if (from < 0 || !held.has(at(previous.model.jnt_bodyid, from))) continue;
     const start = at(previous.model.jnt_dofadr, from);
     const address = at(next.model.jnt_dofadr, j);
     // MuJoCo lays degrees of freedom out in joint order.

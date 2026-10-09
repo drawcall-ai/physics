@@ -1,7 +1,5 @@
 import loadMujoco, { type MainModule } from "@mujoco/mujoco";
-import { RigidBody } from "@drawcall/physics";
-import { build, prepareConvexParts } from "@drawcall/physics/backend";
-import { heightfield } from "./model/heightfield.js";
+import { build } from "@drawcall/physics/backend";
 import { MujocoWorld } from "./world.js";
 import type { MujocoWorldOptions } from "./options.js";
 export type { MujocoWorld } from "./world.js";
@@ -19,15 +17,5 @@ export async function buildWorld(
     modules.set(url, loading);
     loading.catch(() => modules.delete(url));
   }
-  // MuJoCo collides only convex shapes: every triangle mesh but a static height grid
-  // collides as convex parts, decomposed once here.
-  const [api] = await Promise.all([
-    loading,
-    prepareConvexParts(
-      options.scene,
-      (body: RigidBody, geometry) =>
-        body.bodyType !== "static" || !heightfield(geometry, "grid"),
-    ),
-  ]);
-  return build(new MujocoWorld(api, options));
+  return build(new MujocoWorld(await loading, options));
 }

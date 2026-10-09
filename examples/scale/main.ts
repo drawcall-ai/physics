@@ -36,16 +36,18 @@ function remove() {
   current = undefined;
   removed++;
 }
-function show() {
+async function show() {
   if (checking) return;
   remove();
   const spec = cases[select.selectedIndex];
   if (!spec) throw new Error("Missing case");
   if (spec.error) {
-    status = verify(world, spec);
+    status = await verify(world, spec);
     return;
   }
-  current = specimen(spec, true);
+  const next = specimen(spec, true);
+  await world.decompose(next.root);
+  current = next;
   scene.add(current.root);
   added++;
   status =
@@ -68,8 +70,8 @@ async function checkAll() {
       const row = document.createElement("li");
       try {
         // The second run creates fresh objects in the already-running world.
-        verify(world, spec);
-        const result = verify(world, spec);
+        await verify(world, spec);
+        const result = await verify(world, spec);
         row.textContent = `${spec.name} — ${result}; removal/recreation PASS`;
         passed++;
       } catch (error) {
@@ -85,9 +87,9 @@ async function checkAll() {
     checking = false;
     select.disabled = false;
   }
-  show();
+  await show();
 }
-select.addEventListener("change", show);
+select.addEventListener("change", () => void show());
 for (const [id, index] of [
   ["compound", cases.findIndex((spec) => spec.compound)],
   [
@@ -98,23 +100,25 @@ for (const [id, index] of [
   document.getElementById(id)?.addEventListener("click", () => {
     if (checking) return;
     select.selectedIndex = index;
-    show();
+    void show();
   });
 }
 document
   .querySelector("#check")
   ?.addEventListener("click", () => void checkAll());
-document.querySelector("#recreate")?.addEventListener("click", show);
+document
+  .querySelector("#recreate")
+  ?.addEventListener("click", () => void show());
 window.addEventListener("keydown", (event) => {
   if (checking) return;
   if (event.code === "KeyX") {
     remove();
     status = "Removed. R recreates this case.";
   }
-  if (event.code === "KeyR") show();
+  if (event.code === "KeyR") void show();
   if (event.code === "KeyN") {
     select.selectedIndex = (select.selectedIndex + 1) % cases.length;
-    show();
+    void show();
   }
 });
 demo.run(() => `${status} · ${added} added / ${removed} removed`);

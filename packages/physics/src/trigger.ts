@@ -9,19 +9,23 @@ import {
 import { constructLike } from "./construct.js";
 import { validateShape } from "./colliders/shapes.js";
 import { assertPositiveScale, splitTransform } from "./transforms.js";
-import { requireWorld, type PhysicsWorld } from "./world.js";
+import { commandWorld, joinedWorld } from "./membership.js";
+import type { PhysicsWorld } from "./world.js";
 
 export interface TriggerEventMap extends Object3DEventMap {
   enter: { readonly body: RigidBody };
   exit: { readonly body: RigidBody };
 }
 export class Trigger extends Group<TriggerEventMap> {
-  /** The world simulating this trigger; set by the world as the trigger enters and leaves its scene. */
-  world: PhysicsWorld | undefined = undefined;
+  readonly isPhysicsObject = true;
   /** Counts collision group changes, so backends reconcile only what changed. */
   version = 0;
   private currentGroups?: CollisionGroups;
 
+  /** The world simulating this trigger; set as the trigger joins and leaves a world. */
+  get world(): PhysicsWorld | undefined {
+    return joinedWorld(this);
+  }
   get collisionGroups(): CollisionGroups | undefined {
     return this.currentGroups;
   }
@@ -35,7 +39,7 @@ export class Trigger extends Group<TriggerEventMap> {
     return this.getOverlappingBodies().includes(body);
   }
   getOverlappingBodies(): RigidBody[] {
-    return requireWorld(this).getOverlappingBodies(this);
+    return commandWorld(this).getOverlappingBodies(this);
   }
   validate(): void {
     this.updateWorldMatrix(true, true);

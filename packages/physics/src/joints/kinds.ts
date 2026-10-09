@@ -1,8 +1,8 @@
-import {
-  readJoint,
-  type AxisJointState,
-  type SphericalJointState,
-  type DistanceJointState,
+import { readJoint } from "../world.js";
+import type {
+  AxisJointState,
+  SphericalJointState,
+  DistanceJointState,
 } from "./reading.js";
 import { Joint, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";

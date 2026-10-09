@@ -8,26 +8,26 @@ type Pairs<T> = Map<T, Set<RigidBody>>;
 /** Samples the trigger overlaps and body contacts of the last step. */
 export function sampleInteractions(
   interactions: Interactions,
-  native: Rapier.World,
+  simulation: Rapier.World,
   owners: ReadonlyMap<number, Owner>,
 ): void {
   const overlaps: Pairs<Trigger> = new Map();
   const contacts: Pairs<RigidBody> = new Map();
   for (const [handle, owner] of owners) {
-    const collider = native.getCollider(handle);
+    const collider = simulation.getCollider(handle);
     if (owner.kind === "trigger") {
       const parent = ancestorBody(owner.trigger);
-      native.intersectionPairsWith(collider, (other) => {
+      simulation.intersectionPairsWith(collider, (other) => {
         const hit = owners.get(other.handle);
         if (hit?.kind === "body" && hit.body !== parent)
           pair(overlaps, owner.trigger, hit.body);
       });
       continue;
     }
-    native.contactPairsWith(collider, (other) => {
+    simulation.contactPairsWith(collider, (other) => {
       const hit = owners.get(other.handle);
       if (hit?.kind !== "body" || hit.body === owner.body) return;
-      native.contactPair(collider, other, (manifold) => {
+      simulation.contactPair(collider, other, (manifold) => {
         if (manifold.numSolverContacts() > 0)
           pair(contacts, owner.body, hit.body);
       });

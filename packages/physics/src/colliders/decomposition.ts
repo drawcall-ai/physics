@@ -8,8 +8,8 @@ import * as cache from "./cache.js";
 /**
  * Convex parts of closed triangle meshes, for backends that cannot collide a concave mesh:
  * every triangle mesh in MuJoCo, and those on moving bodies in Rapier. CoACD decomposes each
- * mesh once, when a world is built, and loads only if some mesh needs it; backends read the
- * parts back while creating colliders.
+ * mesh once, when a world is built or `world.decompose` runs, and loads only if some mesh needs
+ * it; backends read the parts back while creating colliders.
  */
 const prepared = new WeakMap<
   BufferGeometry,
@@ -77,16 +77,19 @@ export async function prepareConvexParts(
 }
 
 /**
- * A triangle mesh collider's prepared convex parts at `scale`, as flat vertex lists; none if
- * it was not decomposed when the world was built or its mesh changed since.
+ * A triangle mesh collider's prepared convex parts at `scale`, as flat vertex lists. Throws if
+ * the mesh was not decomposed or changed since.
  */
-export function convexParts(
-  collider: Collider,
-  scale: Vector3,
-): number[][] | undefined {
+export function convexParts(collider: Collider, scale: Vector3): number[][] {
   const shape = collider.shape();
-  if (shape.kind !== "mesh" || shape.approximation !== "trimesh") return;
-  return current(shape.geometry)?.parts.map((part) =>
+  if (shape.kind !== "mesh" || shape.approximation !== "trimesh")
+    throw new Error("Only triangle mesh colliders have convex parts");
+  const entry = current(shape.geometry);
+  if (!entry)
+    throw new Error(
+      `Triangle mesh ${collider.source.name || collider.source.type} collides as convex parts, which it lacks: await world.decompose(object) before it joins, and again after editing its geometry`,
+    );
+  return entry.parts.map((part) =>
     part.map((value, i) => value * scale.getComponent(i % 3)),
   );
 }
@@ -198,7 +201,7 @@ interface GeometrySnapshot {
 }
 
 /** Collision data, independent of render attributes and their buffer layout. */
-export function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
+function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
   const position = geometry.getAttribute("position");
   const positions: number[] = [];
   for (let i = 0; i < position.count; i++)

@@ -16,7 +16,8 @@ const world = await buildWorld({ scene, gravity: [0, -9.81, 0] });
 world.update(deltaSeconds);
 ```
 
-`RapierWorldOptions` are the shared options. Omitting `solverIterations` keeps Rapier's default.
+`buildWorld` takes the shared world options. Omitting `solverIterations` keeps
+Rapier's default.
 
 ## Bodies and colliders
 
@@ -24,8 +25,9 @@ world.update(deltaSeconds);
   update live.
 - Body and collider scale are captured on joining. A later scale edit throws;
   recreate the object. New colliders capture their own scale.
-- Triangle meshes stay exact on static bodies. On moving bodies they collide as the
-  convex parts decomposed at build, or as one hull if added or edited later.
+- Triangle meshes stay exact on static bodies. On moving bodies they collide as convex
+  parts: those added or edited after the build need `await world.decompose(object)`
+  before they join.
 - Static and dynamic friction must be equal.
 - An explicit mass without explicit inertia is split across colliders by volume.
 - A collider rebuild that fails keeps the previous colliders.
@@ -35,6 +37,8 @@ world.update(deltaSeconds);
 
 ## Joints and drives
 
+- Joints with `body0: null` attach to one fixed ground body, which lives as long as
+  the world.
 - Anchors and limits are captured on joining. Disabling a joint removes its Rapier
   joint and keeps the anchors.
 - Distance joints are Rapier spring joints: the minimum must be zero, a finite maximum
@@ -50,5 +54,5 @@ world.update(deltaSeconds);
 
 - Triggers are Rapier sensors. A trigger not under a moving body rides a private
   kinematic carrier, because Rapier skips fixed/fixed pairs.
-- Raycasts test colliders directly, so bodies added or teleported since the last step
+- Raycasts test colliders directly, so bodies that joined or were teleported since the last step
   are hit without a step.

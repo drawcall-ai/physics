@@ -3,14 +3,11 @@ import { BoxGeometry, Mesh, Scene } from "three";
 import {
   RigidBody,
   type PhysicsWorld,
+  type PhysicsWorldOptions,
   type RigidBodyOptions,
   type RigidBodyType,
 } from "@drawcall/physics";
-import {
-  buildWorld,
-  type RapierWorldOptions,
-  type RapierWorld,
-} from "../src/index.js";
+import { buildWorld, type RapierWorld } from "../src/index.js";
 
 const worlds: RapierWorld[] = [];
 afterEach(() => {
@@ -18,7 +15,7 @@ afterEach(() => {
 });
 
 /** Builds a world over a fresh scene unless given one; tests add what it simulates to `world.scene`. */
-export async function createWorld(options: Partial<RapierWorldOptions> = {}) {
+export async function createWorld(options: Partial<PhysicsWorldOptions> = {}) {
   const world = await buildWorld({
     scene: new Scene(),
     gravity: [0, 0, 0],

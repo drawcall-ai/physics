@@ -5,7 +5,6 @@ import {
   type RaycastHit,
   type RaycastOptions,
 } from "@drawcall/physics";
-import { validateVector } from "@drawcall/physics/backend";
 import { Vector3 } from "three";
 import type { Simulation } from "./model/compile.js";
 import { array, at } from "./heap.js";
@@ -17,21 +16,10 @@ export function raycast(
   api: MainModule,
   sim: Simulation,
   origin: Vector3,
-  direction: Vector3,
+  unit: Vector3,
   maxDistance: number,
-  options: RaycastOptions = {},
+  options: RaycastOptions,
 ): RaycastHit | null {
-  validateVector(origin);
-  validateVector(direction);
-  if (
-    direction.lengthSq() === 0 ||
-    !Number.isFinite(maxDistance) ||
-    maxDistance < 0
-  )
-    throw new Error(
-      "Raycast requires a nonzero direction and a finite nonnegative distance",
-    );
-  const unit = direction.clone().normalize();
   const normal = new api.DoubleBuffer(3);
   const found = new api.IntBuffer(1);
   try {

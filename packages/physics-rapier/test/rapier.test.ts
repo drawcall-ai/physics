@@ -83,6 +83,7 @@ it("rejects ambiguous revolute position goals before stepping, including huge fi
     drive.setTarget({ position });
     expect(() => world.update(0.01)).toThrow("within pi");
     expect(world.time).toBe(0);
-    expect(hinge.getState().velocity).toBe(0);
+    // Reading the state joins the hinge first, which fails the same way.
+    expect(() => hinge.getState()).toThrow("within pi");
   }
 });

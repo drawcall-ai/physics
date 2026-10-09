@@ -3,6 +3,7 @@ import type { JointDrive } from "./drive.js";
 import { RigidBody } from "../body.js";
 import { constructLike } from "../construct.js";
 import { assertRigidTransform, splitTransform } from "../transforms.js";
+import { joinedWorld } from "../membership.js";
 import type { PhysicsWorld } from "../world.js";
 
 export type JointOptions = {
@@ -15,8 +16,7 @@ export type JointOptions = {
 export abstract class Joint<
   Options extends JointOptions = JointOptions,
 > extends Object3D {
-  /** The world simulating this joint; set by the world as the joint enters and leaves its scene. */
-  world: PhysicsWorld | undefined = undefined;
+  readonly isPhysicsObject = true;
   /** Counts setting, drive and drive target changes, so backends reconcile only what changed. */
   version = 0;
   #options: Options;
@@ -36,6 +36,10 @@ export abstract class Joint<
       frame0: options.frame0?.clone(),
       frame1: options.frame1?.clone(),
     };
+  }
+  /** The world simulating this joint; set as the joint joins and leaves a world. */
+  get world(): PhysicsWorld | undefined {
+    return joinedWorld(this);
   }
   /** Fixed at construction and shared with clones. */
   get options(): Options {
@@ -72,10 +76,11 @@ export abstract class Joint<
   /** Clones the source's drives into this joint's slots; joints with drive slots override. */
   protected copyDrives(_source: this): void {}
 
-  override clone(recursive = true): this {
-    const target = constructLike(this, [this.options]);
-    target.#options = this.#options;
-    return target.copy(this, recursive);
+  /** A copy would still connect the original bodies; `clone(root)` reconnects it to cloned ones. */
+  override clone(): this {
+    throw new Error(
+      "Joints clone with their bodies: use clone(root) from @drawcall/physics on an object holding both",
+    );
   }
 
   /** Clones the joint onto the copies `objects` maps its bodies to. */

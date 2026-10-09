@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
-import { Matrix4, Vector3 } from "three";
+import { Group, Matrix4, Vector3 } from "three";
 import {
   DistanceJoint,
   MeshCollider,
@@ -10,6 +10,7 @@ import {
   type RigidBodyOptions,
   type JointOptions,
   type Vec3,
+  clone,
 } from "../src/index.js";
 
 const mass = {
@@ -44,8 +45,7 @@ it("shares immutable options with clones and copies only between objects that sh
   frame0.makeTranslation(10, 0, 0);
   expect(joint.getFrame(0, new Matrix4()).elements[12]).toBe(2);
   expect(joint.options.body1).toBe(body);
-  expect(joint.clone().options).toBe(joint.options);
-  expect(joint.clone().limits).toEqual([-1, 2]);
+  expect(clone(joint).limits).toEqual([-1, 2]);
   expect(() =>
     new RevoluteJoint({ body0: null, body1: body }).copy(joint),
   ).toThrow("immutable");
@@ -54,7 +54,7 @@ it("shares immutable options with clones and copies only between objects that sh
     body1: body,
     limits: [1, 3],
   });
-  expect(distance.clone().limits).toEqual([1, 3]);
+  expect(clone(distance).limits).toEqual([1, 3]);
   expect(() =>
     new DistanceJoint({ body0: null, body1: body, limits: [0, 1] }).copy(
       distance,
@@ -114,7 +114,7 @@ it("validates runtime controls before storing and checks the authoring world bou
   }).setCollideConnected(true);
   joint.setEnabled(false).setEnabled(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  expect(() => body.wake()).toThrow("has not joined a world yet");
+  expect(() => body.wake()).toThrow("outside every world's scene");
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
@@ -152,18 +152,11 @@ it("reads unfinished joints without inferring collider mass", () => {
   expect(slider.getState().velocity).toBeCloseTo(3);
 });
 
-it("honors subclass copy overrides for standalone joint cloning", () => {
-  class Hinge extends RevoluteJoint {
-    label = "";
-    override copy(source: this, recursive = true): this {
-      super.copy(source, recursive);
-      this.label = source.label;
-      return this;
-    }
-  }
-  const hinge = new Hinge({ body0: null, body1: new RigidBody() });
-  hinge.label = "door";
-  expect(hinge.clone().label).toBe("door");
+it("rejects standalone joint cloning, which would keep the original bodies", () => {
+  const body = new RigidBody();
+  const hinge = new RevoluteJoint({ body0: null, body1: body });
+  expect(() => hinge.clone()).toThrow("clone(root)");
+  expect(() => new Group().add(body, hinge).clone()).toThrow("clone(root)");
 });
 
 it("copies immutable body type and clones independent velocity", () => {
@@ -194,4 +187,14 @@ it("expresses complete mass and paired joint frames in the types", () => {
   }>().not.toMatchTypeOf<JointOptions>();
   expectTypeOf<{ mass: number }>().toMatchTypeOf<RigidBodyOptions>();
   expectTypeOf<typeof mass>().toMatchTypeOf<RigidBodyOptions>();
+});
+
+it("rejects unknown rigid body options and copies onto itself as a no-op", () => {
+  // Untyped callers, such as ones written against the old `type` option.
+  expect(() => Reflect.construct(RigidBody, [{ type: "static" }])).toThrow(
+    "Unknown rigid body option: type",
+  );
+  const body = new RigidBody().add(new Group());
+  expect(body.copy(body)).toBe(body);
+  expect(body.children).toHaveLength(1);
 });

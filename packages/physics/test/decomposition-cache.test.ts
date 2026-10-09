@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BoxGeometry, Vector3 } from "three";
 import { MeshCollider, RigidBody } from "../src/index.js";
-import { convexParts, prepareConvexParts } from "../src/backend.js";
+import { convexParts } from "../src/backend.js";
+import { prepareConvexParts } from "../src/colliders/decomposition.js";
 
 const hull = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
 const decompose = vi.fn(() => ({

@@ -537,13 +537,7 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
 it("clones imported assemblies with remapped joints", async () => {
   const { scene } = doorAssembly();
   const { scene: imported } = await roundtrip(scene);
-  const native = imported.clone();
-  const nativeJoint = native
-    .getObjectsByProperty("isObject3D", true)
-    .find((object) => object instanceof Joint);
-  if (!(nativeJoint instanceof Joint))
-    throw new Error("Missing native cloned joint");
-  expect(nativeJoint.options.body1).toBe(imported.getObjectByName("Door"));
+  expect(() => imported.clone()).toThrow("clone(root)");
   const cloned = clone(imported);
   const originalDoor = imported.getObjectByName("Door");
   const copiedDoor = cloned.getObjectByName("Door");

@@ -4,27 +4,30 @@ import {
   Joint,
   PhysicsWorld,
   splitTransform,
-  type Trigger,
+  Trigger,
   type JointReading,
   type PhysicsVelocity,
   type RaycastOptions,
 } from "@drawcall/physics";
 import {
-  assembly,
+  authoredVelocity,
   rollback,
   setWorldPose,
   treeJoint,
   JointBinding,
+  type Decomposes,
+  type Initial,
 } from "@drawcall/physics/backend";
-import { Matrix4, type Object3D, type Vector3 } from "three";
+import type { BufferGeometry, Matrix4, Object3D, Vector3 } from "three";
+import { heightfield } from "./model/heightfield.js";
 import {
   compile,
   type ModelOptions,
   type Simulation,
 } from "./model/compile.js";
-import { carryState, type Initial } from "./model/state.js";
+import { carryState } from "./model/state.js";
 import { modelOptions, type MujocoWorldOptions } from "./options.js";
-import { array, at, pose } from "./heap.js";
+import { array } from "./heap.js";
 import {
   bodyId,
   motionOf,
@@ -33,6 +36,7 @@ import {
   writePose,
   writeBack,
   refreshPoses,
+  teleport,
 } from "./body.js";
 import { damp, wrench } from "./force.js";
 import { applyDrives } from "./drive.js";
@@ -45,6 +49,10 @@ import {
   type Fingerprints,
 } from "./changes.js";
 
+/** MuJoCo collides only convex shapes: every triangle mesh but a static height grid. */
+const decomposes: Decomposes = (body: RigidBody, geometry: BufferGeometry) =>
+  body.bodyType !== "static" || !heightfield(geometry, "grid");
+
 /**
  * Simulates its members in one compiled MuJoCo model, which it rebuilds whenever membership or
  * an authored property the model bakes in changes.
@@ -56,9 +64,10 @@ export class MujocoWorld extends PhysicsWorld {
   private readonly joints = new Map<Joint, JointBinding>();
   private readonly triggers = new Set<Trigger>();
   /** Bodies and joints no model has held yet; a successful rebuild binds them. */
-  private readonly added = new Set<RigidBody | Joint>();
-  private native: Simulation;
-  private fingerprints: Fingerprints = new Map();
+  private readonly joining = new Set<RigidBody | Joint>();
+  private simulation: Simulation;
+  /** The fingerprints the model was compiled from; undefined once a member left it. */
+  private compiled: Fingerprints | undefined = new Map();
   private scales = new Map<Object3D, Vector3>();
   // Forces and targets wait for the step: a rebuild while refreshing would discard their writes.
   private forces: { body: RigidBody; force: Vector3; point?: Vector3 }[] = [];
@@ -67,63 +76,68 @@ export class MujocoWorld extends PhysicsWorld {
     private readonly api: MainModule,
     options: MujocoWorldOptions,
   ) {
-    super(options);
+    super(options, decomposes);
     this.options = modelOptions(options, {
       fixedDelta: this.fixedDelta,
       gravity: this.gravity,
       solverIterations: this.solverIterations ?? 50,
     });
-    this.native = compile(api, [], this.joints, [], this.options);
+    this.simulation = compile(api, [], this.joints, [], this.options);
   }
   protected add(object: RigidBody | Joint | Trigger): void {
     if (object instanceof RigidBody || object instanceof Joint)
-      this.added.add(object);
+      this.joining.add(object);
     else this.triggers.add(object);
   }
+  /**
+   * The model holds a member that left until the next rebuild, which can fail. Forgetting it
+   * there now means no rebuild carries its simulated state over, even when it rejoins.
+   */
   protected remove(object: RigidBody | Joint | Trigger): void {
+    this.compiled = undefined;
     if (object instanceof Joint) {
-      this.added.delete(object);
+      this.joining.delete(object);
       this.joints.delete(object);
-      return;
-    }
-    if (!(object instanceof RigidBody)) {
+    } else if (object instanceof Trigger) {
       this.triggers.delete(object);
-      return;
+    } else {
+      this.joining.delete(object);
+      this.bodies.delete(object);
+      this.simulation.bodies.delete(object);
+      this.simulation.targets.delete(object);
+      this.targets.delete(object);
+      this.forces = this.forces.filter(({ body }) => body !== object);
     }
-    this.added.delete(object);
-    this.bodies.delete(object);
-    this.targets.delete(object);
-    this.forces = this.forces.filter(({ body }) => body !== object);
   }
   protected prepare(): void {
-    const fingerprints = this.fingerprint();
-    if (sameFingerprints(fingerprints, this.fingerprints)) return;
-    this.rebuild(this.native, fingerprints);
+    const current = this.fingerprints();
+    if (this.compiled && sameFingerprints(current, this.compiled)) return;
+    this.rebuild(this.simulation, current);
   }
   protected step(): void {
-    const { api, native } = this;
+    const { api, simulation } = this;
     for (const { body, force, point } of this.forces.splice(0))
-      wrench(api, native, bodyId(native, body), force, { point });
+      wrench(api, simulation, bodyId(simulation, body), force, { point });
     let moved = false;
     for (const [body, matrix] of this.targets) {
-      const id = native.targets.get(body);
+      const id = simulation.targets.get(body);
       if (id === undefined) throw new Error("Missing MuJoCo kinematic target");
-      if (writePose(api, native, id, matrix)) moved = true;
+      if (writePose(api, simulation, id, matrix)) moved = true;
     }
     this.targets.clear();
-    refreshPoses(api, native, moved);
-    damp(api, native, this.fixedDelta);
-    applyDrives(api, native, this.joints, this.fixedDelta);
+    refreshPoses(api, simulation, moved);
+    damp(api, simulation, this.fixedDelta);
+    applyDrives(api, simulation, this.joints, this.fixedDelta);
     // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
     // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
-    api.mj_step2(native.model, native.data);
-    api.mj_step1(native.model, native.data);
-    checkState(api, native);
-    array(native.data.qfrc_applied).fill(0);
-    writeBack(native);
+    api.mj_step2(simulation.model, simulation.data);
+    api.mj_step1(simulation.model, simulation.data);
+    checkState(api, simulation);
+    array(simulation.data.qfrc_applied).fill(0);
+    writeBack(simulation);
     for (const binding of this.joints.values()) binding.track();
-    refreshPoses(api, native);
-    sampleInteractions(api, native, this.interactions);
+    refreshPoses(api, simulation);
+    sampleInteractions(api, simulation, this.interactions);
   }
   protected restore(): void {
     this.forces.length = 0;
@@ -131,114 +145,91 @@ export class MujocoWorld extends PhysicsWorld {
     for (const [body, { pose }] of this.bodies) setWorldPose(body, pose);
     for (const binding of this.joints.values()) binding.rebase();
     // A rebuild without the previous model starts every body from its authored motion.
-    this.rebuild(undefined, this.fingerprint());
+    this.rebuild(undefined, this.fingerprints());
   }
   protected free(): void {
-    this.native.free();
+    this.simulation.free();
   }
-  getVelocity(body: RigidBody): PhysicsVelocity {
-    this.assertMember(body);
-    return velocity(this.api, this.native, bodyId(this.native, body));
+  protected readVelocity(body: RigidBody): PhysicsVelocity {
+    return velocity(this.api, this.simulation, bodyId(this.simulation, body));
   }
-  setVelocity(body: RigidBody, value: Partial<PhysicsVelocity>): void {
-    this.assertMember(body);
-    writeVelocity(this.api, this.native, bodyId(this.native, body), value);
-    this.api.mj_forward(this.native.model, this.native.data);
+  protected writeVelocity(
+    body: RigidBody,
+    value: Partial<PhysicsVelocity>,
+  ): void {
+    writeVelocity(
+      this.api,
+      this.simulation,
+      bodyId(this.simulation, body),
+      value,
+    );
+    this.api.mj_forward(this.simulation.model, this.simulation.data);
   }
-  teleport(body: RigidBody): void {
-    this.assertMember(body);
-    const { api, native } = this;
-    const id = bodyId(native, body);
-    this.targets.delete(body);
-    const moved = assembly(body, this.joints.keys());
-    const matrix = splitTransform(body.matrixWorld).pose;
-    if (body.bodyType === "dynamic") {
-      const anchored = [...this.joints.keys()].some(
-        (joint) =>
-          treeJoint(joint) &&
-          moved.has(joint.options.body1) &&
-          joint.options.body0?.bodyType !== "dynamic",
+  protected writePoses(bodies: ReadonlySet<RigidBody>): void {
+    const anchored = [...this.joints.keys()].some(
+      (joint) =>
+        treeJoint(joint) &&
+        bodies.has(joint.options.body1) &&
+        !(joint.options.body0 && bodies.has(joint.options.body0)),
+    );
+    if (anchored)
+      throw new Error(
+        "MuJoCo cannot teleport a body articulated to the world or a static or kinematic base",
       );
-      if (anchored)
-        throw new Error(
-          "MuJoCo cannot teleport a body articulated to the world or a static or kinematic base",
-        );
-      // The assembly moves rigidly, so the change of pose goes onto its root's free joint.
-      const root = at(native.model.body_rootid, id);
-      const delta = matrix
-        .clone()
-        .multiply(pose(native.data.xpos, native.data.xquat, id).invert());
-      writePose(
-        api,
-        native,
-        root,
-        delta.multiply(pose(native.data.xpos, native.data.xquat, root)),
-      );
-    } else writePose(api, native, id, matrix);
-    const target = native.targets.get(body);
-    if (target !== undefined) writePose(api, native, target, matrix);
-    api.mj_forward(native.model, native.data);
-    writeBack(native);
-    // Joints inside the assembly keep their turns; only those it straddles start over.
-    for (const [joint, binding] of this.joints) {
-      const { body0, body1 } = joint.options;
-      if ((body0 !== null && moved.has(body0)) !== moved.has(body1))
-        binding.rebase();
-    }
+    for (const body of bodies) this.targets.delete(body);
+    teleport(this.api, this.simulation, bodies);
+    for (const binding of this.joints.values()) binding.rebaseIfSplit(bodies);
   }
-  setKinematicTarget(body: RigidBody, matrix: Matrix4): void {
-    this.assertMember(body);
-    this.targets.set(body, matrix.clone());
+  protected writeTarget(body: RigidBody, pose: Matrix4): void {
+    this.targets.set(body, pose.clone());
   }
-  applyForce(body: RigidBody, force: Vector3, point?: Vector3): void {
-    this.assertMember(body);
+  protected writeForce(body: RigidBody, force: Vector3, point?: Vector3): void {
     this.forces.push({ body, force: force.clone(), point: point?.clone() });
   }
-  applyImpulse(body: RigidBody, impulse: Vector3, point?: Vector3): void {
-    this.assertMember(body);
-    const { api, native } = this;
-    wrench(api, native, bodyId(native, body), impulse, {
+  protected writeImpulse(
+    body: RigidBody,
+    impulse: Vector3,
+    point?: Vector3,
+  ): void {
+    const { api, simulation } = this;
+    wrench(api, simulation, bodyId(simulation, body), impulse, {
       point,
       impulse: true,
     });
   }
-  wake(body: RigidBody): void {
-    this.assertMember(body);
+  protected writeSleeping(_body: RigidBody, sleeping: boolean): void {
+    if (sleeping)
+      throw new Error(
+        "MuJoCo manual sleeping is not supported by the WASM bindings",
+      );
   }
-  sleep(body: RigidBody): never {
-    this.assertMember(body);
-    throw new Error(
-      "MuJoCo manual sleeping is not supported by the WASM bindings",
-    );
-  }
-  readJoint(joint: Joint): JointReading {
-    this.assertMember(joint);
+  protected jointReading(joint: Joint): JointReading {
     const binding = this.joints.get(joint);
     if (!binding) throw new Error("Missing MuJoCo joint binding");
-    return binding.read(motionOf(this.api, this.native));
+    return binding.read(motionOf(this.api, this.simulation));
   }
   protected cast(
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,
-    options?: RaycastOptions,
+    options: RaycastOptions,
   ) {
-    refreshPoses(this.api, this.native);
+    refreshPoses(this.api, this.simulation);
     return raycast(
       this.api,
-      this.native,
+      this.simulation,
       origin,
       direction,
       maxDistance,
       options,
     );
   }
-  private fingerprint(): Fingerprints {
+  private fingerprints(): Fingerprints {
     const members = [
       ...this.bodies.keys(),
       ...this.triggers,
       ...this.joints.keys(),
-      ...this.added,
+      ...this.joining,
     ];
     return new Map(members.map((member) => [member, fingerprint(member)]));
   }
@@ -249,13 +240,12 @@ export class MujocoWorld extends PhysicsWorld {
   ): void {
     const bodies = new Map(this.bodies);
     const joints = new Map(this.joints);
-    for (const object of this.added)
+    for (const object of this.joining)
       if (object instanceof Joint) joints.set(object, new JointBinding(object));
       else
-        // The body has no world yet, so this is the velocity it was given outside one.
         bodies.set(object, {
           pose: splitTransform(object.matrixWorld).pose,
-          velocity: object.getVelocity(),
+          velocity: authoredVelocity(object),
         });
     const triggers = [...this.triggers];
     const scales = lockScales([...bodies.keys(), ...triggers], this.scales);
@@ -272,12 +262,12 @@ export class MujocoWorld extends PhysicsWorld {
     } catch (error) {
       rollback(error, [() => next.free()], "MuJoCo model replacement failed");
     }
-    this.native.free();
-    this.native = next;
+    this.simulation.free();
+    this.simulation = next;
     for (const [body, initial] of bodies) this.bodies.set(body, initial);
     for (const [joint, binding] of joints) this.joints.set(joint, binding);
-    this.added.clear();
-    this.fingerprints = fingerprints;
+    this.joining.clear();
+    this.compiled = fingerprints;
     this.scales = scales;
   }
 }

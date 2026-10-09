@@ -1,6 +1,12 @@
 import { expect, it, vi } from "vitest";
 import { Group, Matrix4, Vector3 } from "three";
-import { BoxCollider, FixedJoint, RigidBody, Trigger } from "@drawcall/physics";
+import {
+  BoxCollider,
+  DistanceJoint,
+  FixedJoint,
+  RigidBody,
+  Trigger,
+} from "@drawcall/physics";
 import { box, createWorld, inertialBody, steps } from "./fixtures.js";
 
 function region(size = 2) {
@@ -84,7 +90,7 @@ it("keeps objects moved within the scene simulated and exits occupants that leav
   world.scene.remove(goal);
   world.update(world.fixedDelta);
   expect(() => goal.getOverlappingBodies()).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
 });
 
@@ -344,7 +350,7 @@ it("does not dispatch teardown exits while disposing the world", async () => {
   world.dispose();
   expect(exit).not.toHaveBeenCalled();
   expect(() => goal.getOverlappingBodies()).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
 });
 
@@ -366,11 +372,9 @@ it("finishes body removal even when its exit listener throws", async () => {
   expect(() => world.update(world.fixedDelta)).toThrow("exit failed");
   expect(goal.getOverlappingBodies()).toEqual([]);
   expect(() => attached.getOverlappingBodies()).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
-  expect(() => body.wake()).toThrow(
-    "Physics object has not joined a world yet",
-  );
+  expect(() => body.wake()).toThrow("outside every world's scene");
   goal.removeEventListener("exit", fail);
   world.update(world.fixedDelta);
   expect(goal.getOverlappingBodies()).toEqual([]);
@@ -404,6 +408,55 @@ it("does not retain invalid native trigger handles after removing their parent",
   world.scene.add(parent);
   world.update(world.fixedDelta);
   expect(trigger.overlaps(target)).toBe(true);
+});
+
+it("keeps a new body's colliders when a trigger leaves its body as that body leaves", async () => {
+  const world = await createWorld();
+  const old = box("kinematic");
+  const trigger = region();
+  old.add(trigger);
+  const target = box("static");
+  target.position.x = 1;
+  world.scene.add(old, target);
+  world.update(world.fixedDelta);
+  world.scene.attach(trigger);
+  old.removeFromParent();
+  const next = box("kinematic");
+  next.position.x = 10;
+  world.scene.add(next);
+  world.update(world.fixedDelta);
+  expect(
+    world.raycast(new Vector3(10, 5, 0), new Vector3(0, -1, 0), 10),
+  ).toMatchObject({ kind: "body", body: next });
+  expect(trigger.getOverlappingBodies()).toEqual([target]);
+});
+
+it("rebuilds a trigger's sensors when its body joins again after a failed join", async () => {
+  const world = await createWorld();
+  const trigger = region();
+  const target = box("static");
+  world.scene.add(trigger, target);
+  world.update(world.fixedDelta);
+  const carrier = box("kinematic");
+  const joint = new DistanceJoint({
+    body0: null,
+    body1: carrier,
+    frame0: new Matrix4(),
+    frame1: new Matrix4(),
+    limits: [0.5, 2],
+  });
+  carrier.attach(trigger);
+  world.scene.add(carrier, joint);
+  expect(() => world.update(world.fixedDelta)).toThrow("zero minimum distance");
+  joint.removeFromParent();
+  world.update(world.fixedDelta);
+  expect(trigger.getOverlappingBodies()).toEqual([target]);
+  trigger.removeFromParent();
+  expect(
+    world.raycast(new Vector3(0, 5, 0), new Vector3(0, -1, 0), 10, {
+      includeTriggers: true,
+    }),
+  ).toMatchObject({ kind: "body" });
 });
 
 it("delivers the whole batch of contact events even when a listener throws", async () => {

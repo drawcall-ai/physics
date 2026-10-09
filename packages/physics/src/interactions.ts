@@ -23,19 +23,21 @@ export class Interactions {
     this.contacts.clear();
     this.events = [];
   }
+  /** Delivers every queued event, including those listeners queue, even when some throw. */
   dispatch(): void {
     if (this.delivering) return;
     this.delivering = true;
     try {
-      // Every listener of a batch runs even when one throws; listeners may queue the next batch.
-      while (this.events.length) {
-        const batch = this.events;
-        this.events = [];
-        cleanup(batch, "Physics event listeners failed");
-      }
+      cleanup(this.drain(), "Physics event listeners failed");
     } finally {
-      this.events = [];
       this.delivering = false;
+    }
+  }
+  private *drain(): Generator<() => void> {
+    while (this.events.length) {
+      const batch = this.events;
+      this.events = [];
+      yield* batch;
     }
   }
   replace(overlaps: Pairs<Trigger>, contacts: Pairs<RigidBody>): void {

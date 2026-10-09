@@ -11,25 +11,28 @@ import {
   PrismaticJoint,
   JointDrive,
   MeshCollider,
+  FixedJoint,
+  Trigger,
 } from "@drawcall/physics";
 
 const setup = () => createWorld({ fixedDelta: 1 / 60 });
 
-it("commands a body once it joins the world at the next update or query", async () => {
+it("commands a body as soon as it is under the world's scene", async () => {
   const world = await setup();
   const body = new RigidBody({ mass: 2 }).add(new BoxCollider());
   const input = new Vector3(1, 0, 0);
   body.setVelocity({ linear: input });
   input.x = 99;
   expect(body.getVelocity().linear.x).toBe(1);
-  world.scene.add(body);
   expect(() => body.applyImpulse(new Vector3(2, 0, 0))).toThrow(
-    "has not joined a world yet",
+    "outside every world's scene",
   );
+  world.scene.add(body);
+  body.applyImpulse(new Vector3(2, 0, 0));
+  expect(body.world).toBe(world);
   expect(
     world.raycast(new Vector3(-4, 0, 0), new Vector3(1, 0, 0), 8),
   ).toMatchObject({ kind: "body", body });
-  body.applyImpulse(new Vector3(2, 0, 0));
   expect(body.getVelocity().linear.x).toBeCloseTo(2);
   body.getVelocity().linear.x = 99;
   world.update(world.fixedDelta);
@@ -59,7 +62,6 @@ it("shares world-pose writeback before and after initialization and freezes rese
   const world = await setup();
   const body = new RigidBody({ mass: 2 });
   const parent = new Group().add(body);
-  world.scene.add(parent);
   parent.position.set(3, 4, 5);
   parent.rotation.y = 0.4;
   parent.scale.setScalar(2);
@@ -72,6 +74,7 @@ it("shares world-pose writeback before and after initialization and freezes rese
   body.teleport(pose);
   body.setVelocity({ linear: new Vector3(2, 0, 0) });
   body.add(new BoxCollider());
+  world.scene.add(parent);
   world.update(0);
   body.teleport(new Matrix4().makeTranslation(20, 20, 20));
   body.setVelocity({ linear: new Vector3(9, 0, 0) });
@@ -128,20 +131,18 @@ it("rejects removed, foreign and invalid operations", async () => {
   body.sleep();
   body.wake();
   await expect(buildWorld({ scene: world.scene })).rejects.toThrow(
-    "another world",
+    "already has a physics world",
   );
   const other = await setup();
   const foreign = new RigidBody({ bodyType: "kinematic" });
   other.scene.add(foreign);
   other.update(0);
   expect(() => world.getVelocity(foreign)).toThrow(
-    "Physics object is outside the world's scene",
+    "Physics object Group is outside the world's scene",
   );
   body.removeFromParent();
   world.update(0);
-  expect(() => body.wake()).toThrow(
-    "Physics object has not joined a world yet",
-  );
+  expect(() => body.wake()).toThrow("outside every world's scene");
   world.update(0);
 });
 
@@ -319,3 +320,78 @@ it("keeps the simulated velocity of a body that leaves its world", async () => {
   world.dispose();
   expect(staying.getVelocity().linear.z).toBeCloseTo(4);
 });
+
+for (const order of ["before", "after"] as const)
+  it(`applies an impulse right after a body is added, ${order} the world's update`, async () => {
+    const world = await setup();
+    const load = () => {
+      const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+      world.scene.add(body);
+      body.applyImpulse(new Vector3(2, 0, 0));
+      return body;
+    };
+    const early = order === "before" ? load() : undefined;
+    world.update(world.fixedDelta);
+    const body = early ?? load();
+    expect(body.getVelocity().linear.x).toBeCloseTo(2);
+  });
+
+it("reads a trigger's overlaps right after it is added", async () => {
+  const world = await setup();
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  world.scene.add(body);
+  world.update(world.fixedDelta);
+  const zone = new Trigger().add(new BoxCollider({ size: [2, 2, 2] }));
+  world.scene.add(zone);
+  expect(zone.getOverlappingBodies()).toEqual([]);
+  world.update(world.fixedDelta);
+  expect(zone.overlaps(body)).toBe(true);
+});
+
+it("teleports along a joint that waits to join", async () => {
+  const world = await createWorld({ fixedDelta: 1 / 60 });
+  const a = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const b = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  b.position.x = 2;
+  world.scene.add(a, b);
+  world.update(0);
+  const weld = new FixedJoint({ body0: a, body1: b });
+  weld.position.x = 1;
+  world.scene.add(weld);
+  a.teleport(new Matrix4().makeTranslation(0, 10, 0));
+  world.update(world.fixedDelta);
+  expect(a.position.y).toBeCloseTo(10, 3);
+  expect(b.position.y).toBeCloseTo(10, 3);
+  expect(b.position.x).toBeCloseTo(2, 3);
+});
+
+it("teleports without a joint that waits to leave", async () => {
+  const world = await createWorld({ fixedDelta: 1 / 60 });
+  const a = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const b = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  b.position.x = 2;
+  const weld = new FixedJoint({ body0: a, body1: b });
+  weld.position.x = 1;
+  world.scene.add(a, b, weld);
+  world.update(0);
+  weld.removeFromParent();
+  a.teleport(new Matrix4().makeTranslation(0, 10, 0));
+  world.update(world.fixedDelta);
+  expect(a.position.y).toBeCloseTo(10, 3);
+  expect(b.position.y).toBeCloseTo(0, 3);
+});
+
+it("requires world.decompose for a moving triangle mesh that joins after the build", async () => {
+  const world = await setup();
+  const body = new RigidBody().add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(
+      new BoxGeometry(),
+    ),
+  );
+  world.scene.add(body);
+  expect(() => world.update(0)).toThrow("await world.decompose(object)");
+  expect(body.world).toBeUndefined();
+  await world.decompose(body);
+  world.update(0);
+  expect(body.world).toBe(world);
+}, 15000);

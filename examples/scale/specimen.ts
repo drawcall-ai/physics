@@ -213,12 +213,14 @@ export function specimen(spec: Case, spin = false) {
   };
 }
 
-export function verify(world: PhysicsWorld, spec: Case) {
+export async function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(spec);
-  world.scene.add(item.root);
   const stop = world.onAfterStep(item.step);
   try {
     try {
+      // Decomposing reads the colliders, so it rejects invalid ones as joining would.
+      await world.decompose(item.root);
+      world.scene.add(item.root);
       world.update(world.fixedDelta);
       if (!spec.error && item.boundsError() > 1e-5)
         throw new Error("Collider bounds differ from visual geometry");

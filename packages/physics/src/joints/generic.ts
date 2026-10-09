@@ -1,8 +1,5 @@
-import {
-  readJoint,
-  type AxisJointState,
-  type JointReading,
-} from "./reading.js";
+import { readJoint } from "../world.js";
+import type { AxisJointState, JointReading } from "./reading.js";
 import { Euler, Vector3 } from "three";
 import { Joint, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";

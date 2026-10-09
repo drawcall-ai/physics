@@ -85,7 +85,7 @@ export function shapes(
         );
       } else {
         // A static height grid is a native height field; any other triangle mesh collides
-        // as the convex parts prepared when the world was built, or one hull without them.
+        // as its prepared convex parts.
         const field =
           shape.approximation === "trimesh" &&
           owner instanceof RigidBody &&
@@ -102,11 +102,14 @@ export function shapes(
           continue;
         }
         const positions = shape.geometry.getAttribute("position");
-        const hulls = convexParts(collider, part.scale) ?? [
-          Array.from({ length: positions.count * 3 }, (_, i) =>
-            positions.getComponent(Math.floor(i / 3), i % 3),
-          ),
-        ];
+        const hulls =
+          shape.approximation === "trimesh"
+            ? convexParts(collider, part.scale)
+            : [
+                Array.from({ length: positions.count * 3 }, (_, i) =>
+                  positions.getComponent(Math.floor(i / 3), i % 3),
+                ),
+              ];
         for (const [index, hull] of hulls.entries()) {
           const key = `${prefix}h${index}`;
           assets.push(`<mesh name="${key}" vertex="${hull.join(" ")}"/>`);

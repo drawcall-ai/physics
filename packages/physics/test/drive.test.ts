@@ -7,6 +7,7 @@ import {
   type JointDriveTarget,
   RevoluteJoint,
   RigidBody,
+  clone,
 } from "../src/index.js";
 
 function hinge() {
@@ -92,7 +93,7 @@ it("clones drives with their subclass and copies them with their joint", () => {
     position: 0.5,
   });
   joint.setDrive(actuator);
-  const copy = joint.clone();
+  const copy = clone(joint);
   expect(copy.drive).toBeInstanceOf(Actuator);
   expect(copy.drive?.options).toEqual(actuator.options);
   expect(copy.drive?.target).toEqual(actuator.target);
@@ -102,7 +103,7 @@ it("clones drives with their subclass and copies them with their joint", () => {
     body1: new RigidBody(),
     limits: [0, Infinity],
   }).setDrive(new JointDrive({ stiffness: 10 }).setTarget({ position: 0 }));
-  expect(distance.clone().drive?.options.stiffness).toBe(10);
+  expect(clone(distance).drive?.options.stiffness).toBe(10);
 });
 
 it("locks generic joint axes by default and drives each axis separately", () => {
@@ -125,7 +126,7 @@ it("locks generic joint axes by default and drives each axis separately", () => 
   expect(joint.getDrive("transY")).toBe(lift);
   expect(() => joint.setDrive("rotX", lift)).toThrow("already attached");
   expect(joint.drives.size).toBe(1);
-  expect(joint.clone().getDrive("transY")?.target).toEqual(lift.target);
+  expect(clone(joint).getDrive("transY")?.target).toEqual(lift.target);
   expect(joint.getState("transY")).toEqual({ position: 0, velocity: 0 });
   joint.setDrive("transY", undefined);
   expect(lift.joint).toBeUndefined();

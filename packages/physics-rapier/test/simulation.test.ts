@@ -116,7 +116,7 @@ it("releases removed bodies and rejects further simulation commands", async () =
   body.removeFromParent();
   world.update(world.fixedDelta);
   expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
   expect(
     world.raycast(new Vector3(-2, 0, 0), new Vector3(1, 0, 0), 4),
@@ -138,7 +138,7 @@ it("drops a body onto a floor, resets its pose, and stops simulating it once the
   world.dispose();
   expect(falling.parent).toBe(scene);
   expect(() => falling.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "Physics object has not joined a world yet",
+    "outside every world's scene",
   );
 });
 

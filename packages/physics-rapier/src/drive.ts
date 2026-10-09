@@ -64,7 +64,7 @@ function gains(drive: JointDrive): boolean {
 /** Maps each slot's stiffness and damping onto Rapier's native motor; effort acts through `applyDrives`. */
 export function configureDrives(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   object: Joint,
   joint: Rapier.ImpulseJoint,
 ): void {
@@ -94,7 +94,7 @@ export function configureDrives(
       joint.configureMotor(...settings);
       continue;
     }
-    const raw = native.impulseJoints.raw;
+    const raw = simulation.impulseJoints.raw;
     const index = rapierDof(api.JointAxis, axis);
     raw.jointConfigureMotorModel(joint.handle, index, model);
     raw.jointSetMotorMaxForce(joint.handle, index, maxForce);

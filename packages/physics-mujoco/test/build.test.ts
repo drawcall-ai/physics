@@ -49,16 +49,21 @@ test("decomposes initial meshes and preserves concavities with ancestor scale", 
   expect(world.raycast(new Vector3(1, 0.6, 3), forward, 6)).toBeNull();
 }, 15000);
 
-test("building first leaves later trimeshes as a single hull", async () => {
+test("a trimesh that joins after the build needs world.decompose", async () => {
   const scene = new Scene();
   const world = await createWorld({ ...earth, scene });
   const body = mesh();
   scene.add(body);
-  expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toMatchObject({
+  expect(() => world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toThrow(
+    "await world.decompose(object)",
+  );
+  await world.decompose(body);
+  expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
+  expect(world.raycast(new Vector3(-0.2, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body,
   });
-});
+}, 15000);
 
 test("objects added while loading are included without losing removals", async () => {
   const removed = new RigidBody({ mass: 1 }).add(new BoxCollider());
@@ -109,12 +114,17 @@ test("changed initial geometry never reuses stale decompositions", async () => {
   const world = await createWorld({ ...earth, scene: new Scene().add(body) });
   expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
   geometry.translate(2, 0, 0);
-  expect(world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toMatchObject({
+  expect(() => world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toThrow(
+    "await world.decompose(object)",
+  );
+  await world.decompose(body);
+  expect(world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toBeNull();
+  expect(world.raycast(new Vector3(1.8, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body,
   });
   expect(world.raycast(new Vector3(-0.3, 0.3, 3), forward, 6)).toBeNull();
-});
+}, 15000);
 
 test("collides a triangle mesh on a moving body as its convex parts", async () => {
   const body = new RigidBody();

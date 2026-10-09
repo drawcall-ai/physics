@@ -15,8 +15,8 @@ describe.each([
     async (spec) => {
       const world = await build({ scene: new Scene() });
       try {
-        expect(verify(world, spec)).toMatch(/^PASS:/);
-        expect(verify(world, spec)).toMatch(/^PASS:/);
+        expect(await verify(world, spec)).toMatch(/^PASS:/);
+        expect(await verify(world, spec)).toMatch(/^PASS:/);
       } finally {
         world.dispose();
       }
@@ -35,6 +35,7 @@ describe.each([
     );
     if (!spec) throw new Error("Missing compound triangle mesh case");
     const item = specimen(spec);
+    await world.decompose(item.root);
     world.scene.add(item.root);
     world.onAfterStep(item.step);
     try {

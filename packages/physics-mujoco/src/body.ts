@@ -64,11 +64,7 @@ export function motionOf(api: MainModule, sim: Simulation): Motion {
       pointVelocity(api, sim, bodyId(sim, body), point),
   };
 }
-export function freeJoint(
-  api: MainModule,
-  sim: Simulation,
-  id: number,
-): number {
+function freeJoint(api: MainModule, sim: Simulation, id: number): number {
   const joint = at(sim.model.body_jntadr, id);
   if (
     joint < 0 ||
@@ -141,6 +137,37 @@ export function writePose(
   }
   const address = at(model.jnt_qposadr, freeJoint(api, sim, id));
   return overwrite(array(data.qpos), [...position, ...q], address);
+}
+/**
+ * Moves the bodies to the poses the scene holds for them. They move rigidly together, so each
+ * articulation's change of pose goes onto its root; kinematic targets jump along.
+ */
+export function teleport(
+  api: MainModule,
+  sim: Simulation,
+  bodies: ReadonlySet<RigidBody>,
+): void {
+  const { model, data } = sim;
+  const roots = new Map<number, Matrix4>();
+  for (const body of bodies) {
+    const id = bodyId(sim, body);
+    const matrix = splitTransform(body.matrixWorld).pose;
+    const target = sim.targets.get(body);
+    if (target !== undefined) writePose(api, sim, target, matrix);
+    roots.set(
+      at(model.body_rootid, id),
+      matrix.clone().multiply(pose(data.xpos, data.xquat, id).invert()),
+    );
+  }
+  for (const [root, delta] of roots)
+    writePose(
+      api,
+      sim,
+      root,
+      delta.multiply(pose(data.xpos, data.xquat, root)),
+    );
+  api.mj_forward(model, data);
+  writeBack(sim);
 }
 /** Writes the simulated poses of moving bodies back to the scene. */
 export function writeBack(sim: Simulation): void {

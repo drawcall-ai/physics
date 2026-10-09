@@ -42,14 +42,14 @@ const world = await buildWorld({ scene, wasmUrl });
 
 ## Model rebuilds
 
-MuJoCo simulates one compiled model. Adding or removing objects, editing colliders or
-their geometry, or enabling, disabling, or re-driving joints recompiles it. A rebuild
-keeps poses, joint velocities, and kinematic targets, but costs far more than an edit in
-Rapier. Drive target changes need no rebuild. Scale is fixed once compiled.
+MuJoCo simulates one compiled model. Objects joining or leaving, edits to colliders or
+their geometry, and enabling, disabling, or re-driving joints recompile it. A rebuild
+keeps the members' poses, joint velocities, and kinematic targets, but costs far more than
+an edit in Rapier. Drive target changes need no rebuild. Scale is fixed once compiled.
 
-Every `trimesh` collides as convex parts decomposed at build, or as one hull if added or
-edited later. Exception: a complete regular height grid with planar cells on a static
-body becomes a native heightfield.
+Every `trimesh` collides as convex parts; those that join or change after the build need
+`await world.decompose(object)` before they join. Exception: a complete regular height
+grid with planar cells on a static body becomes a native heightfield.
 
 ## Engine differences
 

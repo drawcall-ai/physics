@@ -20,19 +20,15 @@ import {
 } from "./transforms.js";
 import { colliderOf } from "./colliders/shapes.js";
 import { colliderSources } from "./colliders/sources.js";
-import { rollback } from "./cleanup.js";
 import { validateMass, type MassProperties } from "./mass.js";
 import type {
   AutoColliders,
   PhysicsMaterial,
   CollisionGroups,
 } from "./colliders/collider.js";
-import { assembly, hierarchyJoints } from "./joints/assembly.js";
-import {
-  requireWorld,
-  type PhysicsVelocity,
-  type PhysicsWorld,
-} from "./world.js";
+import { hierarchyJoints, placeAssembly } from "./joints/assembly.js";
+import { commandWorld, joinedWorld, sceneWorld } from "./membership.js";
+import type { PhysicsVelocity, PhysicsWorld } from "./world.js";
 
 export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
@@ -50,18 +46,34 @@ export interface RigidBodyEventMap extends Object3DEventMap {
   contactbegin: { readonly otherBody: RigidBody };
   contactend: { readonly otherBody: RigidBody };
 }
+const optionKeys: Record<keyof RigidBodyOptions, true> = {
+  bodyType: true,
+  colliders: true,
+  canSleep: true,
+  mass: true,
+  centerOfMass: true,
+  diagonalInertia: true,
+  principalAxes: true,
+};
+
+/** The velocity a body joins a world with: authored, or kept from the world it last left. */
+export let authoredVelocity: (body: RigidBody) => PhysicsVelocity;
+/** Stores the given parts as the body's authored velocity, unchecked. */
+export let keepVelocity: (
+  body: RigidBody,
+  value: Partial<PhysicsVelocity>,
+) => void;
+
 export class RigidBody extends Group<RigidBodyEventMap> {
+  readonly isPhysicsObject = true;
   readonly bodyType: RigidBodyType;
-  /** The world simulating this body; set by the world as the body enters and leaves its scene. */
-  world: PhysicsWorld | undefined = undefined;
   /** Counts setting changes, so backends reconcile only what changed. */
   version = 0;
-  /** The body's velocity outside a world, which a world starts it from as it joins. */
-  readonly #velocity: PhysicsVelocity = {
+  #options: NormalizedOptions;
+  #velocity: PhysicsVelocity = {
     linear: new Vector3(),
     angular: new Vector3(),
   };
-  #options: NormalizedOptions;
   private currentLinearDamping = 0;
   private currentAngularDamping = 0;
   private currentGravityScale = 1;
@@ -70,6 +82,9 @@ export class RigidBody extends Group<RigidBodyEventMap> {
 
   constructor(options: RigidBodyOptions = {}) {
     super();
+    for (const key of Object.keys(options))
+      if (!Object.hasOwn(optionKeys, key))
+        throw new Error(`Unknown rigid body option: ${key}`);
     this.bodyType = options.bodyType ?? "dynamic";
     this.#options = {
       ...options,
@@ -78,6 +93,20 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       canSleep: options.canSleep ?? true,
     };
     validateMass(this.#options);
+  }
+  static {
+    authoredVelocity = (body) => ({
+      linear: body.#velocity.linear.clone(),
+      angular: body.#velocity.angular.clone(),
+    });
+    keepVelocity = (body, { linear, angular }) => {
+      if (linear) body.#velocity.linear.copy(linear);
+      if (angular) body.#velocity.angular.copy(angular);
+    };
+  }
+  /** The world simulating this body; set as the body joins and leaves a world. */
+  get world(): PhysicsWorld | undefined {
+    return joinedWorld(this);
   }
   /** Fixed at construction and shared with clones. */
   get options(): NormalizedOptions {
@@ -94,10 +123,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
   get material(): PhysicsMaterial | undefined {
     return this.currentMaterial;
-  }
-  private assertDynamic(subject: string): void {
-    if (this.bodyType !== "dynamic")
-      throw new Error(`${subject} requires a dynamic body`);
   }
   setLinearDamping(value: number): this {
     validateDamping(value);
@@ -133,19 +158,17 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     this.version++;
     return this;
   }
+  /** The live velocity once the body is in a world; the authored one outside every world. */
   getVelocity(): PhysicsVelocity {
-    if (this.world) return this.world.getVelocity(this);
-    const { linear, angular } = this.#velocity;
-    return { linear: linear.clone(), angular: angular.clone() };
+    const world = sceneWorld(this);
+    return world ? world.getVelocity(this) : authoredVelocity(this);
   }
   setVelocity(value: Partial<PhysicsVelocity>): this {
-    if (value.linear) validateVector(value.linear);
-    if (value.angular) validateVector(value.angular);
-    this.assertDynamic("Velocity");
-    if (this.world) this.world.setVelocity(this, value);
+    const world = sceneWorld(this);
+    if (world) world.setVelocity(this, value);
     else {
-      if (value.linear) this.#velocity.linear.copy(value.linear);
-      if (value.angular) this.#velocity.angular.copy(value.angular);
+      validateVelocity(this, value);
+      keepVelocity(this, value);
     }
     return this;
   }
@@ -153,57 +176,37 @@ export class RigidBody extends Group<RigidBodyEventMap> {
    * Moves the body, and every dynamic body jointed to it, rigidly to the pose. An assembly
    * articulated to a static or kinematic base or the world can only move within those joints.
    */
-  teleport(matrix: Matrix4): this {
-    assertRigidTransform(matrix);
-    this.validate();
-    const delta = matrix
-      .clone()
-      .multiply(splitTransform(this.matrixWorld).pose.invert());
-    const poses = new Map(
-      [...assembly(this, hierarchyJoints(this))].map((member) => {
-        if (member === this) return [member, matrix];
-        member.validate();
-        return [
-          member,
-          delta.clone().multiply(splitTransform(member.matrixWorld).pose),
-        ];
-      }),
-    );
-    const restores = [...poses.keys()].map(saveTransform);
-    for (const [member, pose] of poses) setWorldPose(member, pose);
-    try {
-      this.world?.teleport(this);
-    } catch (error) {
-      rollback(error, restores, "Teleport rollback failed");
+  teleport(pose: Matrix4): this {
+    const world = sceneWorld(this);
+    if (world) world.teleport(this, pose);
+    else {
+      assertRigidTransform(pose);
+      placeAssembly(this, pose, hierarchyJoints(this));
     }
     return this;
   }
-  /** Moves a kinematic body to the pose over the next step; outside a world it is placed there. */
-  setKinematicTarget(matrix: Matrix4): this {
-    if (this.bodyType !== "kinematic")
-      throw new Error("Kinematic targets require a kinematic body");
-    assertRigidTransform(matrix);
-    if (this.world) this.world.setKinematicTarget(this, matrix);
-    else setWorldPose(this, matrix);
+  /** Moves a kinematic body to the pose over the next step; outside every world it is placed there. */
+  setKinematicTarget(pose: Matrix4): this {
+    const world = sceneWorld(this);
+    if (world) world.setKinematicTarget(this, pose);
+    else {
+      assertBodyType(this, "kinematic", "A kinematic target");
+      assertRigidTransform(pose);
+      setWorldPose(this, pose);
+    }
     return this;
   }
   applyImpulse(impulse: Vector3, point?: Vector3): void {
-    validateVector(impulse);
-    if (point) validateVector(point);
-    this.assertDynamic("An impulse");
-    requireWorld(this).applyImpulse(this, impulse, point);
+    commandWorld(this).applyImpulse(this, impulse, point);
   }
   applyForce(force: Vector3, point?: Vector3): void {
-    validateVector(force);
-    if (point) validateVector(point);
-    this.assertDynamic("A force");
-    requireWorld(this).applyForce(this, force, point);
+    commandWorld(this).applyForce(this, force, point);
   }
   wake(): void {
-    requireWorld(this).wake(this);
+    commandWorld(this).wake(this);
   }
   sleep(): void {
-    requireWorld(this).sleep(this);
+    commandWorld(this).sleep(this);
   }
 
   override clone(recursive = true): this {
@@ -214,10 +217,21 @@ export class RigidBody extends Group<RigidBodyEventMap> {
 
   /** Copies the settings of a body that shares these options, such as a clone. */
   override copy(source: this, recursive = true): this {
+    if (source === this) return this;
     if (source.options !== this.options)
       throw new Error("Rigid body copy requires the same immutable options");
     super.copy(source, recursive);
-    if (this.bodyType === "dynamic") this.setVelocity(source.getVelocity());
+    if (this.bodyType === "dynamic") {
+      // Live state only for joined bodies, so copying never joins a body waiting to join.
+      const from = sceneWorld(source);
+      const velocity =
+        from && source.world === from
+          ? from.getVelocity(source)
+          : authoredVelocity(source);
+      const to = sceneWorld(this);
+      if (to && this.world === to) to.setVelocity(this, velocity);
+      else keepVelocity(this, velocity);
+    }
     this.setLinearDamping(source.linearDamping)
       .setAngularDamping(source.angularDamping)
       .setGravityScale(source.gravityScale)
@@ -268,18 +282,22 @@ export function ancestorBody(object: Object3D): RigidBody | undefined {
   return parent ?? undefined;
 }
 
-/** Returns a function that puts the object's local transform back as it is now. */
-function saveTransform(object: Object3D): () => void {
-  const position = object.position.clone();
-  const quaternion = object.quaternion.clone();
-  const scale = object.scale.clone();
-  return () => {
-    object.position.copy(position);
-    object.quaternion.copy(quaternion);
-    object.scale.copy(scale);
-    object.updateMatrix();
-    object.updateMatrixWorld(true);
-  };
+export function validateVelocity(
+  body: RigidBody,
+  value: Partial<PhysicsVelocity>,
+): void {
+  if (value.linear) validateVector(value.linear);
+  if (value.angular) validateVector(value.angular);
+  assertBodyType(body, "dynamic", "Velocity");
+}
+
+export function assertBodyType(
+  body: RigidBody,
+  type: RigidBodyType,
+  subject: string,
+): void {
+  if (body.bodyType !== type)
+    throw new Error(`${subject} requires a ${type} body`);
 }
 
 function validateDamping(value: number): void {

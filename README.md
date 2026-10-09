@@ -61,31 +61,37 @@ under `options.scene` and prepares them, without advancing time. `scene` may be 
 
 Before every `update`, step, and query, the world traverses `scene`: objects added
 under it join, objects removed from it leave. Joining prepares the object in the
-backend and sets `object.world`. Leaving clears it.
+backend and sets the read-only `object.world`. Leaving clears it.
 
-- An object belongs to at most one world. A world that would take over another
-  world's member throws.
+- A scene has at most one live world; building a second throws until the first is
+  disposed.
+- An object belongs to at most one world. Moved under another world's scene, it
+  leaves its old world as the new one takes it; under the scenes of two worlds at
+  once, it throws.
 - A joint under `scene` whose body is not under `scene` throws on the next update.
-- Joining captures scale and joint anchors, so finish them before the next update
-  or query. Recreate the object to change them later.
+- Joining captures scale and joint anchors, so finish them before the object joins.
+  Recreate the object to change them later.
 - A failed build disposes the world and leaves the scene as authored.
 
-| Member                            | Description                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------------ |
-| `update(delta)`                   | Advances by `delta` seconds in fixed steps                                     |
-| `reset()`                         | Returns members to the state captured when they first joined; `time` becomes 0 |
-| `raycast(...)`                    | Closest hit, see [Raycasts](#raycasts)                                         |
-| `onBeforeStep(cb)`                | Called with `fixedDelta` before each step; returns an unsubscribe function     |
-| `onAfterStep(cb)`                 | Called after each step and its events; returns an unsubscribe function         |
-| `time`                            | Simulated seconds of completed steps                                           |
-| `scene`, `fixedDelta`, `disposed` | Read-only state                                                                |
-| `dispose()`                       | Frees native resources; members leave the world                                |
+| Member                                       | Description                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `update(delta)`                              | Advances by `delta` seconds in fixed steps                                       |
+| `reset()`                                    | Syncs, then returns members to the state captured when they joined; `time` = 0   |
+| `raycast(...)`                               | Closest hit, see [Raycasts](#raycasts)                                           |
+| `decompose(root)`                            | Prepares convex parts, see [Triangle meshes](#triangle-meshes-and-decomposition) |
+| `onBeforeStep(cb)`                           | Called with `fixedDelta` before each step; returns an unsubscribe function       |
+| `onAfterStep(cb)`                            | Called after each step and its events; returns an unsubscribe function           |
+| `time`                                       | Simulated seconds of completed steps                                             |
+| `scene`, `gravity`, `fixedDelta`, `disposed` | Read-only state                                                                  |
+| `dispose()`                                  | Frees native resources; members leave the world                                  |
 
-`update` and `reset` throw when called from a step callback or event listener.
+`update` and `reset` throw when called from a step callback or event listener. A
+callback added during a step first runs at the next step. A step that throws ends
+the update; the steps it completed count, and the rest of its time is dropped.
 
-### Commands before and after joining
+### Commands inside and outside a world
 
-| Method                                        | Before joining               | After joining           |
+| Method                                        | Outside every world's scene  | Under a world's scene   |
 | --------------------------------------------- | ---------------------------- | ----------------------- |
 | `getVelocity()`, `setVelocity()`              | Read/write authored velocity | Live                    |
 | `teleport(pose)`                              | Moves the object             | Moves it in the backend |
@@ -94,14 +100,25 @@ backend and sets `object.world`. Leaving clears it.
 | `trigger.overlaps`, `getOverlappingBodies`    | Throws                       | Live                    |
 | joint `getState()`                            | Reads the authored scene     | Live                    |
 
-An object joins at the world's next `update`, step, or query; `world.update(0)` joins it
-now without advancing time. Before-step callbacks see the objects added since the last
-step. A body joins with its authored velocity, which `reset()` restores, and keeps its
-simulated velocity when it leaves. If joining fails, the object stays unjoined and joins
-afresh, with its current authored state, once the error is fixed.
+An object joins at the world's next `update`, step, or query, or at the first command
+that reaches it, so a command right after adding an object works in any loop order
+and inside step callbacks. Before-step callbacks see the objects added since the last
+step. A body joins with the velocity it was authored with outside a world, which
+`reset()` restores, and keeps its simulated velocity when it leaves. If joining fails,
+the object stays unjoined, the command throws, and the object joins afresh once the
+error is fixed. Until the object is fixed or removed, `update`, queries, and commands
+on objects that have not joined yet throw too: a failed join is not isolated to its
+object. An object's reads and commands sync the world it sits under, and the world it
+left, so they can throw the join errors of those worlds' other objects.
+
+The world methods `getVelocity`, `setVelocity`, `teleport`, `setKinematicTarget`,
+`applyImpulse`, `applyForce`, `wake`, `sleep`, and `getOverlappingBodies` take the
+object as their first argument. Unlike the object's methods, they only act on objects
+under the world's scene and throw for any other.
 
 Velocity, forces, and impulses require a dynamic body. `teleport` moves every
-dynamic body jointed to the body along with it. An assembly jointed to the world or
+dynamic body jointed to the body along with it, following the joints that have
+joined (it syncs first). An assembly jointed to the world or
 a static or kinematic base can only move within those joints; backends differ in
 how they handle that.
 
@@ -130,6 +147,7 @@ new RigidBody({
   `mass`, `centerOfMass`, `diagonalInertia`, and optional `principalAxes`
   (`[x, y, z, w]`) in body-local units. Explicit values are not scaled by
   transforms. A dynamic body without colliders needs complete mass properties.
+- Unknown option keys throw.
 - Methods: `setVelocity`, `setLinearDamping`, `setAngularDamping` (rates in 1/s),
   `setGravityScale`, `setMaterial`, `setCollisionGroups`, plus the commands above.
 - Events: `contactbegin` and `contactend` with `{ otherBody }`.
@@ -164,9 +182,15 @@ Collision groups are `{ membership, filter }` 16-bit masks. A pair collides when
 
 Where a backend cannot collide a `trimesh` as triangles (moving bodies in Rapier,
 everything in MuJoCo), the world decomposes it into convex parts with CoACD when it is
-built. A mesh added or edited after the build collides as one convex hull. CoACD needs
-closed, consistently wound surfaces; open surfaces fail the build, so use
-`"convexHull"` where one hull is enough.
+built. For a mesh added or edited after the build, `await world.decompose(object)`
+before it joins; joining without parts throws and says so. CoACD needs closed,
+consistently wound surfaces; open surfaces fail, so use `"convexHull"` where one hull
+is enough.
+
+```ts
+await world.decompose(asset); // only decomposes what this backend needs
+scene.add(asset);
+```
 
 CoACD is embedded as a lazily imported module with inline WASM, so no asset hosting or
 bundler configuration is needed. It runs on the calling thread. In Node 20.16+, parts
@@ -300,6 +324,8 @@ goal.addEventListener("exit", ({ body }) => console.log("left", body));
 - `overlaps(body)` and `getOverlappingBodies()` read the last completed step.
 - Events dispatch after the step, before `onAfterStep`. Removing an object from the
   scene ends its overlaps and contacts; `reset()` and `dispose()` clear them silently.
+- A throwing listener does not stop delivery: every queued event, including those
+  other listeners queue, is delivered before the errors are rethrown.
 - Triggers do not detect other triggers.
 
 ### Raycasts
@@ -320,10 +346,15 @@ or the visual mesh an automatic collider stands for), plus
 
 ### Cloning
 
-`body.clone()` and `joint.clone()` keep joint body references. To clone a mechanism,
-use `clone(root)`, which reconnects joints to the cloned bodies (like
-`SkeletonUtils.clone`). Geometry and materials stay shared. Clones are simulated once
-added under a world's scene.
+To clone anything holding joints, use `clone(root)`, which reconnects joints to the
+cloned bodies (like `SkeletonUtils.clone`). `joint.clone()`, and so a three.js
+`clone()` or `copy()` of a hierarchy holding a joint, throws, since the copy would
+still connect the original bodies. Geometry and materials stay shared. Clones are
+simulated once added under a world's scene.
+
+`RigidBody`, `Joint`, `Trigger`, and `Collider` carry `isPhysicsObject = true`, like
+three's `isMesh`, so a host can find physics in a subtree without importing a
+backend.
 
 ## Conventions
 
@@ -344,25 +375,43 @@ approximating.
 
 `@drawcall/physics/backend` holds the adapter API; scene code never needs it. A backend:
 
-1. Extends `PhysicsWorld` and implements `add`, `remove`, `prepare`, `step`,
-   `restore`, `free`, and `cast`, plus the member commands (`getVelocity`,
-   `setVelocity`, `teleport`, `setKinematicTarget`, `applyImpulse`, `applyForce`,
-   `wake`, `sleep`, `readJoint`). The base class syncs membership with the scene,
-   sets `object.world`, runs the fixed clock and callbacks, and dispatches events.
-   Each command arrives validated and only for members.
-2. Exports `buildWorld(options)`: await the engine and
-   `prepareConvexParts(options.scene, needs)` if it cannot collide some triangle meshes, then
-   return `build(new MyWorld(...))`.
+1. Extends `PhysicsWorld`, passing `super(options, decomposes)`, where `decomposes(body,
+geometry)` selects the triangle meshes it collides as convex parts.
+2. Implements the protected hooks:
+
+   | Hook                                                   | Does                                                     |
+   | ------------------------------------------------------ | -------------------------------------------------------- |
+   | `add(object)`, `remove(object)`                        | An object joins (joints after their bodies) or leaves    |
+   | `prepare()`                                            | Reconciles the members' authored changes                 |
+   | `step()`                                               | Advances one fixed step and writes poses back            |
+   | `restore()`, `free()`                                  | Returns members to their join state; frees native memory |
+   | `cast(origin, unitDirection, maxDistance, options)`    | Closest raycast hit                                      |
+   | `readVelocity(body)`, `writeVelocity(body, value)`     | Live velocity                                            |
+   | `writePoses(bodies)`                                   | Adopts the scene poses a teleport wrote for these bodies |
+   | `writeTarget(body, pose)`                              | Kinematic target for the next step                       |
+   | `writeImpulse(body, impulse, point?)`, `writeForce(…)` | Impulse now; force over the next step                    |
+   | `writeSleeping(body, sleeping)`                        | Sleep or wake                                            |
+   | `jointReading(joint)`                                  | The joint's reading, usually `JointBinding.read(motion)` |
+
+   The base class syncs membership with the scene, sets `object.world`, runs the fixed
+   clock and callbacks, dispatches events, and validates every command: hooks are
+   called only for joined members, with finite vectors, rigid poses, a unit ray
+   direction, valid collision groups, and the body type the command needs. A body's
+   join velocity is `authoredVelocity(body)`; `Initial` types the pose and velocity
+   `restore()` returns it to.
+
+3. Exports `buildWorld(options)`: await the engine, then return
+   `build(new MyWorld(...))`, which decomposes the scene's meshes and joins its objects.
 
 `prepare()` reconciles authored changes. Bodies, joints, triggers, and colliders count
 setting changes in `version`; `geometryVersion(geometry)` tracks geometry edits.
 `step()` should write poses back with `setWorldPose` and report overlaps and contacts
 through `this.interactions.replace(...)`.
 
-Helpers: `authoredJointReading`, `JointBinding`, `wrapAngle`, `dofState` (joint readings);
-`assembly`, `treeJoint`, `unconstrained` (joint graphs); `convexParts`;
-`resolveCollisionGroups`, `validateGroups`, `validateVector`, `axisVector`;
-`cleanup` and `rollback` (error aggregation).
+Helpers: `authoredJointReading`, `JointBinding`, `wrapAngle`,
+`dofState` (joint readings); `treeJoint`, `unconstrained` (joint graphs);
+`convexParts`; `lockScale` (scale fixed on joining); `resolveCollisionGroups`,
+`axisVector`; `cleanup` and `rollback` (error aggregation).
 
 The Rapier package's tests are the executable contract. Start a new backend from them
 and keep each engine limitation as a test next to its rejection, as

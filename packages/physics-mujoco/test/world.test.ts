@@ -173,7 +173,7 @@ test("fixed and spherical joints keep anchors together", async () => {
   );
   const ball = body();
   ball.position.set(2, -1, 0);
-  const joint = add(
+  add(
     new SphericalJoint({
       body0: null,
       body1: ball,
@@ -183,7 +183,8 @@ test("fixed and spherical joints keep anchors together", async () => {
   );
   steps(value, 100);
   expect(fixed.position.y).toBeCloseTo(0);
-  expect(value.readJoint(joint).translation.length()).toBeLessThan(1e-6);
+  const anchor1 = new Vector3(0, 1, 0).applyMatrix4(ball.matrixWorld);
+  expect(anchor1.distanceTo(new Vector3(2, 0, 0))).toBeLessThan(1e-6);
 });
 
 test("distance tendon holds a rope length", async () => {
@@ -230,7 +231,7 @@ test("validates options, ownership, scales, and unsupported closed joint chains"
   const a = await createWorld();
   const box = body();
   a.update(0);
-  await expect(createWorld()).rejects.toThrow("another world");
+  await expect(createWorld()).rejects.toThrow("already has a physics world");
   box.scale.x = 2;
   expect(() => a.update(0)).toThrow("scale cannot change");
   box.scale.x = 1;
@@ -253,7 +254,11 @@ test("step callbacks have committed times and can safely dispose the world", asy
 
 test("preserves an initial hinge velocity and continuous turns across recompilation", async () => {
   const value = await createWorld();
-  const box = body().setVelocity({ angular: new Vector3(0, 0, 8) });
+  const box = add(
+    new RigidBody({ mass: 2 })
+      .add(new BoxCollider())
+      .setVelocity({ angular: new Vector3(0, 0, 8) }),
+  );
   const joint = add(
     new RevoluteJoint({
       body0: null,
@@ -357,6 +362,8 @@ test("a friction impedance ratio above 1 needs elliptic cones", async () => {
   await expect(createWorld({ frictionImpedanceRatio: 2 })).rejects.toThrow(
     "needs elliptic friction cones",
   );
+  // The rejected options leave the scene free for a world.
+  expect((await createWorld()).disposed).toBe(false);
 });
 
 test("a stiffer friction impedance slows resting creep without raising the slide limit", async () => {
@@ -453,6 +460,37 @@ test("teleporting a jointed body carries its assembly", async () => {
   steps(value, 1);
   expect(root.position.y).toBeCloseTo(5);
   expect(child.position.x).toBeCloseTo(2);
+});
+
+test("teleports along a joint that waits to join", async () => {
+  const value = await createWorld();
+  const root = body();
+  const child = body();
+  child.position.x = 2;
+  steps(value, 1);
+  const joint = add(new FixedJoint({ body0: root, body1: child }));
+  joint.position.x = 1;
+  root.teleport(new Matrix4().makeTranslation(0, 5, 0));
+  expect(child.position.y).toBeCloseTo(5);
+  steps(value, 1);
+  expect(root.position.y).toBeCloseTo(5);
+  expect(child.position.y).toBeCloseTo(5);
+  expect(child.position.x).toBeCloseTo(2);
+});
+
+test("teleporting a kinematic base carries the arm articulated to it", async () => {
+  const value = await createWorld();
+  const base = body("kinematic");
+  const arm = body();
+  arm.position.x = 2;
+  const joint = add(new RevoluteJoint({ body0: base, body1: arm }));
+  joint.position.x = 1;
+  steps(value, 1);
+  base.teleport(new Matrix4().makeTranslation(0, 5, 0));
+  expect(arm.position.toArray().map((v) => +v.toFixed(5))).toEqual([2, 5, 0]);
+  steps(value, 1);
+  expect(base.position.y).toBeCloseTo(5);
+  expect(arm.position.y).toBeCloseTo(5);
 });
 
 test("a joint a teleport straddles counts turns again from the new pose", async () => {
@@ -587,4 +625,28 @@ test("fixed joints cannot collide the bodies they hold together", async () => {
     true,
   );
   await expect(createWorld()).rejects.toThrow(/collideConnected/);
+});
+
+for (const order of ["before", "after"] as const)
+  test(`applies an impulse right after a body is added, ${order} the world's update`, async () => {
+    const value = await createWorld();
+    const load = () => {
+      const box = body();
+      box.applyImpulse(new Vector3(4, 0, 0));
+      return box;
+    };
+    const early = order === "before" ? load() : undefined;
+    value.update(value.fixedDelta);
+    const box = early ?? load();
+    expect(box.getVelocity().linear.x).toBeCloseTo(2);
+  });
+
+test("reads a trigger's overlaps right after it is added", async () => {
+  const value = await createWorld();
+  const box = body();
+  steps(value, 1);
+  const zone = add(new Trigger().add(new BoxCollider({ size: [2, 2, 2] })));
+  expect(zone.getOverlappingBodies()).toEqual([]);
+  steps(value, 1);
+  expect(zone.overlaps(box)).toBe(true);
 });

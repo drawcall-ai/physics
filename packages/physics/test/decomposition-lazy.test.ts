@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { BoxGeometry, Group } from "three";
 import { BoxCollider, MeshCollider, RigidBody } from "../src/index.js";
-import { prepareConvexParts } from "../src/backend.js";
+import { prepareConvexParts } from "../src/colliders/decomposition.js";
 
 const load = vi.fn();
 vi.mock("../src/colliders/coacd.js", () => ({ default: load }));

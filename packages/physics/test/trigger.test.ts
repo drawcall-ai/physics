@@ -103,16 +103,13 @@ it("clones trigger ownership and settings without copying listeners", () => {
   expect(listener).not.toHaveBeenCalled();
 });
 
-it("fails visibly for overlap reads before it joins a world", () => {
+it("fails visibly for overlap reads outside every world's scene", () => {
   const trigger = new Trigger();
   const body = new RigidBody();
   expect(() => trigger.getOverlappingBodies()).toThrow(
-    "has not joined a world yet",
+    "outside every world's scene",
   );
-  expect(() => trigger.overlaps(body)).toThrow("has not joined a world yet");
-  expect(() => trigger.overlaps(new RigidBody())).toThrow(
-    "has not joined a world yet",
-  );
+  expect(() => trigger.overlaps(body)).toThrow("outside every world's scene");
 });
 
 it("types trigger and contact payloads while preserving Three.js scene events", () => {

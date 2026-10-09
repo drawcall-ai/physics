@@ -10,7 +10,11 @@ import {
   type RigidBody,
   type Trigger,
 } from "@drawcall/physics";
-import { colliderSources, geometryVersion } from "@drawcall/physics/backend";
+import {
+  colliderSources,
+  geometryVersion,
+  lockScale,
+} from "@drawcall/physics/backend";
 import { Mesh, type Object3D, Vector3 } from "three";
 
 /** What a member's compiled model is made from; a different fingerprint needs a rebuild. */
@@ -69,21 +73,18 @@ export function sameFingerprints(a: Fingerprints, b: Fingerprints): boolean {
 
 /**
  * The world scales of the owners and their collider sources, which must match those `locked`
- * holds: the compiled model bakes scale in when an object first enters it.
+ * holds: the compiled model bakes in an object's scale when it first holds it.
  */
 export function lockScales(
   owners: Iterable<RigidBody | Trigger>,
   locked: ReadonlyMap<Object3D, Vector3>,
 ): Map<Object3D, Vector3> {
   const scales = new Map<Object3D, Vector3>();
-  const lock = (object: Object3D, scale: Vector3) => {
-    const previous = locked.get(object);
-    if (previous && previous.distanceTo(scale) > 1e-6)
-      throw new Error(
-        `Physics scale cannot change after backend initialization: ${object.name || object.type}; recreate the body`,
-      );
-    scales.set(object, previous ?? scale);
-  };
+  const lock = (object: Object3D, scale: Vector3) =>
+    scales.set(
+      object,
+      lockScale(object.name || object.type, locked.get(object), scale),
+    );
   for (const owner of owners) {
     const transform = splitTransform(owner.matrixWorld);
     lock(owner, transform.scale);

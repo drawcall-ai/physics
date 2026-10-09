@@ -16,9 +16,9 @@ import {
 } from "./shapes.js";
 
 export class TriggerBinding {
-  key = "";
-  /** The authored collider behind each Rapier sensor handle. */
-  sources = new Map<number, Object3D>();
+  fingerprint = "";
+  /** The authored collider behind each Rapier sensor. */
+  sources = new Map<Rapier.Collider, Object3D>();
   scales = new Map<Object3D, Vector3>();
   /**
    * Rapier omits fixed/fixed pairs, even sensors. A private kinematic carrier keeps a trigger
@@ -27,10 +27,13 @@ export class TriggerBinding {
   carrier: Rapier.RigidBody | undefined = undefined;
 }
 
-/** Rebuilds the sensors when their shapes, placement, groups or carrying body changed. */
+/**
+ * Rebuilds the sensors when their shapes, placement, groups or carrying body changed, or when a
+ * carrying body that left took them along.
+ */
 export function prepareTrigger(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   object: Trigger,
   binding: TriggerBinding,
   bodies: ReadonlyMap<RigidBody, BodyBinding>,
@@ -39,24 +42,27 @@ export function prepareTrigger(
   const parent = ancestorBody(object);
   const frame = parent ?? object;
   const moving = parent?.bodyType === "static" ? undefined : parent;
-  const key = JSON.stringify([
+  const current = JSON.stringify([
     object.collisionGroups,
     parent?.uuid,
     moving ? undefined : object.matrixWorld.elements,
     colliders.map((collider) => fingerprint(collider, frame)),
   ]);
-  if (key === binding.key) return;
+  const intact = [...binding.sources.keys()].every((sensor) =>
+    sensor.isValid(),
+  );
+  if (current === binding.fingerprint && intact) return;
   const resolved = colliders.map((collider) =>
     resolve(frame, collider, binding.scales),
   );
-  removeColliders(native, binding.sources);
+  removeColliders(simulation, binding.sources);
   if (moving && binding.carrier) {
-    native.removeRigidBody(binding.carrier);
+    simulation.removeRigidBody(binding.carrier);
     binding.carrier = undefined;
   }
   const body = moving
     ? bodies.get(moving)?.native
-    : (binding.carrier ??= native.createRigidBody(
+    : (binding.carrier ??= simulation.createRigidBody(
         api.RigidBodyDesc.kinematicPositionBased(),
       ));
   if (!body) throw new Error("Trigger's body is outside the world");
@@ -66,21 +72,18 @@ export function prepareTrigger(
       .setDensity(0)
       .setSensor(true)
       .setActiveCollisionTypes(api.ActiveCollisionTypes.ALL);
-    binding.sources.set(
-      native.createCollider(desc, body).handle,
-      collider.source,
-    );
+    binding.sources.set(simulation.createCollider(desc, body), collider.source);
   }
   binding.scales = new Map(
     resolved.map(({ collider, scale }) => [collider.source, scale]),
   );
-  binding.key = key;
+  binding.fingerprint = current;
 }
 
 export function releaseTrigger(
-  native: Rapier.World,
+  simulation: Rapier.World,
   binding: TriggerBinding,
 ): void {
-  removeColliders(native, binding.sources);
-  if (binding.carrier) native.removeRigidBody(binding.carrier);
+  removeColliders(simulation, binding.sources);
+  if (binding.carrier) simulation.removeRigidBody(binding.carrier);
 }

@@ -38,6 +38,7 @@ function positive(value: number): number {
   return value;
 }
 export abstract class Collider extends Object3D {
+  readonly isPhysicsObject = true;
   source: Object3D = this;
   /** Counts material and collision group changes, so backends reconcile only what changed. */
   version = 0;

@@ -9,6 +9,7 @@ import {
 import {
   convexParts,
   geometryVersion,
+  lockScale,
   resolveCollisionGroups,
 } from "@drawcall/physics/backend";
 import { Quaternion, Vector3, type Matrix4, type Object3D } from "three";
@@ -17,8 +18,7 @@ type Resolved = ReturnType<typeof resolveCollider>;
 
 /**
  * Rapier colliders for one authored body collider. Rapier keeps real triangle meshes for static
- * bodies; on a moving body a triangle mesh collides as the convex parts prepared when the world
- * was built, or as one hull without them.
+ * bodies; on a moving body a triangle mesh collides as its prepared convex parts.
  */
 export function colliderDescs(
   api: typeof Rapier,
@@ -33,15 +33,11 @@ export function colliderDescs(
     shape.kind === "mesh" &&
     shape.approximation === "trimesh" &&
     body.bodyType !== "static";
-  const parts = moving ? convexParts(collider, scale) : undefined;
-  const descs = parts
-    ? parts.map((part) => hull(api, new Float32Array(part)))
-    : [
-        descriptor(
-          api,
-          moving ? { ...shape, approximation: "convexHull" } : shape,
-        ),
-      ];
+  const descs = moving
+    ? convexParts(collider, scale).map((part) =>
+        hull(api, new Float32Array(part)),
+      )
+    : [descriptor(api, shape)];
   return descs.map((desc) =>
     place(desc, matrix, collider, body)
       .setDensity(material.density)
@@ -120,20 +116,7 @@ export function resolve(
   const captured = scales.get(collider.source);
   const resolved = resolveCollider(owner, collider, captured);
   const name = `${owner.name}/${collider.name || collider.type}`;
-  assertScale("Collider", name, captured, resolved.scale);
-  return { ...resolved, scale: captured ?? resolved.scale };
-}
-
-export function assertScale(
-  kind: "Body" | "Collider",
-  name: string,
-  captured: Vector3 | undefined,
-  scale: Vector3,
-): void {
-  if (captured && captured.distanceTo(scale) > 1e-6)
-    throw new Error(
-      `${kind} scale cannot change after backend initialization: ${name} (${captured.toArray()} → ${scale.toArray()}); recreate it`,
-    );
+  return { ...resolved, scale: lockScale(name, captured, resolved.scale) };
 }
 
 /** What decides the collider's Rapier form, relative to `owner`. */
@@ -156,14 +139,15 @@ export function fingerprint(collider: Collider, owner: Object3D): unknown {
   return [collider.source.uuid, data, transform, collider.version];
 }
 
-/** Removes the colliders behind `sources`; those of a removed body went with it. */
+/**
+ * Removes the colliders behind `sources`. Those of a removed body went with it, and Rapier may
+ * already have reused their handles, so only colliders that are still valid are removed.
+ */
 export function removeColliders(
-  native: Rapier.World,
-  sources: Map<number, Object3D>,
+  simulation: Rapier.World,
+  sources: Map<Rapier.Collider, Object3D>,
 ): void {
-  for (const handle of sources.keys()) {
-    const collider = native.getCollider(handle);
-    if (collider) native.removeCollider(collider, true);
-  }
+  for (const collider of sources.keys())
+    if (collider.isValid()) simulation.removeCollider(collider, true);
   sources.clear();
 }

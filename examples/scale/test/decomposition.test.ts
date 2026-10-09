@@ -40,10 +40,17 @@ test.each([
   30000,
 );
 
-test("the same right frame blocks the opening if added after building", async () => {
+test("the right frame needs world.decompose when added after building", async () => {
   const world = await buildWorld({ scene: new Scene() });
+  worlds.push(world);
   const { root, lanes } = decomposition();
   world.scene.add(root);
+  expect(() => world.update(world.fixedDelta)).toThrow(
+    "await world.decompose(object)",
+  );
+  await world.decompose(root);
   for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
-  for (const { cube } of lanes) expect(cube.position.y).toBeCloseTo(2.45, 2);
-});
+  const [left, right] = lanes;
+  expect(left?.cube.position.y).toBeCloseTo(2.45, 2);
+  expect(right?.cube.position.y).toBeCloseTo(0.25, 2);
+}, 30000);

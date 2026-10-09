@@ -20,6 +20,22 @@ export function assertPositiveScale(node: Object3D, subject: string): void {
     );
 }
 
+/**
+ * The scale an object joined with, which `scale` must still match: backends bake scale in as an
+ * object joins. `locked` is undefined while it joins.
+ */
+export function lockScale(
+  name: string,
+  locked: Vector3 | undefined,
+  scale: Vector3,
+): Vector3 {
+  if (locked && locked.distanceTo(scale) > 1e-6)
+    throw new Error(
+      `Physics scale cannot change after joining: ${name} (${locked.toArray()} → ${scale.toArray()}); recreate the object`,
+    );
+  return locked ?? scale;
+}
+
 /** The unit vector an axis token names. */
 export function axisVector(axis: "X" | "Y" | "Z"): Vector3 {
   if (axis === "X") return new Vector3(1, 0, 0);

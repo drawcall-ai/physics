@@ -1,13 +1,14 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
+import { splitTransform, type RigidBody } from "@drawcall/physics";
 import {
-  splitTransform,
-  type PhysicsVelocity,
-  type RigidBody,
-} from "@drawcall/physics";
-import { setWorldPose } from "@drawcall/physics/backend";
+  authoredVelocity,
+  lockScale,
+  rollback,
+  setWorldPose,
+  type Initial,
+} from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import {
-  assertScale,
   colliderDescs,
   fingerprint,
   removeColliders,
@@ -16,23 +17,19 @@ import {
 
 export class BodyBinding {
   readonly native: Rapier.RigidBody;
-  /** The pose and velocity `reset()` restores, captured as the body joins. */
-  readonly initialPose: Matrix4;
-  readonly initialVelocity: PhysicsVelocity;
+  readonly initial: Initial;
   readonly scale: Vector3;
-  /** The authored collider or mesh behind each Rapier collider handle. */
-  sources = new Map<number, Object3D>();
+  /** The authored collider or mesh behind each Rapier collider. */
+  sources = new Map<Rapier.Collider, Object3D>();
   scales = new Map<Object3D, Vector3>();
-  key = "";
+  fingerprint = "";
   version = -1;
 
-  constructor(api: typeof Rapier, native: Rapier.World, object: RigidBody) {
+  constructor(api: typeof Rapier, simulation: Rapier.World, object: RigidBody) {
     object.validate();
     const { pose, scale } = splitTransform(object.matrixWorld);
-    // The body has no world yet, so this is the velocity it was given outside one.
-    this.initialVelocity = object.getVelocity();
-    const { linear, angular } = this.initialVelocity;
-    this.initialPose = pose;
+    this.initial = { pose, velocity: authoredVelocity(object) };
+    const { linear, angular } = this.initial.velocity;
     this.scale = scale;
     const desc =
       object.bodyType === "static"
@@ -47,21 +44,21 @@ export class BodyBinding {
       .setCanSleep(object.options.canSleep)
       .setLinvel(linear.x, linear.y, linear.z)
       .setAngvel(angular);
-    this.native = native.createRigidBody(desc);
+    this.native = simulation.createRigidBody(desc);
   }
 }
 
 /** Follows authored collider and settings changes; scale is fixed as the body joins. */
 export function prepareBody(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   object: RigidBody,
   binding: BodyBinding,
 ): void {
   object.validate();
   const { scale } = splitTransform(object.matrixWorld);
-  assertScale("Body", object.name || object.type, binding.scale, scale);
-  prepareColliders(api, native, object, binding);
+  lockScale(object.name || object.type, binding.scale, scale);
+  prepareColliders(api, simulation, object, binding);
   if (object.bodyType === "dynamic") assertDynamicMass(binding.native);
   if (object.version === binding.version) return;
   binding.native.setLinearDamping(object.linearDamping);
@@ -94,17 +91,17 @@ export function writePose(body: Rapier.RigidBody, pose: Matrix4): void {
  */
 function prepareColliders(
   api: typeof Rapier,
-  native: Rapier.World,
+  simulation: Rapier.World,
   object: RigidBody,
   binding: BodyBinding,
 ): void {
   const colliders = object.getColliders();
-  const key = JSON.stringify([
+  const current = JSON.stringify([
     object.material,
     object.collisionGroups,
     colliders.map((collider) => fingerprint(collider, object)),
   ]);
-  if (key === binding.key) return;
+  if (current === binding.fingerprint) return;
   const { options } = object;
   const body = binding.native;
   const resolved = colliders.map((collider) =>
@@ -112,18 +109,17 @@ function prepareColliders(
   );
   // Explicit mass properties replace what the colliders would contribute.
   const explicit = options.centerOfMass !== undefined;
-  const sources = new Map<number, Object3D>();
-  const created: Rapier.Collider[] = [];
+  const sources = new Map<Rapier.Collider, Object3D>();
   try {
     for (const part of resolved)
       for (const desc of colliderDescs(api, part, object)) {
-        const collider = native.createCollider(
+        const collider = simulation.createCollider(
           explicit ? desc.setDensity(0) : desc,
           body,
         );
-        created.push(collider);
-        sources.set(collider.handle, part.collider.source);
+        sources.set(collider, part.collider.source);
       }
+    const created = [...sources.keys()];
     if (options.mass !== undefined && created.length && !explicit)
       distributeMass(created, options.mass);
     if (
@@ -133,10 +129,13 @@ function prepareColliders(
     )
       throw new Error("Dynamic body requires positive mass and inertia");
   } catch (error) {
-    removeColliders(native, sources);
-    throw error;
+    rollback(
+      error,
+      [() => removeColliders(simulation, sources)],
+      "Collider rebuild rollback failed",
+    );
   }
-  removeColliders(native, binding.sources);
+  removeColliders(simulation, binding.sources);
   if (explicit)
     body.setAdditionalMassProperties(
       options.mass,
@@ -151,7 +150,7 @@ function prepareColliders(
   binding.scales = new Map(
     resolved.map(({ collider, scale }) => [collider.source, scale]),
   );
-  binding.key = key;
+  binding.fingerprint = current;
 }
 
 /** Splits an explicit total mass across the colliders in proportion to their volume. */

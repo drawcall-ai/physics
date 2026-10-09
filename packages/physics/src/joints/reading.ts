@@ -186,6 +186,12 @@ export class JointBinding {
   rebase(): void {
     this.continuous = this.sampled = this.measure();
   }
+  /** Restarts turn counting if a teleport moved one of the joint's bodies but not the other. */
+  rebaseIfSplit(moved: ReadonlySet<RigidBody>): void {
+    const { body0, body1 } = this.joint.options;
+    if ((body0 !== null && moved.has(body0)) !== moved.has(body1))
+      this.rebase();
+  }
   /** Counts the turns since the last sample; motion must stay below π per sample. */
   track(): void {
     const angle = this.measure();
@@ -196,8 +202,4 @@ export class JointBinding {
   private measure(): number {
     return authoredJointReading(this.joint, this.frames, still).angle;
   }
-}
-
-export function readJoint(object: Joint): JointReading {
-  return object.world?.readJoint(object) ?? authoredJointReading(object);
 }
