@@ -24,7 +24,7 @@ let current: ReturnType<typeof specimen> | undefined = specimen(
   true,
 );
 scene.add(current.root);
-const world = await buildWorld(scene);
+const world = await buildWorld({ scene });
 world.onAfterStep((delta) => current?.step(delta));
 let checking = false;
 let status = "";
@@ -49,24 +49,11 @@ function show() {
   scene.add(current.root);
   added++;
   status =
-    spec.type === "kinematic"
+    spec.bodyType === "kinematic"
       ? "Moving kinematic lift · teal cubes ride its collider"
       : "Spinning drop · R removes and drops it again";
 }
-const demo = view(
-  {
-    update(delta) {
-      if (checking) return;
-      world.update(delta);
-    },
-    dispose() {
-      remove();
-      world.dispose();
-    },
-  },
-  scene,
-  new THREE.Vector3(0, 2, 0),
-);
+const demo = view(world, scene, new THREE.Vector3(0, 2, 0));
 async function checkAll() {
   if (checking) return;
   remove();
@@ -100,52 +87,35 @@ async function checkAll() {
   }
   show();
 }
-select.addEventListener("change", show, { signal: demo.signal });
+select.addEventListener("change", show);
 for (const [id, index] of [
   ["compound", cases.findIndex((spec) => spec.compound)],
   [
     "kinematic",
-    cases.findIndex((spec) => spec.type === "kinematic" && !spec.error),
+    cases.findIndex((spec) => spec.bodyType === "kinematic" && !spec.error),
   ],
 ] as const) {
-  document.getElementById(id)?.addEventListener(
-    "click",
-    () => {
-      if (checking) return;
-      select.selectedIndex = index;
-      show();
-    },
-    { signal: demo.signal },
-  );
+  document.getElementById(id)?.addEventListener("click", () => {
+    if (checking) return;
+    select.selectedIndex = index;
+    show();
+  });
 }
 document
   .querySelector("#check")
-  ?.addEventListener("click", () => void checkAll(), { signal: demo.signal });
-document
-  .querySelector("#recreate")
-  ?.addEventListener("click", show, { signal: demo.signal });
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (checking) return;
-    if (event.code === "KeyX") {
-      remove();
-      status = "Removed. R recreates this case.";
-    }
-    if (event.code === "KeyR") show();
-    if (event.code === "KeyN") {
-      select.selectedIndex = (select.selectedIndex + 1) % cases.length;
-      show();
-    }
-  },
-  { signal: demo.signal },
-);
+  ?.addEventListener("click", () => void checkAll());
+document.querySelector("#recreate")?.addEventListener("click", show);
+window.addEventListener("keydown", (event) => {
+  if (checking) return;
+  if (event.code === "KeyX") {
+    remove();
+    status = "Removed. R recreates this case.";
+  }
+  if (event.code === "KeyR") show();
+  if (event.code === "KeyN") {
+    select.selectedIndex = (select.selectedIndex + 1) % cases.length;
+    show();
+  }
+});
 demo.run(() => `${status} · ${added} added / ${removed} removed`);
 void checkAll();
-window.addEventListener(
-  "pagehide",
-  (event) => {
-    if (!event.persisted) demo.dispose();
-  },
-  { signal: demo.signal },
-);

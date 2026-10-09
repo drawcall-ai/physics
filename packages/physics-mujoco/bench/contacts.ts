@@ -56,10 +56,10 @@ const piece = new BufferGeometry()
 const material = { staticFriction: 0.8, dynamicFriction: 0.8 };
 
 const scene = new Scene();
-const desk = new RigidBody({ type: "static" });
+const desk = new RigidBody({ bodyType: "static" });
 desk.add(new BoxCollider({ size: [1, 0.7, 1] }));
 desk.position.y = 0.35;
-const board = new RigidBody({ type: "static" });
+const board = new RigidBody({ bodyType: "static" });
 board.add(new BoxCollider({ size: [0.42, 0.02, 0.42] }));
 board.position.y = 0.71;
 scene.add(desk, board);
@@ -99,7 +99,8 @@ for (const side of [-1, 1]) {
   scene.add(pad, joint);
 }
 
-const world = await buildWorld(scene, {
+const world = await buildWorld({
+  scene,
   fixedDelta: 1 / 500,
   solverIterations: 50,
   frictionCone: "elliptic",

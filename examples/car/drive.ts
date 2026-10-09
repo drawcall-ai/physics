@@ -24,7 +24,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
     const velocity = body.getVelocity().linear;
     return { forward, velocity, speed: velocity.dot(forward) };
   }
-  const unsubscribe = world.onBeforeStep((dt) => {
+  world.onBeforeStep((dt) => {
     const elapsed = world.time + dt;
     const { forward, velocity, speed } = motion();
     const z = car.chassis.position.z;
@@ -66,7 +66,7 @@ export function driveCar(world: PhysicsWorld, car: Car) {
       velocity.clone().multiplyScalar(-0.45 * velocity.length() - 10),
     );
   });
-  const after = world.onAfterStep(() => {
+  world.onAfterStep(() => {
     telemetry.speed = motion().speed;
     telemetry.completed = completed && Math.abs(telemetry.speed) < 0.2;
   });
@@ -78,10 +78,6 @@ export function driveCar(world: PhysicsWorld, car: Car) {
       steering = 0;
       input.throttle = input.steer = input.brake = 0;
       world.reset();
-    },
-    dispose() {
-      unsubscribe();
-      after();
     },
     updateVisuals() {
       for (const wheel of wheels) {

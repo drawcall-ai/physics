@@ -10,9 +10,6 @@ export class Interactions {
   private events: (() => void)[] = [];
   private delivering = false;
 
-  get dispatching(): boolean {
-    return this.delivering;
-  }
   bodies(trigger: Trigger): RigidBody[] {
     return [...(this.overlaps.get(trigger) ?? [])];
   }

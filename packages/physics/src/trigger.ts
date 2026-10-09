@@ -1,22 +1,27 @@
 import { Group, type Object3D, type Object3DEventMap } from "three";
-import { RigidBody, colliderSources } from "./body.js";
-import { Collider, validateGroups, type CollisionGroups } from "./colliders.js";
+import { RigidBody } from "./body.js";
+import { colliderSources } from "./colliders/sources.js";
+import {
+  Collider,
+  validateGroups,
+  type CollisionGroups,
+} from "./colliders/collider.js";
 import { constructLike } from "./construct.js";
-import { validateShape } from "./shapes.js";
-import { assertPositiveScale, assertScaledTransform } from "./transforms.js";
-import { requireWorld } from "./worlds.js";
+import { validateShape } from "./colliders/shapes.js";
+import { assertPositiveScale, splitTransform } from "./transforms.js";
+import { requireWorld, type PhysicsWorld } from "./world.js";
 
 export interface TriggerEventMap extends Object3DEventMap {
   enter: { readonly body: RigidBody };
   exit: { readonly body: RigidBody };
 }
 export class Trigger extends Group<TriggerEventMap> {
+  /** The world simulating this trigger; set by the world as the trigger enters and leaves its scene. */
+  world: PhysicsWorld | undefined = undefined;
+  /** Counts collision group changes, so backends reconcile only what changed. */
+  version = 0;
   private currentGroups?: CollisionGroups;
-  private version = 0;
 
-  get settingsVersion(): number {
-    return this.version;
-  }
   get collisionGroups(): CollisionGroups | undefined {
     return this.currentGroups;
   }
@@ -34,8 +39,8 @@ export class Trigger extends Group<TriggerEventMap> {
   }
   validate(): void {
     this.updateWorldMatrix(true, true);
-    assertScaledTransform(this.matrix, this.name || this.type);
-    assertScaledTransform(this.matrixWorld, this.name || this.type);
+    splitTransform(this.matrix, this.name || this.type);
+    splitTransform(this.matrixWorld, this.name || this.type);
     for (let node: Object3D | null = this; node; node = node.parent) {
       assertPositiveScale(node, "Trigger");
       if (node !== this && node instanceof Trigger)
@@ -55,7 +60,7 @@ export class Trigger extends Group<TriggerEventMap> {
         node = node.parent
       )
         assertPositiveScale(node, "Trigger shape");
-      assertScaledTransform(object.matrixWorld, object.name || object.type);
+      splitTransform(object.matrixWorld, object.name || object.type);
       if (object.material !== undefined)
         throw new Error("Trigger colliders cannot have physics materials");
       const shape = object.shape();

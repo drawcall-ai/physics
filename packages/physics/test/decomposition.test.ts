@@ -9,12 +9,8 @@ import {
   Shape,
   Vector3,
 } from "three";
-import {
-  MeshCollider,
-  RigidBody,
-  convexParts,
-  prepareConvexParts,
-} from "../src/index.js";
+import { MeshCollider, RigidBody } from "../src/index.js";
+import { convexParts, prepareConvexParts } from "../src/backend.js";
 
 // Without node_modules in the working directory, every test decomposes afresh.
 let root: string;

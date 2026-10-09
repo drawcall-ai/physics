@@ -1,12 +1,11 @@
 export {
   type RigidBodyEventMap,
   type RigidBodyType,
-  type MassProperties,
   type RigidBodyOptions,
   RigidBody,
   ancestorBody,
-  colliderSources,
 } from "./body.js";
+export { type MassProperties } from "./mass.js";
 export {
   type Vec3,
   type AutoColliders,
@@ -19,8 +18,8 @@ export {
   CapsuleCollider,
   CylinderCollider,
   MeshCollider,
-} from "./colliders.js";
-export { Joint, type JointOptions } from "./joint.js";
+} from "./colliders/collider.js";
+export { Joint, type JointOptions } from "./joints/joint.js";
 export {
   FixedJoint,
   ScalarJoint,
@@ -31,35 +30,32 @@ export {
   SphericalJoint,
   type DistanceJointOptions,
   DistanceJoint,
-} from "./joints.js";
+} from "./joints/kinds.js";
 export {
   type JointDof,
   jointDofs,
   type DofMotion,
   type GenericJointOptions,
   GenericJoint,
-} from "./generic.js";
+} from "./joints/generic.js";
 export {
-  type PhysicsOptions,
+  type PhysicsWorldOptions,
   type PhysicsVelocity,
+  PhysicsWorld,
+} from "./world.js";
+export {
   type AxisJointState,
   type SphericalJointState,
   type DistanceJointState,
   type JointReading,
-  type RaycastOptions,
-  type RaycastHit,
-  type PhysicsWorld,
-} from "./world.js";
+} from "./joints/reading.js";
+export { type RaycastOptions, type RaycastHit } from "./raycast.js";
 export { clone } from "./clone.js";
 export { splitTransform } from "./transforms.js";
-export { resolveCollider } from "./shapes.js";
+export { resolveCollider } from "./colliders/shapes.js";
 export {
   JointDrive,
   type JointDriveOptions,
   type JointDriveTarget,
-} from "./drive.js";
-
-// Adapter integration; scene code needs none of these.
-export * from "./backend.js";
-
+} from "./joints/drive.js";
 export { Trigger, type TriggerEventMap } from "./trigger.js";

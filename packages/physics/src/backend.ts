@@ -1,27 +1,21 @@
-/** Helpers for simulation and interchange adapters, grouped here and re-exported by the index. */
+/** Helpers for simulation and interchange adapters, published as `@drawcall/physics/backend`. */
+export { build } from "./world.js";
+export { Interactions } from "./interactions.js";
+export { cleanup, rollback } from "./cleanup.js";
 export {
-  validateMaterial,
   validateGroups,
   resolveCollisionGroups,
-} from "./colliders.js";
-export { assertLive } from "./world.js";
-export { assertOwned, buildRooted, worldOf } from "./worlds.js";
+} from "./colliders/collider.js";
+export { validateVector, axisVector, setWorldPose } from "./transforms.js";
 export {
-  validateVector,
-  assertRigidTransform,
-  axisVector,
-  setWorldPose,
-} from "./transforms.js";
-export {
-  authoredVelocity,
-  setAuthoredVelocity,
-  velocityAtPoint,
-} from "./velocity.js";
-export { sceneJointReading, jointReading, wrapAngle } from "./reading.js";
-export { unconstrained, treeJoint, assembly } from "./assembly.js";
-export { constructLike } from "./construct.js";
-export { cleanup, rollback } from "./cleanup.js";
-export { Interactions } from "./interactions.js";
-export { SteppedWorld } from "./stepped.js";
-export { prepareConvexParts, convexParts } from "./decomposition.js";
-export { geometryVersion } from "./geometry.js";
+  type Motion,
+  still,
+  authoredJointReading,
+  wrapAngle,
+  JointBinding,
+} from "./joints/reading.js";
+export { colliderSources } from "./colliders/sources.js";
+export { dofState } from "./joints/generic.js";
+export { unconstrained, treeJoint, assembly } from "./joints/assembly.js";
+export { prepareConvexParts, convexParts } from "./colliders/decomposition.js";
+export { geometryVersion } from "./colliders/geometry.js";

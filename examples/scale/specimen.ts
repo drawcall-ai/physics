@@ -10,6 +10,7 @@ import {
   SphereCollider,
   type PhysicsWorld,
   type AutoColliders,
+  type RigidBodyType,
 } from "@drawcall/physics";
 
 import type { Case } from "./cases";
@@ -25,16 +26,16 @@ export function specimen(spec: Case, spin = false) {
     return new THREE.Mesh(geometry, material);
   }
   function body(
-    type: "dynamic" | "static" | "kinematic",
+    bodyType: RigidBodyType,
     visual: THREE.Mesh,
     colliders: AutoColliders = "auto",
   ) {
     const body = new RigidBody({
-      type,
+      bodyType,
       colliders,
-      ...(type === "static" ? {} : { mass: 2 }),
+      ...(bodyType === "static" ? {} : { mass: 2 }),
     });
-    if (spin && type === "dynamic")
+    if (spin && bodyType === "dynamic")
       body.setVelocity({ angular: new THREE.Vector3(1.4, 0.7, 1.1) });
     body.add(visual);
     return body;
@@ -59,10 +60,10 @@ export function specimen(spec: Case, spin = false) {
   const visual = mesh(geometry, "#eaa65a");
   const platform =
     spec.kind === "triangle mesh" ||
-    spec.type === "kinematic" ||
-    spec.type === "static";
+    spec.bodyType === "kinematic" ||
+    spec.bodyType === "static";
   const target = body(
-    spec.type ?? (spec.kind === "triangle mesh" ? "static" : "dynamic"),
+    spec.bodyType ?? (spec.kind === "triangle mesh" ? "static" : "dynamic"),
     visual,
     spec.kind === "convex hull"
       ? "convexHull"
@@ -146,7 +147,7 @@ export function specimen(spec: Case, spin = false) {
   let initial: THREE.Matrix4 | undefined;
   return {
     step(delta: number) {
-      if (spec.type !== "kinematic") return;
+      if (spec.bodyType !== "kinematic") return;
       initial ??= splitTransform(target.matrixWorld).pose;
       time += delta;
       const position = new THREE.Vector3().setFromMatrixPosition(initial);
@@ -214,7 +215,7 @@ export function specimen(spec: Case, spin = false) {
 
 export function verify(world: PhysicsWorld, spec: Case) {
   const item = specimen(spec);
-  world.root.add(item.root);
+  world.scene.add(item.root);
   const stop = world.onAfterStep(item.step);
   try {
     try {

@@ -4,19 +4,19 @@ import {
   GenericJoint,
   SphericalJoint,
   jointDofs,
-  axisVector,
   type Joint,
   type JointDrive,
   type JointReading,
 } from "@drawcall/physics";
-import { Euler, Matrix4, Quaternion, Vector3 } from "three";
-import { name } from "../values.js";
+import {
+  axisVector,
+  dofState,
+  still,
+  type JointBinding,
+} from "@drawcall/physics/backend";
+import { Euler, Quaternion, Vector3 } from "three";
+import { name } from "./markup.js";
 
-export interface JointRecord {
-  frames: [Matrix4, Matrix4];
-  angle: number;
-  sampled: number;
-}
 export type Coordinate = {
   name: string;
   position: number;
@@ -26,12 +26,12 @@ export type Coordinate = {
 );
 export function jointXml(
   joint: Joint,
-  record: JointRecord,
-  reading: JointReading,
+  binding: JointBinding,
   coordinates: Coordinate[],
 ): string {
+  const reading = binding.read(still);
   validateAlignment(joint, reading);
-  const frame = record.frames[1];
+  const frame = binding.frames[1];
   const position = new Vector3()
     .setFromMatrixPosition(frame)
     .toArray()
@@ -83,7 +83,7 @@ export function jointXml(
         const motion = joint.dofs[axis];
         if (motion === "locked") return "";
         const direction = new Vector3().setComponent(i % 3, 1);
-        const state = joint.getState(axis);
+        const state = dofState(reading, axis);
         return scalar(
           i < 3 ? "slide" : "hinge",
           direction,

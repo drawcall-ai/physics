@@ -13,18 +13,18 @@ import { buildWorld } from "../src/index.js";
 
 for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
   it(`rejects invalid solver iteration count ${solverIterations}`, async () => {
-    await expect(buildWorld(new Scene(), { solverIterations })).rejects.toThrow(
-      "solverIterations must be a positive integer",
-    );
+    await expect(
+      buildWorld({ scene: new Scene(), solverIterations }),
+    ).rejects.toThrow("solverIterations must be a positive integer");
   });
 }
 
 it("rejects a drive velocity limit, which its constant motor force cannot model", async () => {
   const world = await createWorld();
   const body = inertialBody();
-  world.root.add(body);
+  world.scene.add(body);
   const joint = new RevoluteJoint({ body0: null, body1: body });
-  world.root.add(joint);
+  world.scene.add(joint);
   joint.setDrive(
     new JointDrive({ stiffness: 10, maxForce: 1, maxVelocity: 1.5 }).setTarget({
       position: 1,
@@ -37,7 +37,7 @@ it("rejects unequal static and dynamic friction", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
   body.add(new Mesh(new BoxGeometry()));
-  world.root.add(body);
+  world.scene.add(body);
   body.setMaterial({ staticFriction: 1, dynamicFriction: 0.2 });
   expect(() => world.update(world.fixedDelta)).toThrow("friction");
   body.setMaterial({});
@@ -47,8 +47,8 @@ it("rejects unequal static and dynamic friction", async () => {
 it("rejects distance joints with a positive minimum distance", async () => {
   const world = await createWorld();
   const body = inertialBody();
-  world.root.add(body);
-  world.root.add(
+  world.scene.add(body);
+  world.scene.add(
     new DistanceJoint({
       body0: null,
       body1: body,
@@ -63,13 +63,13 @@ it("rejects distance joints with a positive minimum distance", async () => {
 it("rejects ambiguous revolute position goals before stepping, including huge finite targets", async () => {
   const world = await createWorld();
   const body = inertialBody();
-  world.root.add(body);
+  world.scene.add(body);
   const hinge = new RevoluteJoint({
     body0: null,
     body1: body,
     axis: "Z",
   });
-  world.root.add(hinge);
+  world.scene.add(hinge);
   const drive = new JointDrive({ stiffness: 100, damping: 10 });
   hinge.setDrive(drive);
   for (const position of [

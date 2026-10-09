@@ -13,12 +13,11 @@ function hinge() {
   return new RevoluteJoint({ body0: null, body1: new RigidBody() });
 }
 
-it("freezes drive options and starts passive", () => {
+it("keeps drive options and starts passive", () => {
   const options = { stiffness: 10, damping: 2, maxForce: 5 };
   const drive = new JointDrive(options);
-  expect(drive.options).not.toBe(options);
-  options.stiffness = 100;
-  expect(drive.options.stiffness).toBe(10);
+  expect(drive.options).toBe(options);
+  expect(drive.clone().options).toBe(options);
   expectTypeOf<Pick<JointDrive, "options">>().toEqualTypeOf<{
     readonly options: JointDriveOptions;
   }>();
@@ -67,6 +66,18 @@ it("attaches to one joint at a time and detaches on replacement", () => {
   expect(replacement.joint).toBe(first);
   second.setDrive(drive);
   expect(drive.joint).toBe(second);
+});
+
+it("counts drive target changes as changes of the attached joint", () => {
+  const joint = hinge();
+  const drive = new JointDrive({ stiffness: 1 });
+  drive.setTarget({ position: 1 });
+  const detached = joint.version;
+  joint.setDrive(drive);
+  const attached = joint.version;
+  expect(attached).toBeGreaterThan(detached);
+  drive.setTarget({ position: 2 });
+  expect(joint.version).toBeGreaterThan(attached);
 });
 
 it("clones drives with their subclass and copies them with their joint", () => {

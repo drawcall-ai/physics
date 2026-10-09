@@ -22,7 +22,7 @@ export function grab(
   body: RigidBody,
   point: THREE.Vector3,
 ) {
-  const hand = new RigidBody({ type: "kinematic", colliders: false });
+  const hand = new RigidBody({ bodyType: "kinematic", colliders: false });
   hand.name = "Hand";
   hand.add(new THREE.Mesh(marker, markerMaterial));
   hand.position.copy(point);

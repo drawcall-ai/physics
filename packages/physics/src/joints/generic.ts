@@ -1,9 +1,12 @@
-import { readJoint } from "./reading.js";
+import {
+  readJoint,
+  type AxisJointState,
+  type JointReading,
+} from "./reading.js";
 import { Euler, Vector3 } from "three";
-import { Joint, attach, sameLimits, validateLimits } from "./joint.js";
+import { Joint, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";
 import type { JointDrive } from "./drive.js";
-import type { AxisJointState } from "./world.js";
 
 /** USD Physics degree-of-freedom tokens, in frame 0 coordinates. */
 export type JointDof =
@@ -33,7 +36,7 @@ export class GenericJoint extends Joint<
       const value = options.dofs?.[axis] ?? "locked";
       if (typeof value === "string") return value;
       validateLimits(value);
-      return [value[0], value[1]];
+      return value;
     };
     super({
       ...options,
@@ -48,16 +51,15 @@ export class GenericJoint extends Joint<
     });
   }
   get dofs(): Readonly<Record<JointDof, DofMotion>> {
-    return this.config.dofs;
+    return this.options.dofs;
   }
   getDrive(axis: JointDof): JointDrive | undefined {
     return this.currentDrives.get(axis);
   }
   setDrive(axis: JointDof, drive: JointDrive | undefined): this {
-    attach(this, this.currentDrives.get(axis), drive);
+    this.replaceDrive(this.currentDrives.get(axis), drive);
     if (drive) this.currentDrives.set(axis, drive);
     else this.currentDrives.delete(axis);
-    this.touch();
     return this;
   }
   get drives(): ReadonlyMap<JointDof, JointDrive> {
@@ -67,28 +69,25 @@ export class GenericJoint extends Joint<
     for (const axis of jointDofs)
       this.setDrive(axis, source.getDrive(axis)?.clone());
   }
-  protected override sameConfiguration(source: this): boolean {
-    return jointDofs.every((axis) => {
-      const a = this.dofs[axis],
-        b = source.dofs[axis];
-      return typeof a === "string" || typeof b === "string"
-        ? a === b
-        : sameLimits(a, b);
-    });
-  }
-  /** Rotations read as XYZ Euler angles of the relative rotation, wrapped. */
   getState(axis: JointDof): AxisJointState {
-    const reading = readJoint(this);
-    const index = jointDofs.indexOf(axis) % 3;
-    if (axis.startsWith("trans"))
-      return {
-        position: reading.translation.getComponent(index),
-        velocity: reading.linearVelocity.getComponent(index),
-      };
-    const euler = new Euler().setFromQuaternion(reading.rotation, "XYZ");
-    return {
-      position: new Vector3(euler.x, euler.y, euler.z).getComponent(index),
-      velocity: reading.angularVelocity.getComponent(index),
-    };
+    return dofState(readJoint(this), axis);
   }
+}
+
+/** One degree of freedom of a reading; rotations read as XYZ Euler angles of the relative rotation, wrapped. */
+export function dofState(
+  reading: JointReading,
+  axis: JointDof,
+): AxisJointState {
+  const index = jointDofs.indexOf(axis) % 3;
+  if (axis.startsWith("trans"))
+    return {
+      position: reading.translation.getComponent(index),
+      velocity: reading.linearVelocity.getComponent(index),
+    };
+  const euler = new Euler().setFromQuaternion(reading.rotation, "XYZ");
+  return {
+    position: new Vector3(euler.x, euler.y, euler.z).getComponent(index),
+    velocity: reading.angularVelocity.getComponent(index),
+  };
 }

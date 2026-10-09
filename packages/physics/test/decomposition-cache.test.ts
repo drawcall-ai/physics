@@ -10,12 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BoxGeometry, Vector3 } from "three";
-import {
-  MeshCollider,
-  RigidBody,
-  convexParts,
-  prepareConvexParts,
-} from "../src/index.js";
+import { MeshCollider, RigidBody } from "../src/index.js";
+import { convexParts, prepareConvexParts } from "../src/backend.js";
 
 const hull = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
 const decompose = vi.fn(() => ({
@@ -29,7 +25,9 @@ const decompose = vi.fn(() => ({
     { delete() {} },
   ),
 }));
-vi.mock("../src/coacd.js", () => ({ default: async () => ({ decompose }) }));
+vi.mock("../src/colliders/coacd.js", () => ({
+  default: async () => ({ decompose }),
+}));
 
 let root: string;
 const cache = () =>

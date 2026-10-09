@@ -11,15 +11,14 @@ import {
   splitTransform,
 } from "@drawcall/physics";
 import type { Vec3 } from "@drawcall/physics";
-import { PhysicsUSDScene } from "../scene.js";
 import { archive } from "./archive.js";
 import { Materials, writeBody } from "./bodies.js";
 import { Hierarchy } from "./hierarchy.js";
 import { writeJoint } from "./joints.js";
-import { Prim } from "./prim.js";
-import { tuple } from "./shapes.js";
+import { Prim, tuple } from "./prim.js";
 
 export interface PhysicsUSDExportOptions extends USDZExporterOptions {
+  /** Defaults to Earth gravity along -Y. */
   gravity?: Vec3;
 }
 
@@ -67,10 +66,11 @@ export class PhysicsUSDExporter {
       jointScope.children.push(
         writeJoint(joint, `Joint${index}`, hierarchy.paths),
       );
-    const gravity =
-      options.gravity ??
-      (scene instanceof PhysicsUSDScene ? scene.gravity : [0, -9.81, 0]);
-    root.children.push(materials.scope, jointScope, scenePrim(gravity));
+    root.children.push(
+      materials.scope,
+      jointScope,
+      scenePrim(options.gravity ?? [0, -9.81, 0]),
+    );
     const files = unzipSync(
       new Uint8Array(
         await this.visual.parseAsync(visuals, {

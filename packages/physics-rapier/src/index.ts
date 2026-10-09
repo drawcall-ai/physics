@@ -1,22 +1,18 @@
-import type { Object3D } from "three";
-import { buildRooted, prepareConvexParts } from "@drawcall/physics";
-import { RapierWorld, type RapierOptions } from "./world.js";
-export type { RapierWorld, RapierOptions } from "./world.js";
+import { build, prepareConvexParts } from "@drawcall/physics/backend";
+import { RapierWorld, type RapierWorldOptions } from "./world.js";
+export type { RapierWorld, RapierWorldOptions } from "./world.js";
 
-/** Builds the world that simulates the bodies, joints and triggers under `root`. */
+/** Builds the world that simulates the bodies, joints and triggers under `options.scene`. */
 export async function buildWorld(
-  root: Object3D,
-  options: RapierOptions = {},
+  options: RapierWorldOptions,
 ): Promise<RapierWorld> {
-  return buildRooted(root, async () => {
-    // Triangle meshes on moving bodies collide as convex parts, decomposed once here.
-    const [api] = await Promise.all([
-      import("@dimforge/rapier3d-compat").then(async (api) => {
-        await api.init();
-        return api;
-      }),
-      prepareConvexParts(root, (body) => body.bodyType !== "static"),
-    ]);
-    return new RapierWorld(api, root, options);
-  });
+  // Triangle meshes on moving bodies collide as convex parts, decomposed once here.
+  const [api] = await Promise.all([
+    import("@dimforge/rapier3d-compat").then(async (api) => {
+      await api.init();
+      return api;
+    }),
+    prepareConvexParts(options.scene, (body) => body.bodyType !== "static"),
+  ]);
+  return build(new RapierWorld(api, options));
 }

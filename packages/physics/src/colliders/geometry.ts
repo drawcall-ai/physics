@@ -4,11 +4,6 @@ import type {
   InterleavedBufferAttribute,
 } from "three";
 
-export interface GeometrySnapshot {
-  positions: number[];
-  indices: number[];
-}
-
 const ids = new WeakMap<object, number>();
 let next = 0;
 function id(object: object): number {
@@ -33,16 +28,8 @@ export function geometryVersion(geometry: BufferGeometry): string {
   return `${id(geometry)}/${attribute(geometry.getAttribute("position"))}/${attribute(geometry.index)}`;
 }
 
-/** Collision data, independent of render attributes and their buffer layout. */
-export function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
-  const position = geometry.getAttribute("position");
-  const positions: number[] = [];
-  for (let i = 0; i < position.count; i++)
-    positions.push(position.getX(i), position.getY(i), position.getZ(i));
-  const index = geometry.index;
-  const indices = Array.from(
-    { length: index?.count ?? position.count },
-    (_, i) => (index ? index.getX(i) : i),
-  );
-  return { positions, indices };
+export function validateRange(geometry: BufferGeometry): void {
+  if (geometry.drawRange.start !== 0 || geometry.drawRange.count !== Infinity) {
+    throw new Error("Physics mesh geometry must use the full draw range");
+  }
 }

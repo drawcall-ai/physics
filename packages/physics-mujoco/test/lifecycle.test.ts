@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   BoxCollider,
   MeshCollider,
@@ -13,25 +13,9 @@ import {
   Matrix4,
   Mesh,
   PerspectiveCamera,
-  Scene,
   Vector3,
 } from "three";
-import { buildWorld, type MujocoWorld } from "../src/index.js";
-
-const worlds: MujocoWorld[] = [];
-let scene = new Scene();
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
-  scene = new Scene();
-});
-async function createWorld() {
-  const world = await buildWorld(scene, {
-    gravity: [0, 0, 0],
-    fixedDelta: 0.01,
-  });
-  worlds.push(world);
-  return world;
-}
+import { createWorld, scene } from "./fixtures.js";
 
 test("unchanged mesh steps and target edits reuse collision geometry; marked vertex edits rebuild it", async () => {
   const world = await createWorld();
@@ -98,7 +82,7 @@ test("unchanged steps skip the change scan; moved and added colliders are still 
 
 test("a body without explicit colliders picks up its moved mesh", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
   scene.add(body);
   const mesh = new Mesh(new BoxGeometry());
   body.add(mesh);
@@ -116,7 +100,7 @@ test("a body without explicit colliders picks up its moved mesh", async () => {
 
 test("moving a child trigger or camera does not rescan its body", async () => {
   const world = await createWorld();
-  const body = new RigidBody({ type: "kinematic" });
+  const body = new RigidBody({ bodyType: "kinematic" });
   scene.add(body);
   const trigger = new Trigger();
   trigger.add(new BoxCollider());
@@ -154,7 +138,7 @@ test("a failed rebuild keeps live state and retries after correction", async () 
   expect(body.getVelocity().linear.x).toBeCloseTo(2);
 });
 
-test("failed initial compilation and queries do not capture reset poses or scale", async () => {
+test("failed initial compilation does not capture reset poses or scale", async () => {
   const world = await createWorld();
   const body = new RigidBody({ mass: 1 });
   scene.add(body);
@@ -163,7 +147,6 @@ test("failed initial compilation and queries do not capture reset poses or scale
   body.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.8 });
   expect(() => world.update(0)).toThrow("equal static and dynamic friction");
   body.setMaterial({ staticFriction: 0.4, dynamicFriction: 0.4 });
-  world.raycast(new Vector3(3, 0, 0), new Vector3(-1, 0, 0), 5);
   body.position.x = 2;
   body.scale.setScalar(2);
   body.setVelocity({ linear: new Vector3(1, 0, 0) });

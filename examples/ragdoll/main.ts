@@ -9,7 +9,7 @@ import { view } from "../view";
 const scene = new THREE.Scene();
 const ragdoll = createRagdoll();
 scene.add(ragdoll);
-const world = await buildWorld(scene, simulationOptions);
+const world = await buildWorld({ scene, ...simulationOptions });
 const demo = view(world, scene);
 const pointer = forwardHtmlEvents(demo.canvas, demo.camera, scene, {
   batchEvents: false,
@@ -31,24 +31,11 @@ for (const type of ["pointerup", "pointercancel"] as const)
     grabs.delete(event.pointerId);
     demo.controls.enabled = grabs.size === 0;
   });
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (event.code === "KeyR") world.reset();
-  },
-  { signal: demo.signal },
-);
+window.addEventListener("keydown", (event) => {
+  if (event.code === "KeyR") world.reset();
+});
 demo.run(() => {
   pointer.update();
   const held = [...grabs.values()].map((held) => held.body.name);
   return held.length ? `Holding ${held.join(", ")}` : "";
 });
-window.addEventListener(
-  "pagehide",
-  (event) => {
-    if (event.persisted) return;
-    pointer.destroy();
-    demo.dispose();
-  },
-  { signal: demo.signal },
-);

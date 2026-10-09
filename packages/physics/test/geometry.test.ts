@@ -9,7 +9,8 @@ import {
   InterleavedBuffer,
   InterleavedBufferAttribute,
 } from "three";
-import { geometryVersion, snapshotGeometry } from "../src/geometry.js";
+import { geometryVersion } from "../src/colliders/geometry.js";
+import { snapshotGeometry } from "../src/colliders/decomposition.js";
 import { MeshCollider, RigidBody } from "../src/index.js";
 
 it("snapshots interpreted positions, ignoring unrelated interleaved channels", () => {
@@ -64,7 +65,7 @@ it("changes version when an interleaved buffer is marked edited", () => {
 it("derives automatic shapes per body type and follows swapped geometry", () => {
   const shared = new SphereGeometry(1, 8, 4).translate(1, 0, 0);
   const bodies = (["static", "dynamic"] as const).map((type) => {
-    const body = new RigidBody({ type });
+    const body = new RigidBody({ bodyType: type });
     body.add(new Mesh(shared));
     return body;
   });
@@ -83,7 +84,7 @@ it("validates a geometry separately for each approximation", () => {
     new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], 3),
   );
   const collides = (approximation: "convexHull" | "trimesh") => {
-    const body = new RigidBody({ type: "static" });
+    const body = new RigidBody({ bodyType: "static" });
     body.add(new MeshCollider({ approximation }).setGeometry(geometry));
     return body.getColliders().map((collider) => collider.shape());
   };
@@ -94,11 +95,11 @@ it("validates a geometry separately for each approximation", () => {
 it("reads no vertices again until the geometry is marked edited", () => {
   const detailed = new SphereGeometry(1, 32, 16);
   const auto = new BoxGeometry();
-  const explicit = new RigidBody({ type: "static" });
+  const explicit = new RigidBody({ bodyType: "static" });
   explicit.add(
     new MeshCollider({ approximation: "trimesh" }).setGeometry(detailed),
   );
-  const implicit = new RigidBody({ type: "static" });
+  const implicit = new RigidBody({ bodyType: "static" });
   implicit.add(new Mesh(auto));
   const shapes = () =>
     [explicit, implicit].map((body) => body.getColliders()[0]!.shape());

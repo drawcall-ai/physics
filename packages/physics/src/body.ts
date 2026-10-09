@@ -1,56 +1,48 @@
 import {
   Group,
   Matrix4,
-  Mesh,
   Vector3,
   type Object3D,
   type Object3DEventMap,
 } from "three";
-import { Collider, validateMaterial, validateGroups } from "./colliders.js";
+import {
+  Collider,
+  validateMaterial,
+  validateGroups,
+} from "./colliders/collider.js";
 import { constructLike } from "./construct.js";
 import {
   assertPositiveScale,
   assertRigidTransform,
-  assertScaledTransform,
+  setWorldPose,
   splitTransform,
   validateVector,
 } from "./transforms.js";
-import { Trigger } from "./trigger.js";
-import { colliderOf } from "./shapes.js";
+import { colliderOf } from "./colliders/shapes.js";
+import { colliderSources } from "./colliders/sources.js";
+import { rollback } from "./cleanup.js";
+import { validateMass, type MassProperties } from "./mass.js";
 import type {
   AutoColliders,
-  Vec3,
   PhysicsMaterial,
   CollisionGroups,
-} from "./colliders.js";
-import { requireWorld, worldOf } from "./worlds.js";
-import { assembly, hierarchyJoints } from "./assembly.js";
-import { authoredVelocity, setAuthoredVelocity } from "./velocity.js";
-import { setWorldPose } from "./transforms.js";
-import type { PhysicsVelocity } from "./world.js";
+} from "./colliders/collider.js";
+import { assembly, hierarchyJoints } from "./joints/assembly.js";
+import {
+  requireWorld,
+  type PhysicsVelocity,
+  type PhysicsWorld,
+} from "./world.js";
 
 export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
-export type MassProperties =
-  | {
-      readonly mass?: number;
-      readonly centerOfMass?: never;
-      readonly diagonalInertia?: never;
-      readonly principalAxes?: never;
-    }
-  | {
-      readonly mass: number;
-      readonly centerOfMass: Vec3;
-      readonly diagonalInertia: Vec3;
-      readonly principalAxes?: readonly [number, number, number, number];
-    };
 export type RigidBodyOptions = MassProperties & {
-  readonly type?: RigidBodyType;
+  readonly bodyType?: RigidBodyType;
   readonly colliders?: AutoColliders;
   readonly canSleep?: boolean;
 };
 type NormalizedOptions = RigidBodyOptions & {
-  readonly type: RigidBodyType;
+  readonly bodyType: RigidBodyType;
   readonly colliders: AutoColliders;
   readonly canSleep: boolean;
 };
@@ -59,40 +51,37 @@ export interface RigidBodyEventMap extends Object3DEventMap {
   contactend: { readonly otherBody: RigidBody };
 }
 export class RigidBody extends Group<RigidBodyEventMap> {
-  readonly options: NormalizedOptions;
   readonly bodyType: RigidBodyType;
+  /** The world simulating this body; set by the world as the body enters and leaves its scene. */
+  world: PhysicsWorld | undefined = undefined;
+  /** Counts setting changes, so backends reconcile only what changed. */
+  version = 0;
+  /** The body's velocity outside a world, which a world starts it from as it joins. */
+  readonly #velocity: PhysicsVelocity = {
+    linear: new Vector3(),
+    angular: new Vector3(),
+  };
+  #options: NormalizedOptions;
   private currentLinearDamping = 0;
   private currentAngularDamping = 0;
   private currentGravityScale = 1;
   private currentMaterial?: PhysicsMaterial;
   private currentGroups?: CollisionGroups;
-  private version = 0;
-  private materialEdits = 0;
-  get materialVersion(): number {
-    return this.materialEdits;
-  }
 
   constructor(options: RigidBodyOptions = {}) {
     super();
-    this.bodyType = options.type ?? "dynamic";
-    const defaults = {
-      type: this.bodyType,
+    this.bodyType = options.bodyType ?? "dynamic";
+    this.#options = {
+      ...options,
+      bodyType: this.bodyType,
       colliders: options.colliders ?? "auto",
       canSleep: options.canSleep ?? true,
     };
-    this.options = options.centerOfMass
-      ? {
-          ...options,
-          ...defaults,
-          centerOfMass: [...options.centerOfMass],
-          diagonalInertia: [...options.diagonalInertia],
-          principalAxes: options.principalAxes && [...options.principalAxes],
-        }
-      : { ...options, ...defaults };
-    validateMass(this.options);
+    validateMass(this.#options);
   }
-  get settingsVersion(): number {
-    return this.version;
+  /** Fixed at construction and shared with clones. */
+  get options(): NormalizedOptions {
+    return this.#options;
   }
   get linearDamping(): number {
     return this.currentLinearDamping;
@@ -132,7 +121,7 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   setMaterial(value: PhysicsMaterial | undefined): this {
     if (value) validateMaterial(value);
     this.currentMaterial = value && { ...value };
-    this.materialEdits++;
+    this.version++;
     return this;
   }
   get collisionGroups(): CollisionGroups | undefined {
@@ -145,15 +134,19 @@ export class RigidBody extends Group<RigidBodyEventMap> {
     return this;
   }
   getVelocity(): PhysicsVelocity {
-    return worldOf(this)?.getVelocity(this) ?? authoredVelocity(this);
+    if (this.world) return this.world.getVelocity(this);
+    const { linear, angular } = this.#velocity;
+    return { linear: linear.clone(), angular: angular.clone() };
   }
   setVelocity(value: Partial<PhysicsVelocity>): this {
     if (value.linear) validateVector(value.linear);
     if (value.angular) validateVector(value.angular);
     this.assertDynamic("Velocity");
-    const world = worldOf(this);
-    if (world) world.setVelocity(this, value);
-    else setAuthoredVelocity(this, value);
+    if (this.world) this.world.setVelocity(this, value);
+    else {
+      if (value.linear) this.#velocity.linear.copy(value.linear);
+      if (value.angular) this.#velocity.angular.copy(value.angular);
+    }
     return this;
   }
   /**
@@ -176,15 +169,23 @@ export class RigidBody extends Group<RigidBodyEventMap> {
         ];
       }),
     );
+    const restores = [...poses.keys()].map(saveTransform);
     for (const [member, pose] of poses) setWorldPose(member, pose);
-    worldOf(this)?.teleport(this);
+    try {
+      this.world?.teleport(this);
+    } catch (error) {
+      rollback(error, restores, "Teleport rollback failed");
+    }
     return this;
   }
-  setKinematicTarget(matrix: Matrix4): void {
+  /** Moves a kinematic body to the pose over the next step; outside a world it is placed there. */
+  setKinematicTarget(matrix: Matrix4): this {
     if (this.bodyType !== "kinematic")
       throw new Error("Kinematic targets require a kinematic body");
     assertRigidTransform(matrix);
-    requireWorld(this).setKinematicTarget(this, matrix);
+    if (this.world) this.world.setKinematicTarget(this, matrix);
+    else setWorldPose(this, matrix);
+    return this;
   }
   applyImpulse(impulse: Vector3, point?: Vector3): void {
     validateVector(impulse);
@@ -206,12 +207,15 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 
   override clone(recursive = true): this {
-    return constructLike(this, [this.options]).copy(this, recursive);
+    const target = constructLike(this, [this.options]);
+    target.#options = this.#options;
+    return target.copy(this, recursive);
   }
 
+  /** Copies the settings of a body that shares these options, such as a clone. */
   override copy(source: this, recursive = true): this {
-    if (!sameOptions(this.options, source.options))
-      throw new Error("Rigid body copy requires matching immutable options");
+    if (source.options !== this.options)
+      throw new Error("Rigid body copy requires the same immutable options");
     super.copy(source, recursive);
     if (this.bodyType === "dynamic") this.setVelocity(source.getVelocity());
     this.setLinearDamping(source.linearDamping)
@@ -239,8 +243,8 @@ export class RigidBody extends Group<RigidBodyEventMap> {
 
   validate(): void {
     this.updateWorldMatrix(true, true);
-    assertScaledTransform(this.matrix, this.name || this.type);
-    assertScaledTransform(this.matrixWorld, this.name || this.type);
+    splitTransform(this.matrix, this.name || this.type);
+    splitTransform(this.matrixWorld, this.name || this.type);
     if (this.parent && this.bodyType !== "static") {
       const { scale } = splitTransform(this.parent.matrixWorld);
       if (
@@ -257,35 +261,6 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   }
 }
 
-/**
- * What an owner's colliders are made from: its explicit colliders, or else a body's meshes.
- * A body's triggers are separate owners; a trigger contains neither triggers nor bodies.
- */
-export function colliderSources(
-  owner: RigidBody | Trigger,
-): (Collider | Mesh)[] {
-  const explicit: Collider[] = [];
-  const meshes: Mesh[] = [];
-  const collect = (object: Object3D): void => {
-    if (object !== owner) {
-      if (
-        owner instanceof Trigger &&
-        (object instanceof Trigger || object instanceof RigidBody)
-      )
-        throw new Error("Triggers cannot contain triggers or rigid bodies");
-      if (object instanceof Trigger) return;
-      if (object instanceof RigidBody)
-        throw new Error("Nested rigid bodies are not supported");
-    }
-    if (object instanceof Collider) explicit.push(object);
-    if (object instanceof Mesh) meshes.push(object);
-    for (const child of object.children) collect(child);
-  };
-  collect(owner);
-  if (explicit.length || owner instanceof Trigger) return explicit;
-  return owner.options.colliders === false ? [] : meshes;
-}
-
 /** The rigid body an object sits under, if any. */
 export function ancestorBody(object: Object3D): RigidBody | undefined {
   let parent = object.parent;
@@ -293,51 +268,21 @@ export function ancestorBody(object: Object3D): RigidBody | undefined {
   return parent ?? undefined;
 }
 
+/** Returns a function that puts the object's local transform back as it is now. */
+function saveTransform(object: Object3D): () => void {
+  const position = object.position.clone();
+  const quaternion = object.quaternion.clone();
+  const scale = object.scale.clone();
+  return () => {
+    object.position.copy(position);
+    object.quaternion.copy(quaternion);
+    object.scale.copy(scale);
+    object.updateMatrix();
+    object.updateMatrixWorld(true);
+  };
+}
+
 function validateDamping(value: number): void {
   if (!Number.isFinite(value) || value < 0)
     throw new Error("Damping must be finite and nonnegative");
-}
-function validateMass(options: RigidBodyOptions): void {
-  if (
-    options.mass !== undefined &&
-    (!Number.isFinite(options.mass) || options.mass <= 0)
-  )
-    throw new Error("Body mass must be positive");
-  if (options.centerOfMass && !options.centerOfMass.every(Number.isFinite))
-    throw new Error("Center of mass must be finite");
-  const inertia = options.diagonalInertia;
-  if (
-    inertia &&
-    (!inertia.every((v) => Number.isFinite(v) && v > 0) ||
-      inertia.some((v) => 2 * v > inertia[0] + inertia[1] + inertia[2] + 1e-10))
-  )
-    throw new Error(
-      "Principal inertia must be positive and satisfy the triangle inequality",
-    );
-  if (
-    options.principalAxes &&
-    (!options.principalAxes.every(Number.isFinite) ||
-      Math.abs(Math.hypot(...options.principalAxes) - 1) > 1e-6)
-  )
-    throw new Error("Principal axes must be a normalized quaternion");
-}
-
-function sameTuple(
-  a: readonly number[] | undefined,
-  b: readonly number[] | undefined,
-): boolean {
-  return a === undefined
-    ? b === undefined
-    : b !== undefined && a.every((v, i) => v === b[i]);
-}
-function sameOptions(a: NormalizedOptions, b: NormalizedOptions): boolean {
-  return (
-    a.type === b.type &&
-    a.colliders === b.colliders &&
-    a.mass === b.mass &&
-    a.canSleep === b.canSleep &&
-    sameTuple(a.centerOfMass, b.centerOfMass) &&
-    sameTuple(a.diagonalInertia, b.diagonalInertia) &&
-    sameTuple(a.principalAxes ?? [0, 0, 0, 1], b.principalAxes ?? [0, 0, 0, 1])
-  );
 }

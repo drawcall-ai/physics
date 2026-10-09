@@ -1,12 +1,12 @@
-import { readJoint } from "./reading.js";
-import { Joint, attach, sameLimits, validateLimits } from "./joint.js";
+import {
+  readJoint,
+  type AxisJointState,
+  type SphericalJointState,
+  type DistanceJointState,
+} from "./reading.js";
+import { Joint, validateLimits } from "./joint.js";
 import type { JointOptions } from "./joint.js";
 import type { JointDrive } from "./drive.js";
-import type {
-  AxisJointState,
-  SphericalJointState,
-  DistanceJointState,
-} from "./world.js";
 
 export class FixedJoint extends Joint {}
 
@@ -19,9 +19,8 @@ export abstract class ScalarJoint<
     return this.currentDrive;
   }
   setDrive(drive: JointDrive | undefined): this {
-    attach(this, this.currentDrive, drive);
+    this.replaceDrive(this.currentDrive, drive);
     this.currentDrive = drive;
-    this.touch();
     return this;
   }
   protected override copyDrives(source: this): void {
@@ -41,20 +40,10 @@ export abstract class AxisJoint extends ScalarJoint<
   abstract readonly dof: "rotX" | "transX";
   constructor(options: AxisJointOptions) {
     if (options.limits) validateLimits(options.limits);
-    super({
-      ...options,
-      axis: options.axis ?? "Y",
-      limits: options.limits && [...options.limits],
-    });
+    super({ ...options, axis: options.axis ?? "Y" });
   }
   get limits(): readonly [number, number] | undefined {
-    return this.config.limits;
-  }
-  protected override sameConfiguration(source: this): boolean {
-    return (
-      this.config.axis === source.config.axis &&
-      sameLimits(this.limits, source.limits)
-    );
+    return this.options.limits;
   }
   getState(): AxisJointState {
     const reading = readJoint(this);
@@ -93,17 +82,11 @@ export class DistanceJoint extends ScalarJoint<DistanceJointOptions> {
       throw new Error(
         "Distance limits need a finite nonnegative minimum and a maximum of at least the minimum",
       );
-    super({
-      ...options,
-      limits: [limits[0], limits[1]],
-    });
+    super(options);
   }
   /** `Infinity` leaves the distance free, so a drive alone acts as a spring. */
   get limits(): readonly [number, number] {
-    return this.config.limits;
-  }
-  protected override sameConfiguration(source: this): boolean {
-    return sameLimits(this.limits, source.limits);
+    return this.options.limits;
   }
   getState(): DistanceJointState {
     const { translation, linearVelocity } = readJoint(this);

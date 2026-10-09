@@ -1,11 +1,7 @@
 import type { BufferGeometry, Object3D, Vector3 } from "three";
-import { RigidBody } from "./body.js";
-import type { Collider } from "./colliders.js";
-import {
-  geometryVersion,
-  snapshotGeometry,
-  type GeometrySnapshot,
-} from "./geometry.js";
+import { RigidBody } from "../body.js";
+import type { Collider } from "./collider.js";
+import { geometryVersion } from "./geometry.js";
 import type { MainModule } from "./coacd.js";
 import * as cache from "./cache.js";
 
@@ -28,13 +24,13 @@ const DECOMPOSER = "coacd-b678aa0/cdt-ec03b30/chitin-5a96998/emscripten-5.0.2";
  */
 const SETTINGS = [0.05, -1, 50, 2000, 20, 150, 3, 256, true] as const;
 
-/** Decomposes the triangle mesh colliders of the bodies under `root` that `needs` selects. */
+/** Decomposes the triangle mesh colliders of the bodies under `scene` that `needs` selects. */
 export async function prepareConvexParts(
-  root: Object3D,
+  scene: Object3D,
   needs: (body: RigidBody, geometry: BufferGeometry) => boolean,
 ): Promise<void> {
   const bodies: RigidBody[] = [];
-  root.traverse((object) => {
+  scene.traverse((object) => {
     if (object instanceof RigidBody) bodies.push(object);
   });
   for (const body of bodies) {
@@ -194,4 +190,23 @@ function manifold(mesh: GeometrySnapshot) {
     positions: new Float64Array(positions),
     indices: new Int32Array(indices),
   };
+}
+
+interface GeometrySnapshot {
+  positions: number[];
+  indices: number[];
+}
+
+/** Collision data, independent of render attributes and their buffer layout. */
+export function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
+  const position = geometry.getAttribute("position");
+  const positions: number[] = [];
+  for (let i = 0; i < position.count; i++)
+    positions.push(position.getX(i), position.getY(i), position.getZ(i));
+  const index = geometry.index;
+  const indices = Array.from(
+    { length: index?.count ?? position.count },
+    (_, i) => (index ? index.getX(i) : i),
+  );
+  return { positions, indices };
 }

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { Group, Matrix4, Vector3 } from "three";
+import { Group, Vector3 } from "three";
 import { JointDrive, RigidBody, RevoluteJoint, clone } from "../src/index.js";
 
 it("clones assemblies and remaps joint references", () => {
@@ -27,7 +27,7 @@ it("clones assemblies and remaps joint references", () => {
     throw new Error("Expected a joint clone");
   expect(copy.options.body0).toBe(result.children[1]);
   expect(copy.options.body1).toBe(result.children[2]);
-  expect(copy.limits).not.toBe(hinge.limits);
+  expect(copy.limits).toEqual(hinge.limits);
   const copiedDrive = copy.drive;
   if (!copiedDrive) throw new Error("Missing copied drive");
   expect(copiedDrive).not.toBe(drive);
@@ -102,39 +102,6 @@ it("clones a body with a child joint and remaps the joint to the copy", () => {
   const joint = copy.children[0];
   if (!(joint instanceof RevoluteJoint)) throw new Error("Expected a joint");
   expect(joint.options.body1).toBe(copy);
-});
-
-it("authors poses and velocities before building and rejects simulation commands", () => {
-  const body = new RigidBody();
-  body.setVelocity({ linear: new Vector3(2, 0, 0) });
-  body.teleport(new Matrix4().makeTranslation(1, 2, 3));
-  expect(body.position.toArray()).toEqual([1, 2, 3]);
-  expect(body.getVelocity().linear.x).toBe(2);
-  const joint = new RevoluteJoint({ body0: null, body1: body });
-  expect(joint.getState().position).toBeCloseTo(0);
-  expect(() => body.applyImpulse(new Vector3(3, 0, 0))).toThrow(
-    "under a built world's root",
-  );
-  expect(() => body.setKinematicTarget(new Matrix4())).toThrow("kinematic");
-  expect(() => body.applyForce(new Vector3(NaN, 0, 0))).toThrow("finite");
-  expect(() =>
-    new RigidBody({ type: "static" }).setVelocity({ linear: new Vector3() }),
-  ).toThrow("dynamic body");
-  expect(() => body.teleport(new Matrix4().makeScale(2, 2, 2))).toThrow(
-    "unit scale",
-  );
-});
-
-it("teleports an authored assembly before a world exists", () => {
-  const root = new RigidBody();
-  const child = new RigidBody();
-  child.position.x = 2;
-  const joint = new RevoluteJoint({ body0: root, body1: child });
-  joint.position.x = 1;
-  new Group().add(root, child, joint);
-  root.teleport(new Matrix4().makeTranslation(0, 5, 0));
-  expect(child.position.toArray()).toEqual([2, 5, 0]);
-  expect(joint.getState().position).toBeCloseTo(0);
 });
 
 it("remaps bodies beneath a joint used as the hierarchy root", () => {

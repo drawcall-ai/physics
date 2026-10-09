@@ -46,9 +46,3 @@ export function pose(
     new Vector3(1, 1, 1),
   );
 }
-export function placement(matrix: Matrix4): string {
-  return `pos="${new Vector3().setFromMatrixPosition(matrix).toArray().join(" ")}" quat="${rotation(new Quaternion().setFromRotationMatrix(matrix)).join(" ")}"`;
-}
-export function name(object: { id: number }): string {
-  return `o${object.id}`;
-}

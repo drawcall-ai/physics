@@ -1,49 +1,41 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import {
-  RigidBody,
-  Trigger,
-  ancestorBody,
-  Interactions,
-} from "@drawcall/physics";
-import type { BodyBinding } from "./body.js";
-import type { TriggerBinding } from "./triggers.js";
+import { ancestorBody, type RigidBody, type Trigger } from "@drawcall/physics";
+import type { Interactions } from "@drawcall/physics/backend";
+import type { Owner } from "./query.js";
 
+type Pairs<T> = Map<T, Set<RigidBody>>;
+
+/** Samples the trigger overlaps and body contacts of the last step. */
 export function sampleInteractions(
   interactions: Interactions,
-  backend: Rapier.World,
-  bodies: ReadonlyMap<RigidBody, BodyBinding>,
-  triggers: ReadonlyMap<Trigger, TriggerBinding>,
+  native: Rapier.World,
+  owners: ReadonlyMap<number, Owner>,
 ): void {
-  const owners = new Map<number, RigidBody>();
-  for (const [body, binding] of bodies)
-    for (const handle of binding.sources.keys()) owners.set(handle, body);
-
-  const overlaps: Map<Trigger, Set<RigidBody>> = new Map();
-  for (const [trigger, binding] of triggers) {
-    const touching = new Set<RigidBody>();
-    const parent = ancestorBody(trigger);
-    for (const collider of binding.colliders)
-      backend.intersectionPairsWith(collider, (other) => {
-        const body = owners.get(other.handle);
-        if (body && body !== parent) touching.add(body);
+  const overlaps: Pairs<Trigger> = new Map();
+  const contacts: Pairs<RigidBody> = new Map();
+  for (const [handle, owner] of owners) {
+    const collider = native.getCollider(handle);
+    if (owner.kind === "trigger") {
+      const parent = ancestorBody(owner.trigger);
+      native.intersectionPairsWith(collider, (other) => {
+        const hit = owners.get(other.handle);
+        if (hit?.kind === "body" && hit.body !== parent)
+          pair(overlaps, owner.trigger, hit.body);
       });
-    overlaps.set(trigger, touching);
-  }
-  const contacts: Map<RigidBody, Set<RigidBody>> = new Map();
-  for (const [body, binding] of bodies) {
-    const touching = new Set<RigidBody>();
-    for (const handle of binding.sources.keys()) {
-      const collider = backend.getCollider(handle);
-      if (!collider) throw new Error("Missing body collider");
-      backend.contactPairsWith(collider, (other) => {
-        const owner = owners.get(other.handle);
-        if (!owner || owner === body) return;
-        backend.contactPair(collider, other, (manifold) => {
-          if (manifold.numSolverContacts() > 0) touching.add(owner);
-        });
-      });
+      continue;
     }
-    contacts.set(body, touching);
+    native.contactPairsWith(collider, (other) => {
+      const hit = owners.get(other.handle);
+      if (hit?.kind !== "body" || hit.body === owner.body) return;
+      native.contactPair(collider, other, (manifold) => {
+        if (manifold.numSolverContacts() > 0)
+          pair(contacts, owner.body, hit.body);
+      });
+    });
   }
   interactions.replace(overlaps, contacts);
+}
+
+function pair<T>(pairs: Pairs<T>, owner: T, body: RigidBody): void {
+  pairs.set(owner, (pairs.get(owner) ?? new Set()).add(body));
 }

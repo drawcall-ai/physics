@@ -17,7 +17,7 @@ test.each([
   "$backend: the example preserves the opening on the right, including replay",
   async ({ build }) => {
     const { root, lanes } = decomposition();
-    const world = await build(new Scene().add(root));
+    const world = await build({ scene: new Scene().add(root) });
     worlds.push(world);
     for (let replay = 0; replay < 2; replay++) {
       for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
@@ -41,9 +41,9 @@ test.each([
 );
 
 test("the same right frame blocks the opening if added after building", async () => {
-  const world = await buildWorld(new Scene());
+  const world = await buildWorld({ scene: new Scene() });
   const { root, lanes } = decomposition();
-  world.root.add(root);
+  world.scene.add(root);
   for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
   for (const { cube } of lanes) expect(cube.position.y).toBeCloseTo(2.45, 2);
 });

@@ -4,8 +4,9 @@ import {
   type PhysicsVelocity,
   type RigidBody,
 } from "@drawcall/physics";
+import { setWorldPose, type Motion } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { Compiled } from "./model/compile.js";
+import type { Simulation } from "./model/compile.js";
 import {
   array,
   at,
@@ -14,23 +15,23 @@ import {
   rotation,
   vector,
   type HeapView,
-} from "./values.js";
+} from "./heap.js";
 
-export function bodyId(compiled: Compiled, body: RigidBody): number {
-  const id = compiled.bodies.get(body);
-  if (id === undefined) throw new Error("Missing compiled rigid body");
+export function bodyId(sim: Simulation, body: RigidBody): number {
+  const id = sim.bodies.get(body);
+  if (id === undefined) throw new Error("Missing MuJoCo rigid body");
   return id;
 }
 export function velocity(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   id: number,
 ): PhysicsVelocity {
   const buffer = new api.DoubleBuffer(6);
   try {
     api.mj_objectVelocity(
-      compiled.model,
-      compiled.data,
+      sim.model,
+      sim.data,
       api.mjtObj.mjOBJ_BODY.value,
       id,
       buffer,
@@ -44,15 +45,34 @@ export function velocity(
     buffer.delete();
   }
 }
+/** The body's velocity at a world point, about its compiled center of mass. */
+export function pointVelocity(
+  api: MainModule,
+  sim: Simulation,
+  id: number,
+  point: Vector3,
+): Vector3 {
+  const { linear, angular } = velocity(api, sim, id);
+  const center = vector(sim.data.xipos, id * 3);
+  return linear.add(angular.cross(point.clone().sub(center)));
+}
+/** Motion as the simulation measures it. */
+export function motionOf(api: MainModule, sim: Simulation): Motion {
+  return {
+    velocity: (body) => velocity(api, sim, bodyId(sim, body)),
+    velocityAt: (body, point) =>
+      pointVelocity(api, sim, bodyId(sim, body), point),
+  };
+}
 export function freeJoint(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   id: number,
 ): number {
-  const joint = at(compiled.model.body_jntadr, id);
+  const joint = at(sim.model.body_jntadr, id);
   if (
     joint < 0 ||
-    at(compiled.model.jnt_type, joint) !== api.mjtJoint.mjJNT_FREE.value
+    at(sim.model.jnt_type, joint) !== api.mjtJoint.mjJNT_FREE.value
   )
     throw new Error(
       "MuJoCo pose and velocity commands require a free root body; use joint drives to move articulated bodies",
@@ -61,12 +81,12 @@ export function freeJoint(
 }
 export function writeVelocity(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   id: number,
   value: Partial<PhysicsVelocity>,
 ): void {
-  const { model, data } = compiled;
-  const joint = freeJoint(api, compiled, id);
+  const { model, data } = sim;
+  const joint = freeJoint(api, sim, id);
   const address = at(model.jnt_dofadr, joint);
   const orientation = quaternion(data.xquat, id * 4);
   const offset = vector(data.xipos, id * 3).sub(vector(data.xpos, id * 3));
@@ -103,11 +123,11 @@ function overwrite(
 /** Returns whether the pose differed from the one already stored. */
 export function writePose(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   id: number,
   matrix: Matrix4,
 ): boolean {
-  const { model, data } = compiled;
+  const { model, data } = sim;
   const position = new Vector3().setFromMatrixPosition(matrix).toArray();
   const q = rotation(new Quaternion().setFromRotationMatrix(matrix));
   const mocap = at(model.body_mocapid, id);
@@ -119,16 +139,14 @@ export function writePose(
     const moved = overwrite(array(model.body_pos), position, id * 3);
     return overwrite(array(model.body_quat), q, id * 4) || moved;
   }
-  const address = at(model.jnt_qposadr, freeJoint(api, compiled, id));
+  const address = at(model.jnt_qposadr, freeJoint(api, sim, id));
   return overwrite(array(data.qpos), [...position, ...q], address);
 }
-export function synchronize(
-  compiled: Compiled,
-  set: (body: RigidBody, matrix: Matrix4) => void,
-): void {
-  for (const [body, id] of compiled.bodies)
+/** Writes the simulated poses of moving bodies back to the scene. */
+export function writeBack(sim: Simulation): void {
+  for (const [body, id] of sim.bodies)
     if (body.bodyType !== "static")
-      set(body, pose(compiled.data.xpos, compiled.data.xquat, id));
+      setWorldPose(body, pose(sim.data.xpos, sim.data.xquat, id));
 }
 
 /**
@@ -137,38 +155,19 @@ export function synchronize(
  */
 export function refreshPoses(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   moved = false,
 ): void {
-  for (const [body, id] of compiled.bodies)
+  for (const [body, id] of sim.bodies)
     if (body.bodyType === "static") {
       body.updateWorldMatrix(true, false);
-      if (writePose(api, compiled, id, splitTransform(body.matrixWorld).pose))
+      if (writePose(api, sim, id, splitTransform(body.matrixWorld).pose))
         moved = true;
     }
-  for (const [trigger, id] of compiled.triggers) {
+  for (const [trigger, id] of sim.triggers) {
     trigger.updateWorldMatrix(true, false);
-    if (writePose(api, compiled, id, splitTransform(trigger.matrixWorld).pose))
+    if (writePose(api, sim, id, splitTransform(trigger.matrixWorld).pose))
       moved = true;
   }
-  if (moved) api.mj_forward(compiled.model, compiled.data);
-}
-export function validateState(api: MainModule, compiled: Compiled): void {
-  if (
-    !array(compiled.data.qpos).every(Number.isFinite) ||
-    !array(compiled.data.qvel).every(Number.isFinite)
-  )
-    throw new Error("MuJoCo produced non-finite simulation state");
-  // Unlike contact, warning is a borrowed vector owned by MjData; deleting it corrupts the WASM heap.
-  const warnings = compiled.data.warning;
-  for (let i = 0; i < warnings.size(); i++) {
-    const warning = warnings.get(i);
-    if (!warning) throw new Error("Missing MuJoCo warning state");
-    try {
-      if (warning.number > 0)
-        throw new Error(api.mju_warningText(i, warning.lastinfo));
-    } finally {
-      warning.delete();
-    }
-  }
+  if (moved) api.mj_forward(sim.model, sim.data);
 }

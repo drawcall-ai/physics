@@ -1,9 +1,9 @@
+import { MathUtils } from "three";
 import { resolveCollider } from "@drawcall/physics";
 import type { Collider, PhysicsMaterial, RigidBody } from "@drawcall/physics";
-import { degrees } from "../units.js";
 import type { Hierarchy } from "./hierarchy.js";
-import { Prim } from "./prim.js";
-import { shapePrim, tuple } from "./shapes.js";
+import { Prim, tuple } from "./prim.js";
+import { shapePrim } from "./shapes.js";
 
 /** One material prim per distinct authored material, shared by every collider that resolves to it. */
 export class Materials {
@@ -56,7 +56,7 @@ export function writeBody(
       `bool physics:kinematicEnabled = ${body.bodyType === "kinematic"}`,
       `vector3f physics:velocity = ${tuple(velocity.linear.toArray())}`,
       `vector3f physics:angularVelocity = ${tuple(
-        velocity.angular.toArray().map((value) => value * degrees),
+        velocity.angular.toArray().map((value) => value * MathUtils.RAD2DEG),
       )}`,
     );
   }

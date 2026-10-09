@@ -1,5 +1,5 @@
 import type { Joint } from "./joint.js";
-import { constructLike } from "./construct.js";
+import { constructLike } from "../construct.js";
 
 export interface JointDriveOptions {
   /** N/m for translations, N·m/rad for rotations. */
@@ -21,8 +21,6 @@ export interface JointDriveTarget {
   readonly velocity: number;
   readonly effort: number;
 }
-const attachments = new WeakMap<JointDrive, Joint>();
-
 /**
  * The force law on one joint coordinate:
  * `stiffness · (position − q) + damping · (velocity − q̇) + effort`, capped by `maxForce`.
@@ -31,8 +29,9 @@ const attachments = new WeakMap<JointDrive, Joint>();
  */
 export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
   readonly options: Options;
+  /** The joint this drive is attached to; set by the joint's `setDrive`. */
+  joint: Joint | undefined = undefined;
   private currentTarget?: JointDriveTarget;
-  private version = 0;
   constructor(options: Options) {
     for (const value of [
       options.stiffness,
@@ -51,7 +50,7 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
       if (maxForce === undefined || !Number.isFinite(maxForce))
         throw new Error("A drive velocity limit needs a finite maximum force");
     }
-    this.options = { ...options };
+    this.options = options;
   }
 
   /** The damping `maxForce / maxVelocity` the motor exerts on its own coordinate; undefined when unlimited. */
@@ -60,23 +59,19 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
     if (maxVelocity === undefined || maxForce === undefined) return undefined;
     return maxForce / maxVelocity;
   }
-  /** The joint this drive is attached to through its `setDrive`. */
-  get joint(): Joint | undefined {
-    return attachments.get(this);
-  }
   get target(): JointDriveTarget | undefined {
     return this.currentTarget;
   }
-  get settingsVersion(): number {
-    return this.version;
-  }
-  /** Replaces the whole target; omitted terms are zero. `undefined` makes the drive passive. */
+  /**
+   * Replaces the whole target; omitted terms are zero. `undefined` makes the drive passive. A
+   * change counts as a change of the attached joint.
+   */
   setTarget(target: Partial<JointDriveTarget> | undefined): this {
-    if (target === undefined) {
-      this.currentTarget = undefined;
-      this.version++;
-      return this;
-    }
+    this.currentTarget = target && this.complete(target);
+    if (this.joint) this.joint.version++;
+    return this;
+  }
+  private complete(target: Partial<JointDriveTarget>): JointDriveTarget {
     const next = {
       position: target.position ?? 0,
       velocity: target.velocity ?? 0,
@@ -88,9 +83,7 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
       throw new Error("A position target needs stiffness");
     if (next.velocity !== 0 && !this.options.damping)
       throw new Error("A velocity target needs damping");
-    this.currentTarget = next;
-    this.version++;
-    return this;
+    return next;
   }
   clone(): this {
     return constructLike(this, [this.options]).copy(this);
@@ -98,10 +91,4 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
   copy(source: this): this {
     return this.setTarget(source.target);
   }
-}
-
-/** Joint integration: attachment changes only through a joint's `setDrive`. */
-export function bindDrive(drive: JointDrive, joint: Joint | undefined): void {
-  if (joint) attachments.set(drive, joint);
-  else attachments.delete(drive);
 }

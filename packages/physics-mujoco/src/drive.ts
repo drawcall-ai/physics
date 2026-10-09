@@ -4,38 +4,45 @@ import {
   DistanceJoint,
   jointDofs,
   splitTransform,
-  unconstrained,
   type Joint,
   type JointDrive,
-  type JointReading,
 } from "@drawcall/physics";
+import {
+  dofState,
+  unconstrained,
+  type JointBinding,
+} from "@drawcall/physics/backend";
 import { Quaternion, Vector3 } from "three";
-import type { Compiled } from "./model/compile.js";
-import { driveOf, type JointRecord } from "./model/joints.js";
-import { array } from "./values.js";
-import { bodyId } from "./motion.js";
-import { project, inverseInertia, apply, type Load } from "./forces.js";
+import type { Simulation } from "./model/compile.js";
+import { driveOf } from "./model/joints.js";
+import { array } from "./heap.js";
+import { bodyId, motionOf } from "./body.js";
+import { project, inverseInertia, apply, type Load } from "./force.js";
 
+/**
+ * Sets the actuators that drive tree-joint coordinates, and applies the drives of distance and
+ * unconstrained joints, which have no coordinate, as generalized forces.
+ */
 export function applyDrives(
   api: MainModule,
-  compiled: Compiled,
-  joints: ReadonlyMap<Joint, JointRecord>,
-  read: (joint: Joint) => JointReading,
+  sim: Simulation,
+  joints: ReadonlyMap<Joint, JointBinding>,
   dt: number,
 ): void {
-  configureActuators(api, compiled);
-  for (const [joint, record] of joints) {
+  configureActuators(api, sim);
+  const motion = motionOf(api, sim);
+  for (const [joint, binding] of joints) {
     if (
       !joint.enabled ||
       (!(joint instanceof DistanceJoint) && !unconstrained(joint))
     )
       continue;
-    const reading = read(joint);
+    const reading = binding.read(motion);
     const body0 = joint.options.body0,
       body1 = joint.options.body1;
-    const frame0 = record.frames[0].clone();
+    const frame0 = binding.frames[0].clone();
     if (body0) frame0.premultiply(splitTransform(body0.matrixWorld).pose);
-    const frame1 = record.frames[1]
+    const frame1 = binding.frames[1]
       .clone()
       .premultiply(splitTransform(body1.matrixWorld).pose);
     const rotation = new Quaternion().setFromRotationMatrix(frame0);
@@ -52,24 +59,24 @@ export function applyDrives(
       const force = angular ? new Vector3() : direction;
       const torque = angular ? direction : new Vector3();
       const loads: Load[] = [
-        { body: bodyId(compiled, body1), force, torque, point },
+        { body: bodyId(sim, body1), force, torque, point },
       ];
       // Frame-0 translation rotates about anchor 0: its reaction also acts at anchor 1.
       if (body0)
         loads.push({
-          body: bodyId(compiled, body0),
+          body: bodyId(sim, body0),
           force: force.clone().negate(),
           torque: torque.clone().negate(),
           point,
         });
-      const generalized = project(api, compiled, loads);
-      const inverse = inverseInertia(api, compiled, generalized);
+      const generalized = project(api, sim, loads);
+      const inverse = inverseInertia(api, sim, generalized);
       if (inverse === 0) return;
-      apply(compiled, generalized, effort(drive, position, speed, inverse, dt));
+      apply(sim, generalized, effort(drive, position, speed, inverse, dt));
     };
     if (joint instanceof GenericJoint)
       for (const [i, axis] of jointDofs.entries()) {
-        const state = joint.getState(axis);
+        const state = dofState(reading, axis);
         driveAxis(
           joint.getDrive(axis),
           state.position,
@@ -92,15 +99,15 @@ export function applyDrives(
   }
 }
 
-function configureActuators(api: MainModule, compiled: Compiled): void {
-  const { model, data } = compiled;
-  for (const coordinate of compiled.coordinates.values()) {
+function configureActuators(api: MainModule, sim: Simulation): void {
+  const { model, data } = sim;
+  for (const coordinate of sim.coordinates.values()) {
     const { actuator, dof } = coordinate;
     const drive = driveOf(coordinate);
     const target = drive?.target;
     const scale =
       drive?.options.model === "acceleration"
-        ? coordinateInertia(api, compiled, dof)
+        ? coordinateInertia(api, sim, dof)
         : 1;
     const stiffness = target ? (drive?.options.stiffness ?? 0) * scale : 0;
     const damping = target ? (drive?.options.damping ?? 0) * scale : 0;
@@ -117,14 +124,14 @@ function configureActuators(api: MainModule, compiled: Compiled): void {
 }
 function coordinateInertia(
   api: MainModule,
-  compiled: Compiled,
+  sim: Simulation,
   index: number,
 ): number {
-  const direction = new Float64Array(compiled.model.nv);
+  const direction = new Float64Array(sim.model.nv);
   if (index < 0 || index >= direction.length)
     throw new Error("Missing actuator coordinate");
   direction[index] = 1;
-  const inverse = inverseInertia(api, compiled, direction);
+  const inverse = inverseInertia(api, sim, direction);
   if (inverse === 0)
     throw new Error("Actuator coordinate has no inertial response");
   return 1 / inverse;

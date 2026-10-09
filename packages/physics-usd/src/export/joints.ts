@@ -1,20 +1,16 @@
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { MathUtils, Matrix4, Quaternion, Vector3 } from "three";
 import type { Object3D } from "three";
 import {
   AxisJoint,
   DistanceJoint,
-  FixedJoint,
   GenericJoint,
-  PrismaticJoint,
   RevoluteJoint,
   ScalarJoint,
-  SphericalJoint,
   jointDofs,
 } from "@drawcall/physics";
 import type { Joint, JointDrive } from "@drawcall/physics";
-import { degrees } from "../units.js";
-import { Prim } from "./prim.js";
-import { tuple } from "./shapes.js";
+import { isAngular, scalarDrive, schemaOf } from "../schema.js";
+import { Prim, tuple } from "./prim.js";
 
 export function writeJoint(
   joint: Joint,
@@ -22,22 +18,8 @@ export function writeJoint(
   paths: Map<Object3D, string>,
 ): Prim {
   joint.validate();
-  const type =
-    joint instanceof FixedJoint
-      ? "PhysicsFixedJoint"
-      : joint instanceof RevoluteJoint
-        ? "PhysicsRevoluteJoint"
-        : joint instanceof PrismaticJoint
-          ? "PhysicsPrismaticJoint"
-          : joint instanceof DistanceJoint
-            ? "PhysicsDistanceJoint"
-            : joint instanceof SphericalJoint
-              ? "PhysicsSphericalJoint"
-              : joint instanceof GenericJoint
-                ? "PhysicsJoint"
-                : undefined;
-  if (!type) throw new Error(`Unsupported joint ${joint.constructor.name}`);
-  const prim = new Prim(name, type);
+  const schema = schemaOf(joint);
+  const prim = new Prim(name, schema.type);
   const body1 = paths.get(joint.options.body1);
   const body0 = joint.options.body0
     ? paths.get(joint.options.body0)
@@ -65,8 +47,8 @@ export function writeJoint(
       `float physics:minDistance = ${joint.limits[0]}`,
       `float physics:maxDistance = ${joint.limits[1] === Infinity ? -1 : joint.limits[1]}`,
     );
-  const factor = joint instanceof RevoluteJoint ? degrees : 1;
   if (joint instanceof AxisJoint) {
+    const factor = joint instanceof RevoluteJoint ? MathUtils.RAD2DEG : 1;
     prim.properties.push(
       `uniform token physics:axis = "${joint.options.axis}"`,
     );
@@ -79,7 +61,7 @@ export function writeJoint(
   if (joint instanceof GenericJoint) {
     for (const axis of jointDofs) {
       const motion = joint.dofs[axis];
-      const scale = axis.startsWith("rot") ? degrees : 1;
+      const scale = isAngular(axis) ? MathUtils.RAD2DEG : 1;
       // UsdPhysics: no limit means free, and a lower limit above the upper one locks the axis.
       if (motion !== "free") {
         prim.schemas.push(`PhysicsLimitAPI:${axis}`);
@@ -93,26 +75,17 @@ export function writeJoint(
         );
       }
       const drive = joint.getDrive(axis);
-      if (drive) writeDrive(prim, axis, drive, scale);
+      if (drive) writeDrive(prim, axis, drive);
     }
     return prim;
   }
   if (joint instanceof ScalarJoint && joint.drive)
-    writeDrive(
-      prim,
-      joint instanceof RevoluteJoint ? "angular" : "linear",
-      joint.drive,
-      factor,
-    );
+    writeDrive(prim, scalarDrive(schema), joint.drive);
   return prim;
 }
 
-function writeDrive(
-  prim: Prim,
-  instance: string,
-  drive: JointDrive,
-  factor: number,
-): void {
+function writeDrive(prim: Prim, instance: string, drive: JointDrive): void {
+  const factor = isAngular(instance) ? MathUtils.RAD2DEG : 1;
   if (!drive.target)
     throw new Error(
       "USD PhysicsDriveAPI cannot represent an untargeted drive; detach it before export",
@@ -120,6 +93,10 @@ function writeDrive(
   if (drive.target.effort !== 0)
     throw new Error(
       "USD PhysicsDriveAPI has no effort term; export drives without effort",
+    );
+  if (drive.options.maxVelocity !== undefined)
+    throw new Error(
+      "USD PhysicsDriveAPI has no velocity limit; export drives without maxVelocity",
     );
   const prefix = `drive:${instance}:physics:`;
   prim.schemas.push(`PhysicsDriveAPI:${instance}`);

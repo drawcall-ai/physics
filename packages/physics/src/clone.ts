@@ -1,5 +1,5 @@
 import { Object3D } from "three";
-import { Joint } from "./joint.js";
+import { Joint } from "./joints/joint.js";
 
 /** Copy bodies before constructing joints so immutable connections point at their copies. */
 export function clone<T extends Object3D>(root: T): T {
@@ -31,9 +31,6 @@ export function clone<T extends Object3D>(root: T): T {
       if (!copiedChild) throw new Error("Missing cloned child");
       target.add(copiedChild);
     }
-  }
-  for (const [source, target] of copies) {
-    if (!(source instanceof Joint)) target.copy(source, false);
   }
   if (!result) throw new Error("Missing cloned root");
   return result;

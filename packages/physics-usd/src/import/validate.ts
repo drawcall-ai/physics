@@ -1,4 +1,5 @@
 import { jointDofs } from "@drawcall/physics";
+import { driveInstances, jointSchemas } from "../schema.js";
 import { PRIM_SPEC, attribute, numeric, schemas } from "./layer.js";
 import type { Layer } from "./layer.js";
 
@@ -40,9 +41,7 @@ const supported = new Set([
   "PhysicsCollisionAPI",
   "PhysicsMeshCollisionAPI",
   "PhysicsMaterialAPI",
-  "PhysicsDriveAPI:angular",
-  "PhysicsDriveAPI:linear",
-  ...jointDofs.map((dof) => `PhysicsDriveAPI:${dof}`),
+  ...driveInstances.map((instance) => `PhysicsDriveAPI:${instance}`),
   ...jointDofs.map((dof) => `PhysicsLimitAPI:${dof}`),
 ]);
 const operations = new Set([
@@ -56,10 +55,12 @@ const operations = new Set([
   "xformOp:rotateY",
   "xformOp:rotateZ",
 ]);
-const driveProperty =
-  /^drive:(angular|linear|transX|transY|transZ|rotX|rotY|rotZ):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$/;
-const limitProperty =
-  /^limit:(transX|transY|transZ|rotX|rotY|rotZ):physics:(low|high)$/;
+const driveProperty = new RegExp(
+  `^drive:(${driveInstances.join("|")}):physics:(type|targetPosition|targetVelocity|stiffness|damping|maxForce)$`,
+);
+const limitProperty = new RegExp(
+  `^limit:(${jointDofs.join("|")}):physics:(low|high)$`,
+);
 
 export function validate(layer: Layer): void {
   validateUnits(layer);
@@ -106,17 +107,11 @@ function validateTransform(path: string, spec: Spec): void {
 
 function validateSchemas(layer: Layer, path: string, spec: Spec): void {
   const type = spec.fields.typeName;
-  const driveAxes: readonly string[] =
-    type === "PhysicsRevoluteJoint"
-      ? ["angular"]
-      : type === "PhysicsPrismaticJoint" || type === "PhysicsDistanceJoint"
-        ? ["linear"]
-        : type === "PhysicsJoint"
-          ? jointDofs
-          : [];
+  const drives =
+    jointSchemas.find((schema) => schema.type === type)?.drives ?? [];
   for (const schema of schemas(layer, path)) {
     const [api, instance = ""] = schema.split(":");
-    if (api === "PhysicsDriveAPI" && !driveAxes.includes(instance))
+    if (api === "PhysicsDriveAPI" && !drives.includes(instance))
       throw new Error(`Unsupported USD drive schema ${schema} on prim ${path}`);
     if (api === "PhysicsLimitAPI" && type !== "PhysicsJoint")
       throw new Error(`Unsupported USD limit schema ${schema} on prim ${path}`);

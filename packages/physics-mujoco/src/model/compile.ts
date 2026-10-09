@@ -1,22 +1,27 @@
 import type { MainModule, MjModel, MjData } from "@mujoco/mujoco";
 import {
-  cleanup,
-  rollback,
   RigidBody,
   Trigger,
   DistanceJoint,
   SphericalJoint,
   type Joint,
-  type JointReading,
 } from "@drawcall/physics";
+import {
+  cleanup,
+  rollback,
+  still,
+  type JointBinding,
+} from "@drawcall/physics/backend";
 import { Quaternion } from "three";
 import type { Geometry } from "./shapes.js";
-import type { JointRecord, Coordinate } from "./joints.js";
+import type { Coordinate } from "./joints.js";
 import { modelXml, type ModelOptions } from "./xml.js";
-import { at, array, name, rotation } from "../values.js";
+import { name } from "./markup.js";
+import { at, array, rotation } from "../heap.js";
 export type { ModelOptions } from "./xml.js";
 
-export interface Compiled {
+/** A compiled MuJoCo model, its simulation data, and where each physics object landed in them. */
+export interface Simulation {
   model: MjModel;
   data: MjData;
   bodies: Map<RigidBody, number>;
@@ -24,23 +29,20 @@ export interface Compiled {
   triggers: Map<Trigger, number>;
   geometries: Map<number, Geometry>;
   coordinates: Map<number, Coordinate & { actuator: number; dof: number }>;
-  roots: Set<RigidBody>;
   free(): void;
 }
 export function compile(
   api: MainModule,
-  bodies: ReadonlySet<RigidBody>,
-  joints: ReadonlyMap<Joint, JointRecord>,
-  triggers: ReadonlySet<Trigger>,
+  bodies: readonly RigidBody[],
+  joints: ReadonlyMap<Joint, JointBinding>,
+  triggers: readonly Trigger[],
   options: ModelOptions,
-  read: (joint: Joint) => JointReading,
-): Compiled {
-  const { xml, geometries, coordinates, roots } = modelXml(
+): Simulation {
+  const { xml, geometries, coordinates } = modelXml(
     bodies,
     joints,
     triggers,
     options,
-    read,
   );
   const model = api.MjModel.from_xml_string(xml);
   let data: MjData;
@@ -56,10 +58,7 @@ export function compile(
       return value;
     };
     const bodyIds = new Map(
-      [...bodies].map((body) => [
-        body,
-        id(api.mjtObj.mjOBJ_BODY.value, name(body)),
-      ]),
+      bodies.map((body) => [body, id(api.mjtObj.mjOBJ_BODY.value, name(body))]),
     );
     for (const [body, index] of bodyIds) {
       if (
@@ -83,13 +82,13 @@ export function compile(
       const joint = id(api.mjtObj.mjOBJ_JOINT.value, coordinate.name);
       array(data.qpos)[at(model.jnt_qposadr, joint)] = coordinate.position;
     }
-    for (const [joint, record] of joints) {
+    for (const [joint, binding] of joints) {
       if (!joint.enabled) continue;
       if (joint instanceof SphericalJoint) {
-        const frame = new Quaternion().setFromRotationMatrix(record.frames[1]);
+        const frame = new Quaternion().setFromRotationMatrix(binding.frames[1]);
         const value = frame
           .clone()
-          .multiply(read(joint).rotation)
+          .multiply(binding.read(still).rotation)
           .multiply(frame.invert());
         const index = id(api.mjtObj.mjOBJ_JOINT.value, name(joint));
         array(data.qpos).set(rotation(value), at(model.jnt_qposadr, index));
@@ -109,9 +108,8 @@ export function compile(
       model,
       data,
       bodies: bodyIds,
-      roots,
       targets: new Map(
-        [...bodies]
+        bodies
           .filter((body) => body.bodyType === "kinematic")
           .map((body) => [
             body,
@@ -119,7 +117,7 @@ export function compile(
           ]),
       ),
       triggers: new Map(
-        [...triggers].map((trigger) => [
+        triggers.map((trigger) => [
           trigger,
           id(api.mjtObj.mjOBJ_BODY.value, name(trigger)),
         ]),

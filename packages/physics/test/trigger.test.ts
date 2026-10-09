@@ -6,9 +6,9 @@ import {
   RigidBody,
   Trigger,
   clone,
-  resolveCollisionGroups,
   type RaycastHit,
 } from "../src/index.js";
+import { resolveCollisionGroups } from "../src/backend.js";
 
 it("owns only explicit shapes and stops body collider collection at its boundary", () => {
   const body = new RigidBody();
@@ -103,15 +103,15 @@ it("clones trigger ownership and settings without copying listeners", () => {
   expect(listener).not.toHaveBeenCalled();
 });
 
-it("fails visibly for overlap reads outside a built world's root", () => {
+it("fails visibly for overlap reads before it joins a world", () => {
   const trigger = new Trigger();
   const body = new RigidBody();
   expect(() => trigger.getOverlappingBodies()).toThrow(
-    "under a built world's root",
+    "has not joined a world yet",
   );
-  expect(() => trigger.overlaps(body)).toThrow("under a built world's root");
+  expect(() => trigger.overlaps(body)).toThrow("has not joined a world yet");
   expect(() => trigger.overlaps(new RigidBody())).toThrow(
-    "under a built world's root",
+    "has not joined a world yet",
   );
 });
 
@@ -135,7 +135,7 @@ it("types trigger and contact payloads while preserving Three.js scene events", 
   const hit: RaycastHit = {
     kind: "trigger",
     trigger,
-    collider: new BoxCollider(),
+    object: new BoxCollider(),
     distance: 1,
     point: new Vector3(),
     normal: new Vector3(),

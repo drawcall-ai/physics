@@ -1,9 +1,10 @@
 import { expect, it } from "vitest";
 import { PrismaticJoint, RigidBody } from "@drawcall/physics";
-import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
+import { PhysicsUSDLoader } from "../src/index.js";
+import { roundtrip } from "./roundtrip.js";
 
 it("roundtrips independent USD mass properties, velocities and a linear braking drive", async () => {
-  const imported = new PhysicsUSDLoader().parse(`#usda 1.0
+  const { scene: imported } = new PhysicsUSDLoader().parse(`#usda 1.0
 (
  metersPerUnit = 1
 )
@@ -32,12 +33,7 @@ def PhysicsPrismaticJoint "Slider" (
  float drive:linear:physics:damping = 3
  float drive:linear:physics:maxForce = inf
 }`);
-  const scenes = [
-    imported,
-    new PhysicsUSDLoader().parse(
-      await new PhysicsUSDExporter().parseAsync(imported),
-    ),
-  ];
+  const scenes = [imported, (await roundtrip(imported)).scene];
   for (const scene of scenes) {
     const body = scene.getObjectByName("Body");
     const joint = scene

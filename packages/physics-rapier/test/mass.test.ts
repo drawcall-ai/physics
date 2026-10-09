@@ -29,14 +29,14 @@ for (const c of [
     });
     b.position.x = c.offset;
     body.add(a, b);
-    world.root.add(body);
+    world.scene.add(body);
     world.update(0);
     body.applyImpulse(new Vector3(0, c.mass, 0), new Vector3(c.center, 0, 0));
     expect(body.getVelocity().linear.y).toBeCloseTo(1, 5);
     expect(body.getVelocity().angular.length()).toBeLessThan(1e-6);
   });
 
-it("reads inferred COM immediately and honors later assembly transforms", async () => {
+it("reads joint velocity about the inferred COM under a transformed assembly", async () => {
   const world = await createWorld();
   const parent = new Group();
   parent.position.set(10, 20, 30);
@@ -48,9 +48,10 @@ it("reads inferred COM immediately and honors later assembly transforms", async 
   const collider = new BoxCollider();
   collider.position.x = 2;
   body.add(collider);
+  body.scale.setScalar(1.5);
   parent.add(body);
-  world.root.add(parent);
-  const options = {
+  world.scene.add(parent);
+  const joint = new PrismaticJoint({
     body0: null,
     body1: body,
     frame0: new Matrix4().compose(
@@ -59,20 +60,10 @@ it("reads inferred COM immediately and honors later assembly transforms", async 
       new Vector3(1, 1, 1),
     ),
     frame1: new Matrix4(),
-  };
-  const joint = new PrismaticJoint(options).setEnabled(false);
-  world.root.add(joint);
-  expect(joint.getState().velocity).toBeCloseTo(-12, 4);
-  body.scale.setScalar(1.5);
+  }).setEnabled(false);
+  world.scene.add(joint);
+  world.update(0);
   expect(joint.getState().velocity).toBeCloseTo(-18, 4);
-  world.onBeforeStep(() => {
-    expect(joint.getState().velocity).toBeCloseTo(-18, 4);
-    const added = new PrismaticJoint(options);
-    world.root.add(added);
-    expect(added.getState().velocity).toBeCloseTo(-18, 4);
-  });
-  world.update(world.fixedDelta);
-  expect(world.time).toBe(world.fixedDelta);
 });
 
 it("keeps explicit COM and inertia authoritative across geometry changes", async () => {
@@ -85,7 +76,7 @@ it("keeps explicit COM and inertia authoritative across geometry changes", async
   });
   const mesh = new Mesh(new BoxGeometry(1, 1, 1));
   body.add(mesh);
-  world.root.add(body);
+  world.scene.add(body);
   for (const size of [1, 4]) {
     mesh.geometry = new BoxGeometry(size, size, size);
     body.setVelocity({ linear: new Vector3(), angular: new Vector3() });
@@ -100,14 +91,14 @@ it("requires dynamic inertia, permits colliderless anchors, and ignores surface 
   const world = await createWorld();
   for (const mass of [undefined, 1]) {
     const body = new RigidBody({ colliders: false, mass });
-    world.root.add(body);
+    world.scene.add(body);
     expect(() => world.update(0)).toThrow(/mass|inertia/);
     body.removeFromParent();
   }
-  world.root.add(
-    new RigidBody({ type: "static", colliders: false }),
-    new RigidBody({ type: "kinematic", colliders: false }),
-    inertialBody({ type: "static" }).add(
+  world.scene.add(
+    new RigidBody({ bodyType: "static", colliders: false }),
+    new RigidBody({ bodyType: "kinematic", colliders: false }),
+    inertialBody({ bodyType: "static" }).add(
       new MeshCollider({ approximation: "trimesh" }).setGeometry(
         new PlaneGeometry(1, 1),
       ),
@@ -116,7 +107,7 @@ it("requires dynamic inertia, permits colliderless anchors, and ignores surface 
   expect(() => world.update(0)).not.toThrow();
   const invalid = new RigidBody().setMaterial({ density: 0 });
   invalid.add(new BoxCollider());
-  world.root.add(invalid);
+  world.scene.add(invalid);
   expect(() => world.update(0)).toThrow("positive mass");
   invalid.setMaterial({ density: 1 });
   world.update(0);
@@ -137,7 +128,7 @@ it("rotates the principal inertia axes used for angular response", async () => {
     diagonalInertia: [1, 2, 3],
     principalAxes: [axes.x, axes.y, axes.z, axes.w],
   });
-  world.root.add(ordinary, rotated);
+  world.scene.add(ordinary, rotated);
   world.update(0);
   for (const body of [ordinary, rotated])
     body.applyImpulse(new Vector3(0, 0, 1), new Vector3(0, 1, 0));

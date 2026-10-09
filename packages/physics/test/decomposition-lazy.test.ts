@@ -1,18 +1,14 @@
 import { expect, it, vi } from "vitest";
 import { BoxGeometry, Group } from "three";
-import {
-  BoxCollider,
-  MeshCollider,
-  RigidBody,
-  prepareConvexParts,
-} from "../src/index.js";
+import { BoxCollider, MeshCollider, RigidBody } from "../src/index.js";
+import { prepareConvexParts } from "../src/backend.js";
 
 const load = vi.fn();
-vi.mock("../src/coacd.js", () => ({ default: load }));
+vi.mock("../src/colliders/coacd.js", () => ({ default: load }));
 
 it("loads CoACD only when some mesh needs decomposing", async () => {
   const box = new RigidBody().add(new BoxCollider());
-  const scenery = new RigidBody({ type: "static" }).add(
+  const scenery = new RigidBody({ bodyType: "static" }).add(
     new MeshCollider({ approximation: "trimesh" }).setGeometry(
       new BoxGeometry(),
     ),

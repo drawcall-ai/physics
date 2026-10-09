@@ -13,11 +13,6 @@ export function assertRigidTransform(matrix: Matrix4): void {
     throw new Error("Physics transforms must have unit scale and no shear");
 }
 
-/** Rejects matrices that do not split into a pose and a positive scale: shear, mirroring, or non-finite terms. */
-export function assertScaledTransform(matrix: Matrix4, name?: string): void {
-  splitTransform(matrix, name);
-}
-
 export function assertPositiveScale(node: Object3D, subject: string): void {
   if (Math.min(node.scale.x, node.scale.y, node.scale.z) <= 0)
     throw new Error(
@@ -39,12 +34,16 @@ export function setWorldPose(object: RigidBody, pose: Matrix4): void {
   const matrix = pose.clone().scale(scale);
   if (object.parent)
     matrix.premultiply(object.parent.matrixWorld.clone().invert());
-  assertScaledTransform(matrix);
+  splitTransform(matrix);
   matrix.decompose(object.position, object.quaternion, object.scale);
   object.updateMatrix();
   object.updateMatrixWorld(true);
 }
 
+/**
+ * The matrix as a rigid pose and a positive scale; rejects shear, mirroring, and non-finite
+ * terms.
+ */
 export function splitTransform(matrix: Matrix4, name = "Physics transform") {
   const position = new Vector3(),
     rotation = new Quaternion(),

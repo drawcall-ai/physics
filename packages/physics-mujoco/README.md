@@ -1,143 +1,73 @@
 # @drawcall/physics-mujoco
 
-MuJoCo WASM implementation of `PhysicsWorld`, using the official
-[`@mujoco/mujoco`](https://github.com/google-deepmind/mujoco/tree/main/wasm) bindings.
-The single-threaded engine works in Node.js and browsers without cross-origin
-isolation headers.
+MuJoCo backend for
+[`@drawcall/physics`](https://github.com/drawcall-ai/physics#readme),
+built on the official [`@mujoco/mujoco`](https://github.com/google-deepmind/mujoco/tree/main/wasm)
+WASM bindings. It runs single-threaded in Node.js and in browsers without cross-origin
+isolation. The core guide covers the shared contracts; this page lists only
+MuJoCo-specific behavior.
 
 ```sh
-npm install @drawcall/physics @drawcall/physics-mujoco three
+npm install three @drawcall/physics @drawcall/physics-mujoco
 ```
-
-In Node.js the engine loads its packaged WASM automatically:
 
 ```ts
 import { buildWorld } from "@drawcall/physics-mujoco";
-import { RigidBody, BoxCollider } from "@drawcall/physics";
-import { Scene } from "three";
 
-const scene = new Scene();
-const box = new RigidBody({ mass: 1 });
-box.position.y = 2;
-box.add(new BoxCollider());
-scene.add(box);
-const world = await buildWorld(scene, { fixedDelta: 1 / 120 });
-world.update(world.fixedDelta);
-console.log(box.position.y);
-world.dispose();
+const world = await buildWorld({ scene, fixedDelta: 1 / 120 });
 ```
 
-With Vite, import the WASM as an asset and pass its URL. Add `@mujoco/mujoco`
-as a direct dependency when importing this asset from application code:
+Node.js loads the packaged WASM automatically. In browsers, serve `mujoco.wasm` and pass
+its URL. With Vite, add `@mujoco/mujoco` as a direct dependency and import the asset:
 
 ```ts
-import { buildWorld } from "@drawcall/physics-mujoco";
 import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 
-const world = await buildWorld(scene, { wasmUrl, solverIterations: 50 });
+const world = await buildWorld({ scene, wasmUrl });
 ```
 
-`frictionCone` selects MuJoCo's friction model. The default `"pyramidal"` is what MuJoCo
-ships and proved more robust for kinematic contact at small steps; `"elliptic"` models
-friction faithfully and is the cone `frictionImpedanceRatio` is defined for.
-`frictionImpedanceRatio` is MuJoCo's `impratio`: how stiff friction constraints are
-relative to normal ones. At the default `1` a resting or grasped object still creeps,
-because soft friction trades slip for force. Raising it converges on Coulomb friction
-without changing the limit at which contacts start to slide; grasping needs around `50`
-with elliptic cones, and a ratio above `1` without them is rejected.
+`@mujoco/mujoco` imports Node's `module` builtin; webpack browser builds need
+`resolve: { fallback: { module: false } }`.
 
-A drive's `maxVelocity` is honoured here as the motor's back-EMF: the joint is damped by
-`maxForce / maxVelocity`, so a saturated drive settles at its rated speed. The damping sits on
-the joint rather than the actuator, both because back-EMF resists motion whenever the motor is
-connected and because MuJoCo integrates joint damping implicitly, which a force limit that
-chased the measured speed did not survive. Distance joints and free generic joints,
-which MuJoCo drives by generalized force, brake by the same damping.
+## Options
 
-Other bundlers must serve `mujoco.wasm` and supply its URL through `wasmUrl`.
-`@mujoco/mujoco` imports Node's `module` builtin for Node; webpack fails on that import
-in browser builds unless told to leave it out with `resolve: { fallback: { module: false } }`.
-The examples demonstrate both development and production asset loading.
-`buildWorld(root)` prepares the colliders under `root` and compiles the initial model
-without advancing time. Like every world, it simulates the bodies, joints, and
-triggers under `root`. MuJoCo modules are shared;
-each world owns and frees its model and simulation data. Build after authoring the
-initial scene to enable mesh optimization. Building first is also supported.
+`MujocoWorldOptions` extend the shared options:
 
-## Simulation and scene edits
+- `solverIterations` defaults to 50.
+- `frictionCone`: `"pyramidal"` (default) is more robust for kinematic contact at small
+  steps; `"elliptic"` models friction faithfully.
+- `frictionImpedanceRatio` is MuJoCo's `impratio` (default 1). At 1 a resting or
+  grasped object creeps; grasping needs around 50. Values above 1 require elliptic cones.
+- `wasmUrl`: see above.
 
-`update` accumulates elapsed seconds into fixed steps, capped by `maxSubsteps`.
-`update(0)` compiles pending geometry without advancing time. Complete geometry,
-parenting, and initial transforms before preparing the world. Shape and body
-scale and joint anchors are captured at first preparation; recreate objects to
-change their scale or anchors. `reset` restores captured poses and velocities.
-Callbacks, forces, impulses, world-space teleports, kinematic targets,
-raycasts, triggers, collision groups, and contact transitions use the core API.
+## Model rebuilds
 
-MuJoCo compiles a whole articulated model. Adding/removing bodies, changing
-colliders (including geometry marked with `needsUpdate`), or attaching/disabling
-joints rebuilds it transactionally and preserves
-current poses and joint velocities. Drive targets update native actuators without
-recompilation. Rebuilds are more expensive than Rapier's incremental edits.
-Raycasts use a temporary model so a read never captures permanent authoring state.
+MuJoCo simulates one compiled model. Adding or removing objects, editing colliders or
+their geometry, or enabling, disabling, or re-driving joints recompiles it. A rebuild
+keeps poses, joint velocities, and kinematic targets, but costs far more than an edit in
+Rapier. Drive target changes need no rebuild. Scale is fixed once compiled.
 
-Contacts go through MuJoCo's own broadphase. Each distinct collision group becomes
-`contype`/`conaffinity` bits that collide exactly as the groups do, so model size
-and step cost grow with the number of shapes, not with their pairs; MuJoCo's 32
-bits cover any practical set of groups. Friction combines as the larger of the
-two, MuJoCo's rule. Bodies held by a `FixedJoint` share one MuJoCo body, so
-`collideConnected` is an error there.
-
-The native `discrete` integrator treats servo stiffness and damping implicitly
-alongside contacts. Saturated actuators lose these implicit derivatives, so
-force-limited servos still need gains and target rates appropriate to the timestep.
-Hinge and slider drives use native actuators with force limits. Completely
-free generic joints, including the ragdoll hand, and distance drives use scalar
-implicit springs projected through the native mass matrix. Their effective inertia
-includes both connected bodies, angular inertia, and anchor lever arms.
-Frame-relative translation applies equal opposite forces at the driven anchor,
-including the reaction torque from frame rotation. Acceleration drives scale gains
-by the coordinate's effective inertia. Contacts remain the native solver's
-responsibility. Distance limits use spatial tendons. Revolute readings track full turns.
+Every `trimesh` collides as convex parts decomposed at build, or as one hull if added or
+edited later. Exception: a complete regular height grid with planar cells on a static
+body becomes a native heightfield.
 
 ## Engine differences
 
-- Constrained joints must form a directed tree: one parent joint per dynamic
-  `body1`, with no cycles. Distance tendons and fully free generic drive joints may
-  connect different branches. Locked frame coordinates must be aligned before
-  creating or re-enabling a constraint. Unsupported graphs and misaligned locked
-  frames throw.
-- Teleport and velocity setters after compilation operate on free dynamic roots,
-  static bodies, and kinematic targets. Use drives and impulses for articulated
-  links. Teleporting a free root moves its entire articulation. Manual `sleep()`
-  is rejected; this adapter keeps bodies awake.
-- Kinematic bodies use a free collision body welded to a separate non-colliding
-  mocap target. Contacts receive the body's simulated linear and angular velocity;
-  rendered poses follow that collision body. Tracking is compliant, so bodies can
-  lag or yield under load rather than behaving as infinitely stiff platforms.
-  Their authored mass/inertia controls the response; colliderless anchors default
-  to mass 1 and diagonal inertia [1, 1, 1]. Gravity is compensated. Teleport moves
-  both body and target; model rebuilds preserve the outstanding target.
-- Static and dynamic friction must be equal. Restitution maps to MuJoCo's contact
-  damping ratio, so impact behavior differs from Rapier.
-- Scalar limits require a nonzero interval. Use fixed joints or locked generic
-  degrees of freedom for a locked coordinate. An infinite distance maximum
-  requires a zero minimum.
-- MuJoCo collides mesh convex hulls, so a `trimesh` collider collides as the convex
-  parts the core decomposes when the world is built, or as one hull if it was added
-  or edited later. Complete regular height grids with planar cells on static bodies
-  use native heightfields with a 1 mm base. Explicit `convexHull` colliders always
-  use one hull.
-
-The adapter validates heap-view types at the WASM boundary and frees owned native
-objects explicitly. MuJoCo simulation warnings surface as errors instead of
-silently accepting a solver reset.
-
-Run `pnpm --filter @drawcall/physics-mujoco test` for Node contract tests. The car,
-ragdoll, and scale packages additionally test their full scenes against MuJoCo.
-
-To see decomposition in action, run `pnpm --filter @drawcall/example-scale dev`
-and open **Convex vs decomposed** (`?demo=decomposition&backend=mujoco`).
-Two identical frame meshes use different collision approximations: the left
-cube rests on a single hull spanning the opening; the right cube falls through
-an opening preserved by CoACD. Both frames are authored before `buildWorld(root)`.
-**Replay drops** resets the world and reuses the prepared colliders.
+- Constrained joints must form a tree: one parent joint per `body1`, which must be
+  dynamic, and no cycles. Distance joints and fully free generic joints may connect any
+  bodies. Locked coordinates must be aligned when a joint is created or re-enabled.
+- Bodies held by a `FixedJoint` share one MuJoCo body, so `collideConnected` throws.
+- Scalar limits need a nonzero range; an infinite distance maximum needs a zero minimum.
+- `setVelocity` needs a free root body; move articulated bodies with drives.
+  Teleporting a dynamic body moves its whole articulation and throws when that
+  articulation hangs from the world or a static or kinematic base.
+- `sleep()` throws; bodies stay awake.
+- Kinematic bodies are free bodies welded to a mocap target: contacts see their velocity,
+  but they track compliantly and can lag under load. Colliderless kinematic bodies
+  default to mass 1 and unit inertia.
+- Static and dynamic friction must be equal; friction combines as the larger value.
+  Restitution maps to the contact damping ratio, so impacts differ from Rapier.
+- Hinge and slider drives are native actuators. Distance drives and drives on fully free
+  generic joints are implicit springs. `maxVelocity` becomes joint damping.
+- Collision groups map to `contype`/`conaffinity`; needing more than 32 bits throws.
+- MuJoCo warnings and non-finite state throw instead of silently resetting.

@@ -21,7 +21,8 @@ describe.each([
     async ({ brake, fixedDelta }) => {
       const car = createCar();
       const scene = new Scene().add(car.root, createRoad());
-      const world = await buildWorld(scene, {
+      const world = await buildWorld({
+        scene,
         ...simulationOptions,
         fixedDelta,
       });
@@ -63,7 +64,6 @@ describe.each([
           }
         }
       } finally {
-        driver.dispose();
         world.dispose();
       }
     },
@@ -78,9 +78,9 @@ describe.each([
     "tracks steering reversals without wobble with throttle=$throttle and brake=$brake",
     async ({ throttle, brake }) => {
       const scene = new Scene();
-      const world = await buildWorld(scene, simulationOptions);
+      const world = await buildWorld({ scene, ...simulationOptions });
       const car = createCar();
-      const floor = new RigidBody({ type: "static" });
+      const floor = new RigidBody({ bodyType: "static" });
       floor.position.y = -0.15;
       const collider = new BoxCollider({ size: [200, 0.3, 200] });
       collider.setCollisionGroups({ membership: 1, filter: 2 });
@@ -125,7 +125,6 @@ describe.each([
           }
         }
       } finally {
-        driver.dispose();
         world.dispose();
       }
     },

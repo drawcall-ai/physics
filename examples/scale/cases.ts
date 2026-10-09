@@ -8,7 +8,7 @@ export interface Case {
   scale: [number, number, number];
   explicit: boolean;
   compound?: boolean;
-  type?: "dynamic" | "static" | "kinematic";
+  bodyType?: "dynamic" | "static" | "kinematic";
   geometry?: "sphere" | "capsule";
   error?: string;
   shear?: boolean;
@@ -91,7 +91,7 @@ cases.push(
     placement: "body",
     scale: [2, 1, 1.5],
     explicit: true,
-    type: "kinematic",
+    bodyType: "kinematic",
   },
   {
     name: "Kinematic box: nonuniform ancestor rejected",
@@ -99,7 +99,7 @@ cases.push(
     placement: "ancestor",
     scale: [2, 1, 1.5],
     explicit: true,
-    type: "kinematic",
+    bodyType: "kinematic",
     error: "uniform ancestor",
   },
 );
@@ -117,7 +117,7 @@ for (const geometry of ["sphere", "capsule"] as const) {
 cases.push({
   name: "Dynamic triangle mesh",
   kind: "triangle mesh",
-  type: "dynamic",
+  bodyType: "dynamic",
   placement: "body",
   scale: [2, 2, 2],
   explicit: true,
@@ -132,7 +132,7 @@ for (const kind of [
   cases.push({
     name: `Static ${kind}: nonuniform ancestor`,
     kind,
-    type: "static",
+    bodyType: "static",
     placement: "ancestor",
     scale: [1.5, 2, 1.5],
     explicit: true,
@@ -156,5 +156,5 @@ cases.push({
   placement: "ancestor",
   scale: [1.5, 1.5, 1.5],
   explicit: true,
-  type: "kinematic",
+  bodyType: "kinematic",
 });

@@ -6,10 +6,10 @@ import { createWorld, inertialBody } from "./fixtures.js";
 it("prepares before observers and applies the effort held at step time for one substep", async () => {
   const world = await createWorld();
   const body = inertialBody();
-  world.root.add(body);
+  world.scene.add(body);
   const joint = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
   const other = new PrismaticJoint({ body0: null, body1: body, axis: "X" });
-  world.root.add(joint, other);
+  world.scene.add(joint, other);
   const effort = new JointDrive({}).setTarget({ effort: 5 });
   joint.setDrive(effort);
   const idle = new JointDrive({}).setTarget({ effort: 20 });
@@ -48,7 +48,7 @@ for (const Joint of [RevoluteJoint, PrismaticJoint])
     const first = inertialBody(),
       second = inertialBody();
     parent.add(first, second);
-    world.root.add(parent);
+    world.scene.add(parent);
     const frame = new Matrix4().makeRotationY(Math.PI / 2).setPosition(0, 1, 0);
     const joint = new Joint({
       body0: first,
@@ -57,7 +57,7 @@ for (const Joint of [RevoluteJoint, PrismaticJoint])
       frame0: frame,
       frame1: frame,
     });
-    world.root.add(joint);
+    world.scene.add(joint);
     world.update(0);
     joint.setDrive(new JointDrive({}).setTarget({ effort: 2 }));
     world.update(0.01);
@@ -80,7 +80,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     angular: new Vector3(0, 0, 3),
   });
   second.position.set(2, 1, 0);
-  world.root.add(first, second);
+  world.scene.add(first, second);
   const slider = new PrismaticJoint({
     body0: first,
     body1: second,
@@ -88,7 +88,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     frame0: new Matrix4().makeTranslation(0, 1, 0),
     frame1: new Matrix4().makeTranslation(0, 2, 0),
   }).setEnabled(false);
-  world.root.add(slider);
+  world.scene.add(slider);
   world.update(0);
   const initial = slider.getState();
   expect(initial.velocity).toBeCloseTo(0, 6);
@@ -103,7 +103,7 @@ it("measures offset COM and moving reference-axis velocity", async () => {
     frame0: new Matrix4(),
     frame1: new Matrix4(),
   }).setEnabled(false);
-  world.root.add(offset);
+  world.scene.add(offset);
   expect(offset.getState().velocity).toBeCloseTo(-3, 4);
 });
 
@@ -113,13 +113,13 @@ for (const speed of [8, -8])
     const body = inertialBody().setVelocity({
       angular: new Vector3(0, 0, speed),
     });
-    world.root.add(body);
+    world.scene.add(body);
     const hinge = new RevoluteJoint({
       body0: null,
       body1: body,
       axis: "Z",
     });
-    world.root.add(hinge);
+    world.scene.add(hinge);
     for (let i = 0; i < 200; i++) world.update(0.01);
     expect(hinge.getState().position).toBeCloseTo(speed * 2, 1);
     body.teleport(new Matrix4().makeRotationZ(0.25));
@@ -134,7 +134,7 @@ it("applies runtime damping/gravity settings while preserving the initialized ve
   const body = inertialBody()
     .setVelocity({ linear: new Vector3(2, 0, 0) })
     .setGravityScale(0);
-  world.root.add(body);
+  world.scene.add(body);
   world.update(0.01);
   expect(body.getVelocity().linear.toArray()).toEqual([2, 0, 0]);
   body

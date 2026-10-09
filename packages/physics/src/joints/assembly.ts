@@ -1,8 +1,7 @@
 import type { Object3D } from "three";
-import type { RigidBody } from "./body.js";
-import type { Trigger } from "./trigger.js";
+import type { RigidBody } from "../body.js";
 import { Joint } from "./joint.js";
-import { DistanceJoint } from "./joints.js";
+import { DistanceJoint } from "./kinds.js";
 import { GenericJoint, jointDofs } from "./generic.js";
 
 /** A generic joint that leaves every degree of freedom free constrains nothing. */
@@ -23,12 +22,10 @@ export function treeJoint(joint: Joint): boolean {
 /** The bodies that move as one with `body`: itself and every dynamic body reachable through tree joints. */
 export function assembly(
   body: RigidBody,
-  objects: Iterable<RigidBody | Joint | Trigger>,
+  joints: Iterable<Joint>,
 ): Set<RigidBody> {
   const members = new Set([body]);
-  const links = [...objects].filter(
-    (object): object is Joint => object instanceof Joint && treeJoint(object),
-  );
+  const links = [...joints].filter(treeJoint);
   for (const member of members)
     for (const { options } of links) {
       const other =
@@ -42,13 +39,15 @@ export function assembly(
   return members;
 }
 
-/** The joints in the whole hierarchy that holds `object`. */
-export function hierarchyJoints(object: Object3D): Joint[] {
-  let top = object;
-  while (top.parent) top = top.parent;
+/** The joints under its world's scene, or else in the whole hierarchy that holds it. */
+export function hierarchyJoints(body: RigidBody): Joint[] {
   const joints: Joint[] = [];
-  top.traverse((node) => {
+  (body.world?.scene ?? top(body)).traverse((node) => {
     if (node instanceof Joint) joints.push(node);
   });
   return joints;
+}
+
+function top(object: Object3D): Object3D {
+  return object.parent ? top(object.parent) : object;
 }

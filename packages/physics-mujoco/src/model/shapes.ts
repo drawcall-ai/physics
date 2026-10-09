@@ -1,14 +1,13 @@
 import {
   RigidBody,
-  convexParts,
   resolveCollider,
-  resolveCollisionGroups,
   type Trigger,
   type CollisionGroups,
 } from "@drawcall/physics";
+import { convexParts, resolveCollisionGroups } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { heightfield } from "./heightfield.js";
-import { placement, name } from "../values.js";
+import { placement, name } from "./markup.js";
 
 export interface Geometry {
   name: string;

@@ -19,7 +19,7 @@ export function createRagdoll() {
     position: [number, number, number],
     mass: number,
   ) {
-    const body = new RigidBody(mass === 0 ? { type: "static" } : { mass });
+    const body = new RigidBody(mass === 0 ? { bodyType: "static" } : { mass });
     body.name = name;
     body.position.set(...position);
     body.add(

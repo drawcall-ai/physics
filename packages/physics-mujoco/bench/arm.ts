@@ -23,10 +23,10 @@ const steps = Number(length);
 
 // Hulls like a robot link's or a chess piece's, and a visual mesh beside each.
 const scene = new Scene();
-const table = new RigidBody({ type: "static" });
+const table = new RigidBody({ bodyType: "static" });
 table.add(new BoxCollider({ size: [2, 0.1, 2] }));
 table.position.y = -0.05;
-const base = new RigidBody({ type: "static" });
+const base = new RigidBody({ bodyType: "static" });
 base.add(new BoxCollider({ size: [0.1, 0.05, 0.1] }));
 base.position.set(0, 0.2, -0.5);
 scene.add(table, base);
@@ -69,7 +69,7 @@ for (let i = 0; i < pieces; i++) {
   body.add(new BoxCollider({ size: [0.01, 0.005, 0.01] }));
 }
 
-const world = await buildWorld(scene, { fixedDelta: 1 / 500 });
+const world = await buildWorld({ scene, fixedDelta: 1 / 500 });
 let step = 0;
 world.onBeforeStep(() => {
   step++;

@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 packages/physics/generated/
-packages/physics/src/coacd.ts
+packages/physics/src/colliders/coacd.ts
 
 # Copied from the root by the publish workflow.
 packages/physics/README.md

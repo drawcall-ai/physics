@@ -18,36 +18,33 @@ const mass = {
   diagonalInertia: [1, 1, 1],
 } satisfies RigidBodyOptions;
 
-it("copies immutable configuration, retaining resource identities and independent joint frames", () => {
-  const centerOfMass: [number, number, number] = [1, 2, 3];
-  const options = { ...mass, centerOfMass };
+it("shares immutable options with clones and copies only between objects that share them", () => {
+  const options = { ...mass, centerOfMass: [1, 2, 3] as const };
   const body = new RigidBody(options);
   expectTypeOf<Pick<RigidBody, "options" | "bodyType">>().toEqualTypeOf<
     Readonly<Pick<RigidBody, "options" | "bodyType">>
   >();
   options.mass = 20;
-  centerOfMass[0] = 9;
   expect(body.options).toEqual({
     ...mass,
     centerOfMass: [1, 2, 3],
-    type: "dynamic",
+    bodyType: "dynamic",
     colliders: "auto",
     canSleep: true,
   });
+  expect(body.clone().options).toBe(body.options);
   const frame0 = new Matrix4().makeTranslation(2, 0, 0);
-  const limits: [number, number] = [-1, 2];
   const joint = new RevoluteJoint({
     body0: null,
     body1: body,
     frame0,
     frame1: new Matrix4(),
-    limits,
+    limits: [-1, 2],
   });
   frame0.makeTranslation(10, 0, 0);
-  joint.options.frame0?.makeTranslation(20, 0, 0);
-  limits[0] = -99;
   expect(joint.getFrame(0, new Matrix4()).elements[12]).toBe(2);
   expect(joint.options.body1).toBe(body);
+  expect(joint.clone().options).toBe(joint.options);
   expect(joint.clone().limits).toEqual([-1, 2]);
   expect(() =>
     new RevoluteJoint({ body0: null, body1: body }).copy(joint),
@@ -89,22 +86,17 @@ it.each(invalidMass)(
   },
 );
 
-it("copies matching immutable configurations regardless of option order and explicit defaults", () => {
+it("copies settings into a clone and rejects bodies constructed separately", () => {
   const source = new RigidBody(mass).setVelocity({
     linear: new Vector3(2, 0, 0),
   });
-  const target = new RigidBody({
-    canSleep: true,
-    colliders: "auto",
-    ...mass,
-    principalAxes: [0, 0, 0, 1],
-  });
+  const target = source.clone();
+  source.setVelocity({ linear: new Vector3(3, 0, 0) }).setLinearDamping(1);
   target.copy(source);
-  expect(target.getVelocity().linear.x).toBe(2);
+  expect(target.getVelocity().linear.x).toBe(3);
+  expect(target.linearDamping).toBe(1);
   expect(source.getColliders()).toEqual([]);
-  expect(() => new RigidBody({ ...mass, mass: 3 }).copy(source)).toThrow(
-    "immutable",
-  );
+  expect(() => new RigidBody(mass).copy(source)).toThrow("immutable");
   const mesh = new MeshCollider({ approximation: "trimesh" });
   expect(mesh.clone().approximation).toBe("trimesh");
   expect(mesh.clone().geometry).toBe(mesh.geometry);
@@ -122,7 +114,7 @@ it("validates runtime controls before storing and checks the authoring world bou
   }).setCollideConnected(true);
   joint.setEnabled(false).setEnabled(true);
   expect(joint.getState()).toEqual({ position: 0, velocity: 0 });
-  expect(() => body.wake()).toThrow("under a built world's root");
+  expect(() => body.wake()).toThrow("has not joined a world yet");
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
@@ -175,17 +167,17 @@ it("honors subclass copy overrides for standalone joint cloning", () => {
 });
 
 it("copies immutable body type and clones independent velocity", () => {
-  const options: { type: "dynamic" | "static" } = { type: "dynamic" };
+  const options: { bodyType: "dynamic" | "static" } = { bodyType: "dynamic" };
   const body = new RigidBody(options).setVelocity({
     linear: new Vector3(3, 0, 0),
   });
-  options.type = "static";
+  options.bodyType = "static";
   expect(body.bodyType).toBe("dynamic");
   const copy = body.clone();
   expect(copy.bodyType).toBe("dynamic");
   copy.setVelocity({ linear: new Vector3(5, 0, 0) });
   expect(body.getVelocity().linear.x).toBe(3);
-  expect(() => new RigidBody({ type: "static" }).copy(body)).toThrow(
+  expect(() => new RigidBody({ bodyType: "static" }).copy(body)).toThrow(
     "immutable",
   );
 });

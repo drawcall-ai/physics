@@ -8,8 +8,8 @@ import {
   type Joint,
   type JointDof,
   type JointDrive,
-  wrapAngle,
 } from "@drawcall/physics";
+import { wrapAngle } from "@drawcall/physics/backend";
 import { Quaternion, Vector3 } from "three";
 import { bodyPose } from "./body.js";
 
@@ -38,57 +38,55 @@ function slots(object: Joint): [JointDof, JointDrive | undefined][] {
     return jointDofs.map((axis) => [axis, object.getDrive(axis)]);
   return [];
 }
-export type DriveState = [JointDrive | undefined, number];
-/** Which drive fills each slot and how it was last configured, for change detection. */
-export function driveStates(object: Joint): DriveState[] {
-  return slots(object).map(([, drive]) => [
-    drive,
-    drive?.settingsVersion ?? -1,
-  ]);
-}
-export function sameDrives(a: DriveState[], b: DriveState[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every(
-      ([drive, version], i) => b[i]?.[0] === drive && b[i]?.[1] === version,
-    )
-  );
-}
 
-/** Maps each slot's stiffness and damping onto Rapier's native motor; effort acts through `applyEfforts`. */
-export function configureDrives(
-  api: typeof Rapier,
-  backend: Rapier.World,
-  object: Joint,
-  joint: Rapier.ImpulseJoint,
-): void {
-  for (const [axis, drive] of slots(object)) {
+/** Rejects drives Rapier's motors cannot model, before any native change. */
+export function validateDrives(object: Joint): void {
+  for (const [, drive] of slots(object)) {
     if (drive?.options.maxVelocity !== undefined)
       throw new Error(
         "Rapier motors take a constant force limit, so they cannot model maxVelocity",
       );
-    const goal = drive?.target;
-    const gains =
-      (drive?.options.stiffness ?? 0) > 0 || (drive?.options.damping ?? 0) > 0;
-    if (drive?.options.maxForce !== undefined && gains && goal?.effort)
+    if (
+      drive?.options.maxForce !== undefined &&
+      gains(drive) &&
+      drive.target?.effort
+    )
       throw new Error(
         "Rapier caps its motor and a drive effort separately, so a capped drive cannot combine gains with effort",
       );
+  }
+}
+
+function gains(drive: JointDrive): boolean {
+  return (drive.options.stiffness ?? 0) > 0 || (drive.options.damping ?? 0) > 0;
+}
+
+/** Maps each slot's stiffness and damping onto Rapier's native motor; effort acts through `applyDrives`. */
+export function configureDrives(
+  api: typeof Rapier,
+  native: Rapier.World,
+  object: Joint,
+  joint: Rapier.ImpulseJoint,
+): void {
+  for (const [axis, drive] of slots(object)) {
+    const goal = drive?.target;
     // A Rapier motor without gains freezes the body; effort-only drives act through per-step forces instead.
-    const native =
-      drive && goal && gains ? { options: drive.options, goal } : undefined;
+    const motor =
+      drive && goal && gains(drive)
+        ? { options: drive.options, goal }
+        : undefined;
     const model: number =
-      native?.options.model === "acceleration"
+      motor?.options.model === "acceleration"
         ? api.MotorModel.AccelerationBased
         : api.MotorModel.ForceBased;
-    const maxForce = native ? (native.options.maxForce ?? Number.MAX_VALUE) : 0;
-    const position = native?.goal.position ?? 0;
+    const maxForce = motor ? (motor.options.maxForce ?? Number.MAX_VALUE) : 0;
+    const position = motor?.goal.position ?? 0;
     const settings = [
       // Rapier chooses the shortest arc and only wraps its error once.
       axis.startsWith("rot") ? wrapAngle(position) : position,
-      native?.goal.velocity ?? 0,
-      native?.options.stiffness ?? 0,
-      native?.options.damping ?? 0,
+      motor?.goal.velocity ?? 0,
+      motor?.options.stiffness ?? 0,
+      motor?.options.damping ?? 0,
     ] as const;
     if (joint instanceof api.UnitImpulseJoint) {
       joint.configureMotorModel(model);
@@ -96,7 +94,7 @@ export function configureDrives(
       joint.configureMotor(...settings);
       continue;
     }
-    const raw = backend.impulseJoints.raw;
+    const raw = native.impulseJoints.raw;
     const index = rapierDof(api.JointAxis, axis);
     raw.jointConfigureMotorModel(joint.handle, index, model);
     raw.jointSetMotorMaxForce(joint.handle, index, maxForce);
@@ -105,7 +103,7 @@ export function configureDrives(
 }
 
 /** Applies each drive's effort term as a force pair for one step, capped by its `maxForce`. */
-export function applyEfforts(object: Joint, joint: Rapier.ImpulseJoint): void {
+export function applyDrives(object: Joint, joint: Rapier.ImpulseJoint): void {
   const efforts = slots(object).flatMap(([axis, drive]) =>
     drive?.target?.effort ? [{ axis, drive, effort: drive.target.effort }] : [],
   );

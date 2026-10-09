@@ -1,4 +1,4 @@
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { MathUtils, Matrix4, Quaternion, Vector3 } from "three";
 import {
   DistanceJoint,
   GenericJoint,
@@ -28,7 +28,7 @@ import {
   token,
 } from "./layer.js";
 import type { Layer } from "./layer.js";
-import { radians } from "../units.js";
+import { isAngular, scalarDrive, schemaFor } from "../schema.js";
 
 function frame(layer: Layer, path: string, index: number): Matrix4 {
   const p = numbers(layer, path, `physics:localPos${index}`) ?? [0, 0, 0];
@@ -95,20 +95,18 @@ function createJoint(
         dofs[axis] = "free";
         continue;
       }
-      const scale = axis.startsWith("rot") ? radians : 1;
+      const scale = isAngular(axis) ? MathUtils.DEG2RAD : 1;
       const low = numeric(layer, path, `limit:${axis}:physics:low`, -Infinity);
       const high = numeric(layer, path, `limit:${axis}:physics:high`, Infinity);
       dofs[axis] = low > high ? "locked" : [low * scale, high * scale];
     }
     return new GenericJoint({ ...options, dofs });
   }
-  if (type !== "PhysicsRevoluteJoint" && type !== "PhysicsPrismaticJoint")
-    throw new Error(`Unsupported USD joint ${type}`);
   const axis = token(layer, path, "physics:axis", "X");
   if (axis !== "X" && axis !== "Y" && axis !== "Z")
     throw new Error(`Invalid joint axis ${axis}`);
   const angular = type === "PhysicsRevoluteJoint";
-  const factor = angular ? radians : 1;
+  const factor = angular ? MathUtils.DEG2RAD : 1;
   let limits: readonly [number, number] | undefined;
   const lower = attribute(layer, path, "physics:lowerLimit");
   const upper = attribute(layer, path, "physics:upperLimit");
@@ -130,7 +128,6 @@ function readDrive(
   layer: Layer,
   path: string,
   instance: string,
-  angular: boolean,
 ): JointDrive | undefined {
   if (!schemas(layer, path).includes(`PhysicsDriveAPI:${instance}`))
     return undefined;
@@ -138,7 +135,7 @@ function readDrive(
   const model = token(layer, path, `${prefix}type`, "force");
   if (model !== "force" && model !== "acceleration")
     throw new Error(`Unsupported USD drive type ${model}: ${path}`);
-  const factor = angular ? radians : 1;
+  const factor = isAngular(instance) ? MathUtils.DEG2RAD : 1;
   const maxForce = attribute(layer, path, `${prefix}maxForce`);
   return new JointDrive({
     model,
@@ -154,28 +151,22 @@ function readDrive(
   });
 }
 
-export function readJoint(
+export function parseJoint(
   layer: Layer,
   path: string,
   type: string,
   bodies: Map<string, RigidBody>,
 ): Joint {
+  const schema = schemaFor(type);
   const joint = createJoint(layer, path, type, bodies);
   joint.setEnabled(boolean(layer, path, "physics:jointEnabled", true));
   joint.setCollideConnected(
     boolean(layer, path, "physics:collisionEnabled", false),
   );
-  if (joint instanceof ScalarJoint) {
-    const angular = joint instanceof RevoluteJoint;
-    joint.setDrive(
-      readDrive(layer, path, angular ? "angular" : "linear", angular),
-    );
-  }
+  if (joint instanceof ScalarJoint)
+    joint.setDrive(readDrive(layer, path, scalarDrive(schema)));
   if (joint instanceof GenericJoint)
     for (const axis of jointDofs)
-      joint.setDrive(
-        axis,
-        readDrive(layer, path, axis, axis.startsWith("rot")),
-      );
+      joint.setDrive(axis, readDrive(layer, path, axis));
   return joint;
 }
