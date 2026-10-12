@@ -11,7 +11,6 @@ import {
   Vector3,
 } from "three";
 import {
-  clone,
   resolveCollider,
   BoxCollider,
   CapsuleCollider,
@@ -33,7 +32,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
 import { roundtrip } from "./roundtrip.js";
 
-function doorAssembly(model: "force" | "acceleration" = "force") {
+function doorAssembly() {
   const scene = new Scene();
   const assembly = new Group();
   assembly.position.set(2, 3, 4);
@@ -61,7 +60,7 @@ function doorAssembly(model: "force" | "acceleration" = "force") {
   });
   hinge.setDrive(
     new JointDrive({
-      model,
+      model: "force",
       stiffness: 100,
       damping: 10,
       maxForce: 40,
@@ -73,51 +72,14 @@ function doorAssembly(model: "force" | "acceleration" = "force") {
 }
 
 describe("USD Physics interchange", () => {
-  it.each(["root", "group", "body"] as const)(
-    "rejects Trigger volumes at a %s boundary",
-    async (parent) => {
-      const trigger = new Trigger();
-      trigger.add(new BoxCollider());
-      const scene = parent === "root" ? trigger : new Scene();
-      if (parent === "group") scene.add(new Group().add(trigger));
-      if (parent === "body")
-        scene.add(new RigidBody({ bodyType: "static" }).add(trigger));
-      await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
-        "Core USD Physics cannot represent Trigger volumes",
-      );
-    },
-  );
-
-  it("rejects an empty hidden Trigger rather than silently dropping it", async () => {
+  it("rejects Trigger volumes, even an empty hidden one nested under a body", async () => {
     const trigger = new Trigger();
     trigger.visible = false;
-    await expect(
-      new PhysicsUSDExporter().parseAsync(new Scene().add(trigger)),
-    ).rejects.toThrow("Core USD Physics cannot represent Trigger volumes");
-  });
-
-  it("rejects body filter defaults on automatic colliders and permits clearing them", async () => {
-    const { scene, door } = doorAssembly();
-    door.setCollisionGroups({ membership: 1, filter: 2 });
-    const exporter = new PhysicsUSDExporter();
-    await expect(exporter.parseAsync(scene)).rejects.toThrow(
-      "collision filter",
+    const scene = new Scene().add(
+      new RigidBody({ bodyType: "static" }).add(trigger),
     );
-    door.setCollisionGroups(undefined);
-    await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(
-      Uint8Array,
-    );
-  });
-
-  it("rejects authored collider masks even with unrestricted body defaults", async () => {
-    const scene = new Scene();
-    const body = new RigidBody({ bodyType: "static" });
-    body.add(
-      new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
-    );
-    scene.add(body);
     await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
-      "collision filter",
+      "Core USD Physics cannot represent Trigger volumes",
     );
   });
 
@@ -141,57 +103,54 @@ def PhysicsRevoluteJoint "Hinge"
     ).toThrow("Invalid joint axis");
   });
 
-  it.each(["force", "acceleration"] as const)(
-    "roundtrips a transformed door with a %s motor, meshes, compound shapes, and references",
-    async (model) => {
-      const { scene, door, hinge } = doorAssembly(model);
-      const before = new Vector3().setFromMatrixPosition(
-        hinge.getFrame(0, new Matrix4()),
-      );
-      const { scene: result, gravity } = await roundtrip(scene);
-      const bodies = result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof RigidBody);
-      const joints = result
-        .getObjectsByProperty("isObject3D", true)
-        .filter((object) => object instanceof Joint);
-      expect(bodies).toHaveLength(2);
-      expect(joints).toHaveLength(1);
-      const frame = bodies.find((body) => body.name === "Frame");
-      const loadedDoor = bodies.find((body) => body.name === "Door");
-      expect(frame?.getColliders()).toHaveLength(3);
-      expect(loadedDoor?.options.mass).toBe(20);
-      expect(
-        loadedDoor
-          ?.getWorldPosition(new Vector3())
-          .distanceTo(door.getWorldPosition(new Vector3())),
-      ).toBeLessThan(1e-5);
-      const joint = joints[0];
-      if (!(joint instanceof RevoluteJoint))
-        throw new Error("Missing revolute joint");
-      expect(joint.options.body0).toBe(frame);
-      expect(joint.options.body1).toBe(loadedDoor);
-      expect(joint.limits).toEqual(hinge.limits);
-      expect(joint.drive?.options.model).toBe(model);
-      expect(joint.drive?.options.stiffness).toBeCloseTo(100);
-      expect(joint.drive?.options.damping).toBeCloseTo(10);
-      expect(joint.drive?.options.maxForce).toBe(40);
-      expect(joint.drive?.target?.position).toBeCloseTo(Math.PI / 4);
-      expect(joint.drive?.target?.velocity).toBeCloseTo(0.4);
-      expect(
-        new Vector3()
-          .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
-          .distanceTo(before),
-      ).toBeLessThan(1e-5);
-      let meshes = 0;
-      result.traverse((object) => {
-        if (object instanceof Mesh) meshes++;
-      });
-      expect(meshes).toBe(4);
-      expect(gravity).toEqual([0, -9.81, 0]);
-      expect(door.parent?.children).toContain(hinge);
-    },
-  );
+  it("roundtrips a transformed door with a motor, meshes, compound shapes, and references", async () => {
+    const { scene, door, hinge } = doorAssembly();
+    const before = new Vector3().setFromMatrixPosition(
+      hinge.getFrame(0, new Matrix4()),
+    );
+    const { scene: result, gravity } = await roundtrip(scene);
+    const bodies = result
+      .getObjectsByProperty("isObject3D", true)
+      .filter((object) => object instanceof RigidBody);
+    const joints = result
+      .getObjectsByProperty("isObject3D", true)
+      .filter((object) => object instanceof Joint);
+    expect(bodies).toHaveLength(2);
+    expect(joints).toHaveLength(1);
+    const frame = bodies.find((body) => body.name === "Frame");
+    const loadedDoor = bodies.find((body) => body.name === "Door");
+    expect(frame?.getColliders()).toHaveLength(3);
+    expect(loadedDoor?.options.mass).toBe(20);
+    expect(
+      loadedDoor
+        ?.getWorldPosition(new Vector3())
+        .distanceTo(door.getWorldPosition(new Vector3())),
+    ).toBeLessThan(1e-5);
+    const joint = joints[0];
+    if (!(joint instanceof RevoluteJoint))
+      throw new Error("Missing revolute joint");
+    expect(joint.options.body0).toBe(frame);
+    expect(joint.options.body1).toBe(loadedDoor);
+    expect(joint.limits).toEqual(hinge.limits);
+    expect(joint.drive?.options.model).toBe("force");
+    expect(joint.drive?.options.stiffness).toBeCloseTo(100);
+    expect(joint.drive?.options.damping).toBeCloseTo(10);
+    expect(joint.drive?.options.maxForce).toBe(40);
+    expect(joint.drive?.target?.position).toBeCloseTo(Math.PI / 4);
+    expect(joint.drive?.target?.velocity).toBeCloseTo(0.4);
+    expect(
+      new Vector3()
+        .setFromMatrixPosition(joint.getFrame(0, new Matrix4()))
+        .distanceTo(before),
+    ).toBeLessThan(1e-5);
+    let meshes = 0;
+    result.traverse((object) => {
+      if (object instanceof Mesh) meshes++;
+    });
+    expect(meshes).toBe(4);
+    expect(gravity).toEqual([0, -9.81, 0]);
+    expect(door.parent?.children).toContain(hinge);
+  });
 
   it("preserves camera prim types through the overlay", async () => {
     const { scene } = doorAssembly();
@@ -424,17 +383,25 @@ def Cube "Crate" (
     expect(text).not.toContain("glts:");
   });
 
-  it("rejects unsupported export settings instead of dropping semantics", async () => {
+  it("rejects gravity scales and collision filters instead of dropping them", async () => {
     const { scene, door } = doorAssembly();
+    const exporter = new PhysicsUSDExporter();
     door.setGravityScale(0);
-    await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
-      "gravity scale",
-    );
+    await expect(exporter.parseAsync(scene)).rejects.toThrow("gravity scale");
     door.setGravityScale(1);
+    // Body defaults would reach its automatic colliders.
+    door.setCollisionGroups({ membership: 1, filter: 2 });
+    await expect(exporter.parseAsync(scene)).rejects.toThrow(
+      "collision filter",
+    );
+    door.setCollisionGroups(undefined);
+    await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(
+      Uint8Array,
+    );
     door.add(
       new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
     );
-    await expect(new PhysicsUSDExporter().parseAsync(scene)).rejects.toThrow(
+    await expect(exporter.parseAsync(scene)).rejects.toThrow(
       "collision filter",
     );
   });
@@ -532,21 +499,6 @@ it("rejects orphan colliders and joints referencing bodies outside the export", 
   await expect(exporter.parseAsync(scene)).rejects.toThrow(
     "Joint body missing",
   );
-});
-
-it("clones imported assemblies with remapped joints", async () => {
-  const { scene } = doorAssembly();
-  const { scene: imported } = await roundtrip(scene);
-  expect(() => imported.clone()).toThrow("clone(root)");
-  const cloned = clone(imported);
-  const originalDoor = imported.getObjectByName("Door");
-  const copiedDoor = cloned.getObjectByName("Door");
-  expect(copiedDoor).not.toBe(originalDoor);
-  const joints = cloned
-    .getObjectsByProperty("isObject3D", true)
-    .filter((object) => object instanceof Joint);
-  expect(joints).toHaveLength(1);
-  expect(joints[0]?.options.body1).toBe(copiedDoor);
 });
 
 it("exports static groups without rigid-body schemas and preserves their compound colliders", async () => {

@@ -137,3 +137,18 @@ it("locks generic joint axes by default and drives each axis separately", () => 
     joint.copy(new GenericJoint({ body0: null, body1: body })),
   ).toThrow("immutable");
 });
+
+it.each([0, -1, NaN, Infinity])(
+  "rejects the drive velocity limit %s",
+  (maxVelocity) => {
+    expect(() => new JointDrive({ maxForce: 1, maxVelocity })).toThrow(
+      "Drive maximum velocity must be finite and positive",
+    );
+  },
+);
+
+it("needs a force limit for a drive velocity limit to fall away from", () => {
+  expect(() => new JointDrive({ stiffness: 1, maxVelocity: 2 })).toThrow(
+    "A drive velocity limit needs a finite maximum force",
+  );
+});

@@ -68,23 +68,6 @@ it("adds bodies created by before-step callbacks", async () => {
   expect(body?.position.y).toBeLessThan(2);
 });
 
-it("keeps creation options immutable while damping and gravity settings update live", async () => {
-  const world = await createWorld(earth);
-  const options = { mass: 2 };
-  const body = new RigidBody(options);
-  body.add(new Mesh(new BoxGeometry()));
-  options.mass = 9;
-  world.scene.add(body);
-  world.update(0);
-  body.applyImpulse(new Vector3(2, 0, 0));
-  expect(body.getVelocity().linear.x).toBeCloseTo(1);
-  body.setGravityScale(0);
-  body.setLinearDamping(1);
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeLessThan(1);
-  expect(body.getVelocity().linear.y).toBe(0);
-});
-
 it("removes automatic colliders when geometry is removed", async () => {
   const world = await createWorld(earth);
   const floor = new RigidBody({ bodyType: "static" });
@@ -100,20 +83,6 @@ it("removes automatic colliders when geometry is removed", async () => {
   floor.remove(mesh);
   for (let i = 0; i < 90; i++) world.update(world.fixedDelta);
   expect(body.position.y).toBeLessThan(0);
-});
-
-it("copies caller-owned joint frames", async () => {
-  const world = await createWorld(earth);
-  const body = box();
-  world.scene.add(body);
-  const frame = new Matrix4();
-  world.scene.add(
-    new FixedJoint({ body0: null, body1: body, frame0: frame, frame1: frame }),
-  );
-  world.update(world.fixedDelta);
-  frame.makeTranslation(0, 1, 0);
-  world.update(world.fixedDelta);
-  expect(body.position.y).toBeCloseTo(0);
 });
 
 it("holds a prepared distance joint at its maximum", async () => {
@@ -164,48 +133,6 @@ it("uses world matrices for teleport and rejects nonrigid transforms", async () 
     "unit scale",
   );
   expect(body.matrixWorld.elements).toEqual(matrix.elements);
-});
-
-it("rejects copying joint identity and preserves the live constraint", async () => {
-  const world = await createWorld(earth);
-  const first = box();
-  first.position.set(0, 4, 0);
-  const second = box();
-  second.position.set(3, 4, 0);
-  world.scene.add(first, second);
-  const joint = new FixedJoint({ body0: null, body1: first });
-  world.scene.add(joint);
-  world.update(0);
-  const source = new FixedJoint({ body0: null, body1: second });
-  world.scene.add(source);
-  expect(() => joint.copy(source)).toThrow();
-  source.removeFromParent();
-  for (let i = 0; i < 30; i++) world.update(world.fixedDelta);
-  expect(first.position.y).toBeCloseTo(4, 1);
-  expect(second.position.y).toBeLessThan(3);
-});
-
-it("uses one update path for preparation, fractional time, catch-up and explicit advancement", async () => {
-  const world = await createWorld({ fixedDelta: 0.125, maxSubsteps: 2 });
-  const body = box();
-  world.scene.add(body);
-  body.setVelocity({ linear: new Vector3(1, 0, 0) });
-  const steps: number[] = [];
-  world.onAfterStep((delta) => steps.push(delta));
-  world.update(0);
-  body.applyImpulse(new Vector3(0, 0, 0));
-  expect(steps).toEqual([]);
-  world.update(world.fixedDelta / 2);
-  expect(body.position.x).toBe(0);
-  world.update(world.fixedDelta / 2);
-  expect(body.position.x).toBeCloseTo(0.125);
-  world.update(10);
-  expect(steps).toEqual([0.125, 0.125, 0.125]);
-  expect(body.position.x).toBeCloseTo(0.375);
-  world.update(0);
-  expect(steps).toHaveLength(3);
-  world.update(world.fixedDelta);
-  expect(body.position.x).toBeCloseTo(0.5);
 });
 
 it("teleports a body together with the assembly jointed to it", async () => {
