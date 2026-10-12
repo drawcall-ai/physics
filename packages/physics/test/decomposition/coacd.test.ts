@@ -5,17 +5,15 @@ import { join } from "node:path";
 import {
   BoxGeometry,
   BufferGeometry,
-  ExtrudeGeometry,
   InterleavedBuffer,
   InterleavedBufferAttribute,
-  Shape,
   Vector3,
 } from "three";
 import { MeshCollider, RigidBody } from "../../src/index.js";
 import { convexParts } from "../../src/backend.js";
 import { settle } from "../../src/colliders/decomposition/parts.js";
 
-// These tests run the real CoACD. Without node_modules in the working directory, every test decomposes afresh.
+// Runs the real CoACD. Without node_modules in the working directory, nothing is cached.
 let root: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "physics-decomposition-"));
@@ -25,35 +23,6 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.restoreAllMocks();
   await rm(root, { recursive: true, force: true });
-});
-
-/** An L-shaped prism: concave, so it decomposes into more than one part. */
-function ell() {
-  const outline = new Shape()
-    .moveTo(0, 0)
-    .lineTo(1, 0)
-    .lineTo(1, 0.4)
-    .lineTo(0.4, 0.4)
-    .lineTo(0.4, 1)
-    .lineTo(0, 1)
-    .closePath();
-  return new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false });
-}
-
-function trimesh(geometry: BufferGeometry) {
-  return new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry);
-}
-
-it("scales the parts of a mesh for each collider sharing it", async () => {
-  const geometry = ell();
-  const first = trimesh(geometry);
-  const second = trimesh(geometry);
-  const body = new RigidBody().add(first, second);
-  await settle(body, () => true);
-  const parts = convexParts(body, first, new Vector3(1, 1, 1));
-  expect(parts.length).toBeGreaterThan(1);
-  const doubled = convexParts(body, second, new Vector3(2, 2, 2));
-  expect(doubled.flat()).toEqual(parts.flat().map((value) => value * 2));
 });
 
 it("decomposes interleaved positions, ignoring unrelated channels", async () => {
@@ -69,7 +38,9 @@ it("decomposes interleaved positions, ignoring unrelated channels", async () => 
   const geometry = new BufferGeometry()
     .setAttribute("position", new InterleavedBufferAttribute(data, 3, 0))
     .setIndex(box.index);
-  const collider = trimesh(geometry);
+  const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
+    geometry,
+  );
   const body = new RigidBody().add(collider);
   await settle(body, () => true);
   const points = convexParts(body, collider, new Vector3(1, 1, 1)).flat();

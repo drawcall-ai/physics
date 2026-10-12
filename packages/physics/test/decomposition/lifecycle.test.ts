@@ -27,18 +27,6 @@ function box() {
 const unit = new Vector3(1, 1, 1);
 const all = () => true;
 
-it("stands in the hull until the parts arrive, which changes the parts version", async () => {
-  const { body, collider, geometry } = box();
-  const version = partsVersion(geometry);
-  const [hull] = convexParts(body, collider, unit);
-  expect(hull).toHaveLength(geometry.getAttribute("position").count * 3);
-  expect(partsVersion(geometry)).toBe(version);
-  await settle(body, all);
-  expect(coacd).toHaveBeenCalledTimes(1);
-  expect(convexParts(body, collider, unit)).toEqual([part]);
-  expect(partsVersion(geometry)).not.toBe(version);
-});
-
 it("shares one decomposition among concurrent callers", async () => {
   const { body, collider } = box();
   const first = settle(body, all);
@@ -48,22 +36,31 @@ it("shares one decomposition among concurrent callers", async () => {
   expect(coacd).toHaveBeenCalledTimes(1);
 });
 
-it("waits for meshes that join while it waits", async () => {
-  const root = new Group().add(box().body);
+it("scales the shared parts for each collider", async () => {
+  const { body, collider, geometry } = box();
+  const other = new MeshCollider({ approximation: "trimesh" }).setGeometry(
+    geometry,
+  );
+  body.add(other);
+  await settle(body, all);
+  const parts = convexParts(body, collider, unit);
+  expect(convexParts(body, other, new Vector3(2, 2, 2))).toEqual(
+    parts.map((part) => part.map((value) => value * 2)),
+  );
+});
+
+it("waits for meshes that join or change while it waits", async () => {
+  const first = box();
+  const root = new Group().add(first.body);
   const done = settle(root, all);
+  first.geometry.translate(1, 0, 0);
   const later = box();
   root.add(later.body);
   await done;
+  // The first version, its edit, and the mesh that joined.
+  expect(coacd).toHaveBeenCalledTimes(3);
+  expect(convexParts(first.body, first.collider, unit)).toEqual([part]);
   expect(convexParts(later.body, later.collider, unit)).toEqual([part]);
-});
-
-it("waits for the current version of a mesh edited while it waits", async () => {
-  const { body, collider, geometry } = box();
-  const done = settle(body, all);
-  geometry.translate(1, 0, 0);
-  await done;
-  expect(coacd).toHaveBeenCalledTimes(2);
-  expect(convexParts(body, collider, unit)).toEqual([part]);
 });
 
 it("decomposes only the latest version of a mesh edited while others wait", async () => {

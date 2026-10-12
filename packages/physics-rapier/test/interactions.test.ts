@@ -494,7 +494,6 @@ it("reports a body resting on a static triangle mesh floor as on a box floor", a
     return events;
   }
   const boxFloor = await contacts(new BoxCollider({ size: [10, 1, 10] }));
-  // The step at which Rapier's solver contacts begin, which contacts reported before.
   expect(boxFloor).toEqual(["contactbegin@19"]);
   expect(
     await contacts(
