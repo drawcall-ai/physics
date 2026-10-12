@@ -73,8 +73,8 @@ it("decomposes only the latest version of a mesh edited while others wait", asyn
     geometry.translate(1, 0, 0);
   }
   await settle(body, all);
-  // The first version was in flight; the next four were replaced before their turn.
-  expect(coacd).toHaveBeenCalledTimes(2);
+  // Every version but the last was replaced before its turn.
+  expect(coacd).toHaveBeenCalledTimes(1);
   expect(convexParts(body, collider, unit)).toEqual([part]);
 });
 

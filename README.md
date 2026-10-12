@@ -74,17 +74,17 @@ the scene no longer holds the object.
   Recreate the object to change them later.
 - A failed build disposes the world and leaves the scene as authored.
 
-| Member                                       | Description                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------ |
-| `update(delta)`                              | Advances by `delta` seconds in fixed steps                                     |
-| `reset()`                                    | Syncs, then returns members to the state captured when they joined; `time` = 0 |
-| `raycast(...)`                               | Closest hit, see [Raycasts](#raycasts)                                         |
-| `decompose(root?)`                           | Awaits convex parts, see [Triangle meshes](#triangle-meshes-and-decomposition) |
-| `onBeforeStep(cb)`                           | Called with `fixedDelta` before each step; returns an unsubscribe function     |
-| `onAfterStep(cb)`                            | Called after each step and its events; returns an unsubscribe function         |
-| `time`                                       | Simulated seconds of completed steps                                           |
-| `scene`, `gravity`, `fixedDelta`, `disposed` | Read-only state                                                                |
-| `dispose()`                                  | Frees native resources; members leave the world                                |
+| Member                                       | Description                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `update(delta)`                              | Advances by `delta` seconds in fixed steps                                       |
+| `reset()`                                    | Syncs, then returns members to the state captured when they joined; `time` = 0   |
+| `raycast(...)`                               | Closest hit, see [Raycasts](#raycasts)                                           |
+| `decompose(root?)`                           | Prepares convex parts, see [Triangle meshes](#triangle-meshes-and-decomposition) |
+| `onBeforeStep(cb)`                           | Called with `fixedDelta` before each step; returns an unsubscribe function       |
+| `onAfterStep(cb)`                            | Called after each step and its events; returns an unsubscribe function           |
+| `time`                                       | Simulated seconds of completed steps                                             |
+| `scene`, `gravity`, `fixedDelta`, `disposed` | Read-only state                                                                  |
+| `dispose()`                                  | Frees native resources; members leave the world                                  |
 
 `update` and `reset` throw when called from a step callback or event listener. A
 callback added during a step first runs at the next step. A step that throws ends
@@ -188,8 +188,7 @@ Where a backend cannot collide a `trimesh` as triangles (moving bodies in Rapier
 everything in MuJoCo), the world decomposes it into convex parts with CoACD when it is
 built. A mesh added or edited after the build joins at once as its convex hull while it
 decomposes in the background, and the first update after its parts arrive rebuilds it
-from them: its mass and inertia are recomputed unless `mass` is explicit, and MuJoCo
-recompiles its model at most once per decomposed mesh. `await world.decompose(root?)` (the
+from them: its mass and inertia are recomputed unless `mass` is explicit. `await world.decompose(root?)` (the
 scene by default) resolves once the parts of every mesh under `root` arrive, so the next
 update collides them. Only a mesh's latest geometry is decomposed, so a mesh edited every
 frame stays on its hull, and `decompose` does not resolve while the edits continue.
@@ -202,7 +201,7 @@ await world.decompose(asset); // the next update collides the parts
 CoACD needs closed, consistently wound surfaces; an open surface fails the update that
 builds it, so use `"convexHull"` where one hull is enough. A decomposition that fails
 rejects `decompose` and fails every update until the mesh is edited or removed, like any
-broken collider; in MuJoCo that stalls the whole world.
+broken collider.
 
 CoACD is embedded with inline WASM, so no asset hosting is needed. In browser bundles it
 runs in a module worker. With Vite before 8, add
@@ -418,10 +417,11 @@ geometry)` selects the triangle meshes it collides as convex parts.
    `build(new MyWorld(...))`, which decomposes the scene's meshes and joins its objects.
 
 `prepare()` reconciles authored changes. Bodies, joints, triggers, and colliders count
-setting changes in `version`; `partsVersion(geometry)` changes when a geometry is edited
-and once its convex parts arrive, after which `convexParts(owner, collider, scale)`
-returns them instead of the hull. `step()` should write poses back with `setWorldPose`
-and report overlaps and contacts through `this.interactions.replace(...)`.
+setting changes in `version`; `geometryVersion(geometry)` changes when a geometry is
+edited. A collider made of convex parts tracks `partsVersion(geometry)` instead, which also
+changes once its parts arrive, after which `convexParts(body, collider, scale)` returns
+them instead of the hull. `step()` should write poses back with `setWorldPose` and report
+overlaps and contacts through `this.interactions.replace(...)`.
 
 Helpers: `initialVelocity`; `JointBinding` (a joint's captured frames and
 continuous angle: `read(motion)`, pose-only `pose()`), `wrapAngle`, `dofState`,

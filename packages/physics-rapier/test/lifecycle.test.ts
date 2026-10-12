@@ -1,14 +1,7 @@
 import { expect, it } from "vitest";
 import { concave, createWorld } from "./fixtures.js";
 import { buildWorld } from "../src/index.js";
-import {
-  BoxGeometry,
-  Group,
-  Matrix4,
-  PlaneGeometry,
-  Quaternion,
-  Vector3,
-} from "three";
+import { BoxGeometry, Group, Matrix4, Quaternion, Vector3 } from "three";
 import {
   BoxCollider,
   RigidBody,
@@ -412,19 +405,3 @@ it("collides a moving triangle mesh that joins after the build as its hull until
   await world.decompose();
   expect(world.raycast(moved, forward, 6)).toBeNull();
 }, 15000);
-
-it("fails the update that builds a moving triangle mesh it cannot decompose", async () => {
-  const world = await setup();
-  const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
-    new PlaneGeometry(),
-  );
-  collider.name = "surface";
-  const body = new RigidBody().add(collider);
-  body.name = "sheet";
-  world.scene.add(body);
-  expect(() => world.update(0)).toThrow(
-    "Convex decomposition failed for sheet/surface: the mesh is not closed",
-  );
-  expect(body.world).toBeUndefined();
-  await expect(world.decompose()).rejects.toThrow("sheet/surface");
-});

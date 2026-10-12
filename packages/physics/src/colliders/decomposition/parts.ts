@@ -6,51 +6,29 @@
  */
 import type { BufferGeometry, Object3D, Vector3 } from "three";
 import { RigidBody } from "../../body.js";
-import type { Trigger } from "../../trigger.js";
 import type { Collider } from "../collider.js";
 import { geometryVersion, vertices } from "../geometry.js";
 import { closedMesh } from "./mesh.js";
-import { schedule } from "./thread.js";
+import { run } from "./run.js";
 
 /** Selects the triangle meshes a backend collides as convex parts rather than as triangles. */
 export type Decomposes = (body: RigidBody, geometry: BufferGeometry) => boolean;
 
-/** A geometry version's decomposition, which becomes the geometry's job as it starts. */
-class Job {
+/** A geometry version's decomposition. */
+interface Job {
+  version: string;
   parts?: number[][];
   error?: Error;
   /**
-   * Resolves once `parts` or `error` is set, or once a newer job replaced this one before it
-   * ran; never rejects.
+   * Resolves once `parts` or `error` is set, or once a newer job replaced this one before its
+   * turn; never rejects.
    */
-  readonly done: Promise<void>;
-  constructor(
-    readonly version: string,
-    geometry: BufferGeometry,
-  ) {
-    // Current before it is scheduled, since the queue skips jobs that are not.
-    jobs.set(geometry, this);
-    this.done = this.run(geometry);
-  }
-  get settled(): boolean {
-    return this.parts !== undefined || this.error !== undefined;
-  }
-  /** A mesh that is not closed fails before this returns. */
-  private async run(geometry: BufferGeometry): Promise<void> {
-    try {
-      const { positions, indices } = closedMesh(geometry);
-      this.parts = await schedule(
-        positions,
-        indices,
-        () => jobs.get(geometry) === this,
-      );
-    } catch (error) {
-      this.error = error instanceof Error ? error : new Error(String(error));
-    }
-  }
+  done: Promise<void>;
 }
 /** Each geometry's latest decomposition. */
 const jobs = new WeakMap<BufferGeometry, Job>();
+/** Decompositions take turns, in order. */
+let queue: Promise<unknown> = Promise.resolve();
 
 /**
  * Decomposes the triangle mesh colliders of the bodies under `root` that `needs` selects, and
@@ -63,7 +41,7 @@ export async function settle(root: Object3D, needs: Decomposes): Promise<void> {
     for (const { body, collider, geometry } of trimeshes(root, needs)) {
       const job = jobOf(geometry);
       if (job.error) throw failure(body, collider, job.error);
-      if (!job.settled) waits.add(job.done);
+      if (!settled(job)) waits.add(job.done);
     }
     if (!waits.size) return;
     await Promise.all(waits);
@@ -76,7 +54,7 @@ export async function settle(root: Object3D, needs: Decomposes): Promise<void> {
  * one part, which backends collide as the convex hull. Throws if decomposing it failed.
  */
 export function convexParts(
-  owner: RigidBody | Trigger,
+  owner: RigidBody,
   collider: Collider,
   scale: Vector3,
 ): number[][] {
@@ -91,22 +69,55 @@ export function convexParts(
 }
 
 /**
- * The geometry version, which also changes once its convex parts arrive or fail; fingerprints
- * of colliders made from convex parts hold it, so they are rebuilt from the hull.
+ * The geometry version, which also changes once its convex parts arrive or fail. Backends
+ * fingerprint colliders made of convex parts by it, so those are rebuilt from the hull; other
+ * mesh colliders use `geometryVersion`.
  */
 export function partsVersion(geometry: BufferGeometry): string {
   const version = geometryVersion(geometry);
   const job = jobs.get(geometry);
-  return job?.version === version && job.settled
+  return job?.version === version && settled(job)
     ? `${version}/settled`
     : version;
 }
 
-/** The job for the geometry's current version, started if there is none. */
+/**
+ * The job for the geometry's current version, started if there is none. A mesh that is not
+ * closed fails at once; a job replaced before its turn is skipped.
+ */
 function jobOf(geometry: BufferGeometry): Job {
   const version = geometryVersion(geometry);
   const known = jobs.get(geometry);
-  return known?.version === version ? known : new Job(version, geometry);
+  if (known?.version === version) return known;
+  const job: Job = { version, done: Promise.resolve() };
+  jobs.set(geometry, job);
+  try {
+    const { positions, indices } = closedMesh(geometry);
+    const turn = queue.then(() =>
+      jobs.get(geometry) === job ? run(positions, indices) : undefined,
+    );
+    // The job records its own failure; the next one takes its turn regardless.
+    queue = turn.catch(() => {});
+    job.done = turn.then(
+      (parts) => {
+        job.parts = parts;
+      },
+      (error: unknown) => {
+        job.error = asError(error);
+      },
+    );
+  } catch (error) {
+    job.error = asError(error);
+  }
+  return job;
+}
+
+function settled(job: Job): boolean {
+  return job.parts !== undefined || job.error !== undefined;
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function trimesh(collider: Collider): BufferGeometry | undefined {
@@ -134,11 +145,7 @@ function trimeshes(root: Object3D, needs: Decomposes) {
   return found;
 }
 
-function failure(
-  owner: RigidBody | Trigger,
-  collider: Collider,
-  error: Error,
-): Error {
+function failure(owner: RigidBody, collider: Collider, error: Error): Error {
   const name = `${owner.name || owner.type}/${collider.source.name || collider.source.type}`;
   const message = `Convex decomposition failed for ${name}: ${error.message}`;
   return new Error(message, { cause: error });

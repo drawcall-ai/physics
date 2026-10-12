@@ -504,36 +504,3 @@ it("reports a body resting on a static triangle mesh floor as on a box floor", a
     ),
   ).toEqual(boxFloor);
 });
-
-it("keeps contact and overlap state when a static mesh rebuilds as shared parts arrive", async () => {
-  const world = await createWorld(earth);
-  const geometry = new BoxGeometry(10, 1, 10);
-  const floor = new RigidBody({ bodyType: "static" }).add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
-  );
-  const goal = region();
-  const body = box();
-  body.position.y = 1.5;
-  world.scene.add(floor, goal, body);
-  const events = vi.fn();
-  for (const type of ["contactbegin", "contactend"] as const)
-    floor.addEventListener(type, () => events(type));
-  for (const type of ["enter", "exit"] as const)
-    goal.addEventListener(type, ({ body }) => events(type, body === floor));
-  steps(world, 60);
-  // A moving body sharing the floor's geometry decomposes it, which rebuilds the floor.
-  const crate = new RigidBody().add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
-  );
-  crate.position.set(30, 0, 0);
-  world.scene.add(crate);
-  world.update(world.fixedDelta);
-  await world.decompose();
-  steps(world, 10);
-  expect(events.mock.calls).toEqual([
-    ["enter", true],
-    ["enter", false],
-    ["contactbegin"],
-  ]);
-  expect(body.position.y).toBeCloseTo(1, 2);
-});

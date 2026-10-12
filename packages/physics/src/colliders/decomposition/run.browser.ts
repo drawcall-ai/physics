@@ -2,7 +2,7 @@
 import type { Reply, Request } from "./worker.js";
 
 let worker: Worker | undefined;
-/** The decomposition the worker runs; the queue sends one at a time. */
+/** The decomposition the worker runs; decompositions take turns, one at a time. */
 let running:
   | { resolve: (parts: number[][]) => void; reject: (error: Error) => void }
   | undefined;
@@ -19,8 +19,7 @@ export function run(
       worker.postMessage(request, [positions.buffer, indices.buffer]);
       running = { resolve, reject };
     } catch (error) {
-      drop();
-      reject(failure(error instanceof Error ? error.message : String(error)));
+      fail(error instanceof Error ? error.message : String(error), reject);
     }
   });
 }
@@ -46,21 +45,14 @@ function spawn(): Worker {
   return spawned;
 }
 
-/** Rejects the running decomposition and drops the worker, so the next one spawns afresh. */
-function fail(reason: string): void {
-  const job = running;
+/** Drops the worker, so the next decomposition spawns a fresh one, and rejects the one it ran. */
+function fail(reason: string, reject = running?.reject): void {
   running = undefined;
-  drop();
-  job?.reject(failure(reason));
-}
-
-function drop(): void {
   worker?.terminate();
   worker = undefined;
-}
-
-function failure(reason: string): Error {
-  return new Error(
-    `its worker failed (${reason}). With Vite before 8, add optimizeDeps: { exclude: ["@drawcall/physics"] } to the dev server.`,
+  reject?.(
+    new Error(
+      `its worker failed (${reason}). With Vite before 8, add optimizeDeps: { exclude: ["@drawcall/physics"] } to the dev server.`,
+    ),
   );
 }

@@ -14,7 +14,8 @@ function id(object: object): number {
 
 /**
  * Changes when a geometry's positions or triangles are replaced or marked edited, as three.js
- * requires for any edit (`needsUpdate`), so change detection never reads the vertices.
+ * requires for any edit (`needsUpdate`), so change detection never reads the vertices. Backends
+ * fingerprint a mesh collider by it, or by `partsVersion` if it collides as convex parts.
  */
 export function geometryVersion(geometry: BufferGeometry): string {
   const attribute = (

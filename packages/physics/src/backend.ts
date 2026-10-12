@@ -14,4 +14,4 @@ export {
   partsVersion,
   type Decomposes,
 } from "./colliders/decomposition/parts.js";
-export { vertices } from "./colliders/geometry.js";
+export { geometryVersion, vertices } from "./colliders/geometry.js";

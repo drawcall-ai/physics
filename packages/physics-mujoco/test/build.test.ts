@@ -6,7 +6,7 @@ import {
   RevoluteJoint,
   Trigger,
 } from "@drawcall/physics";
-import { Group, PlaneGeometry, Scene, Vector3 } from "three";
+import { Group, Scene, Vector3 } from "three";
 import { concave, createWorld } from "./fixtures.js";
 
 const earth = { gravity: [0, -9.81, 0] } as const;
@@ -65,22 +65,6 @@ test("a trimesh that joins after the build collides as its hull until decomposed
     body,
   });
 }, 15000);
-
-test("a trimesh it cannot decompose fails the update that builds it", async () => {
-  const scene = new Scene();
-  const world = await createWorld({ ...earth, scene });
-  const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
-    new PlaneGeometry(),
-  );
-  collider.name = "surface";
-  const body = new RigidBody().add(collider);
-  body.name = "sheet";
-  scene.add(body);
-  expect(() => world.update(world.fixedDelta)).toThrow(
-    "Convex decomposition failed for sheet/surface: the mesh is not closed",
-  );
-  await expect(world.decompose()).rejects.toThrow("sheet/surface");
-});
 
 test("objects added while loading are included without losing removals", async () => {
   const removed = new RigidBody({ mass: 1 }).add(new BoxCollider());

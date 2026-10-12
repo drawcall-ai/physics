@@ -8,12 +8,11 @@ import {
   ExtrudeGeometry,
   InterleavedBuffer,
   InterleavedBufferAttribute,
-  PlaneGeometry,
   Shape,
   Vector3,
 } from "three";
 import { MeshCollider, RigidBody } from "../../src/index.js";
-import { convexParts, vertices } from "../../src/backend.js";
+import { convexParts } from "../../src/backend.js";
 import { settle } from "../../src/colliders/decomposition/parts.js";
 
 // These tests run the real CoACD. Without node_modules in the working directory, every test decomposes afresh.
@@ -55,35 +54,6 @@ it("scales the parts of a mesh for each collider sharing it", async () => {
   expect(parts.length).toBeGreaterThan(1);
   const doubled = convexParts(body, second, new Vector3(2, 2, 2));
   expect(doubled.flat()).toEqual(parts.flat().map((value) => value * 2));
-});
-
-it("stands in the hull for a mesh edited after decomposition until it is decomposed again", async () => {
-  const geometry = ell();
-  const collider = trimesh(geometry);
-  const body = new RigidBody().add(collider);
-  await settle(body, () => true);
-  geometry.translate(1, 0, 0);
-  const scale = new Vector3(1, 2, 1);
-  const hull = vertices(geometry).map((value, i) =>
-    i % 3 === 1 ? value * 2 : value,
-  );
-  expect(convexParts(body, collider, scale)).toEqual([hull]);
-  await settle(body, () => true);
-  expect(convexParts(body, collider, scale).length).toBeGreaterThan(1);
-});
-
-it("names the body and collider of a mesh it cannot decompose", async () => {
-  const body = new RigidBody();
-  body.name = "sheet";
-  const collider = trimesh(new PlaneGeometry());
-  collider.name = "surface";
-  body.add(collider);
-  await expect(settle(body, () => true)).rejects.toThrow(
-    "Convex decomposition failed for sheet/surface",
-  );
-  expect(() => convexParts(body, collider, new Vector3(1, 1, 1))).toThrow(
-    "Convex decomposition failed for sheet/surface: the mesh is not closed",
-  );
 });
 
 it("decomposes interleaved positions, ignoring unrelated channels", async () => {

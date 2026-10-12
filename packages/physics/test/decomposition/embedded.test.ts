@@ -9,7 +9,7 @@ import { expect, it } from "vitest";
 const decompose = `
   globalThis.fetch = () => { throw new Error("Unexpected asset fetch"); };
   const { default: createCoACD } = await import(moduleUrl);
-  const api = await createCoACD({ print() {}, printErr() {} });
+  const api = await createCoACD({ print() {} });
   const result = api.decompose(
     new Float64Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),
     new Int32Array([0,2,1, 0,1,3, 0,3,2, 1,2,3]),

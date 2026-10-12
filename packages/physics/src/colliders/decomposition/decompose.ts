@@ -25,11 +25,11 @@ export async function decompose(
   );
   const cached = entry ? await cache.read(entry) : undefined;
   if (valid(cached)) return cached;
-  // Silences CoACD's progress log; aborts and failed loads still throw.
-  const loading = (coacd ??= createCoACD({ print() {}, printErr() {} }));
+  // Silences CoACD's progress log; errors still reach the console.
+  const loading = (coacd ??= createCoACD({ print() {} }));
   let parts: number[][];
   try {
-    parts = run(await loading, positions, indices);
+    parts = hulls(await loading, positions, indices);
   } catch (error) {
     // A failed load or an aborted run leaves no usable instance; the next run loads afresh.
     if (coacd === loading) coacd = undefined;
@@ -55,7 +55,7 @@ function valid(parts: unknown): parts is number[][] {
   );
 }
 
-function run(
+function hulls(
   api: MainModule,
   positions: Float64Array,
   indices: Int32Array,
