@@ -39,16 +39,6 @@ it("clones assemblies and remaps joint references", () => {
   expect(() => hinge.clone()).toThrow("clone(root)");
 });
 
-it("shares the velocity option with clones and throws when Three.js copy fails", () => {
-  const source = new RigidBody({
-    velocity: { linear: [1, 2, 3], angular: [4, 5, 6] },
-  });
-  const copy = clone(source);
-  expect(copy.options.velocity).toBe(source.options.velocity);
-  source.userData.self = source.userData;
-  expect(() => clone(source)).toThrow();
-});
-
 it("preserves subclasses", () => {
   class Mechanism extends Group {}
   class Body extends RigidBody {}

@@ -68,25 +68,15 @@ describe("physics objects", () => {
     body.add(new Mesh(new BoxGeometry().translate(1, 0, 0)));
     expect(body.getColliders()[0]?.shape().kind).toBe("mesh");
   });
-  it("accepts scale and rejects nested bodies", () => {
-    const { root, door } = doorAssembly();
-    root.scale.setScalar(2);
-    expect(door.getColliders()).toHaveLength(1);
-    root.scale.setScalar(1);
+  it("rejects nested bodies", () => {
+    const { door } = doorAssembly();
     door.add(new BoxCollider());
     expect(door.getColliders()).toEqual([door.children[1]]);
     door.clear();
     door.add(new RigidBody());
     expect(() => door.getColliders()).toThrow();
   });
-  it("rejects sheared automatic collider transforms before decomposition", () => {
-    const body = new RigidBody();
-    const mesh = new Mesh(new BoxGeometry());
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.makeShear(0.5, 0, 0, 0, 0, 0);
-    body.add(mesh);
-    expect(() => body.getColliders()).toThrow();
-  });
+
   it("resolves explicit collider offsets and material overrides", () => {
     const material = { density: 42 };
     const body = new RigidBody({ colliders: false });

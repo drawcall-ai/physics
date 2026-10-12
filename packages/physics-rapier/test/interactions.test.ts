@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
-import { Group, Matrix4, Vector3 } from "three";
+import { BoxGeometry, Group, Matrix4, Vector3 } from "three";
 import {
   BoxCollider,
   DistanceJoint,
   FixedJoint,
+  MeshCollider,
   RigidBody,
   Trigger,
 } from "@drawcall/physics";
-import { box, createWorld, inertialBody, steps } from "./fixtures.js";
+import { box, createWorld, earth, inertialBody, steps } from "./fixtures.js";
 
 function region(size = 2) {
   return new Trigger().add(new BoxCollider({ size: [size, size, size] }));
@@ -475,4 +476,30 @@ it("delivers the whole batch of contact events even when a listener throws", asy
   floor.addEventListener("contactbegin", floorBegin);
   expect(() => world.update(world.fixedDelta)).toThrow("listener failed");
   expect(floorBegin).toHaveBeenCalledOnce();
+});
+
+it("reports a body resting on a static triangle mesh floor as on a box floor", async () => {
+  /** The steps at which a box dropped on the floor begins and ends contact. */
+  async function contacts(collider: BoxCollider | MeshCollider) {
+    const world = await createWorld(earth);
+    const floor = new RigidBody({ bodyType: "static" }).add(collider);
+    const body = box();
+    body.position.y = 1.5;
+    world.scene.add(floor, body);
+    const events: string[] = [];
+    for (const type of ["contactbegin", "contactend"] as const)
+      floor.addEventListener(type, () => events.push(`${type}@${step}`));
+    let step = 0;
+    for (; step < 120; step++) world.update(world.fixedDelta);
+    return events;
+  }
+  const boxFloor = await contacts(new BoxCollider({ size: [10, 1, 10] }));
+  expect(boxFloor).toEqual(["contactbegin@19"]);
+  expect(
+    await contacts(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(
+        new BoxGeometry(10, 1, 10),
+      ),
+    ),
+  ).toEqual(boxFloor);
 });

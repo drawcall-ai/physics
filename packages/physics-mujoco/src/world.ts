@@ -14,10 +14,9 @@ import {
   setWorldPose,
   treeJoint,
   JointBinding,
-  type Decomposes,
 } from "@drawcall/physics/backend";
-import type { BufferGeometry, Matrix4, Object3D, Vector3 } from "three";
-import { heightfield } from "./model/heightfield.js";
+import type { Matrix4, Object3D, Vector3 } from "three";
+import { decomposes } from "./model/shapes.js";
 import {
   compile,
   type ModelOptions,
@@ -46,10 +45,6 @@ import {
   sameFingerprints,
   type Fingerprints,
 } from "./changes.js";
-
-/** MuJoCo collides only convex shapes: every triangle mesh but a static height grid. */
-const decomposes: Decomposes = (body: RigidBody, geometry: BufferGeometry) =>
-  body.bodyType !== "static" || !heightfield(geometry, "grid");
 
 /**
  * Simulates its members in one compiled MuJoCo model, which it rebuilds whenever membership or

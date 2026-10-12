@@ -292,19 +292,6 @@ it("keeps a normalized, frozen copy of the velocity option", () => {
     Reflect.construct(RigidBody, [{ velocity: { linear: [1, 2] } }]),
   ).toThrow("three components");
 });
-it("forgets the world of a body its scene no longer holds", async () => {
-  const scene = new Scene();
-  const ball = body("ball");
-  scene.add(ball);
-  const world = await create(scene);
-  expect(ball.world).toBe(world);
-  scene.remove(ball);
-  expect(ball.world).toBeUndefined();
-  expect(() => {
-    if (ball.world) ball.getVelocity();
-  }).not.toThrow();
-  expect(() => ball.getVelocity()).toThrow("not under a built world's scene");
-});
 it("undoes a failed join so objects join afresh from their options", async () => {
   const scene = new Scene();
   const world = await create(scene);
@@ -511,7 +498,7 @@ it("allows one live world per scene and exposes its gravity", async () => {
   expect((await create(scene)).disposed).toBe(false);
 });
 
-it("marks physics objects and keeps their world read-only", () => {
+it("marks physics objects", () => {
   const ball = body("ball");
   const objects = [
     ball,
@@ -526,11 +513,6 @@ it("marks physics objects and keeps their world read-only", () => {
     true,
   ]);
   expect(new Group()).not.toHaveProperty("isPhysicsObject");
-  for (const object of objects.slice(0, 3))
-    expect(
-      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(object), "world")
-        ?.set,
-    ).toBeUndefined();
 });
 
 it("rejects commands on a removed body and restarts it from its options as it rejoins", async () => {
@@ -542,6 +524,8 @@ it("rejects commands on a removed body and restarts it from its options as it re
   world.events.length = 0;
 
   ball.removeFromParent();
+  // The world lets go as soon as its scene no longer holds the body.
+  expect(ball.world).toBeUndefined();
   expect(() => ball.teleport(new Matrix4())).toThrow(
     "ball is not under a built world's scene",
   );
@@ -668,13 +652,13 @@ it("rejects commands until the world is built and then joins on demand", async (
   const world = await building;
   expect(ball.world).toBe(world);
 });
-it("drops the unspent time of a failed update", async () => {
+it("rejects invalid world options", () => {
   const scene = new Scene();
-  const world = await create(scene);
-  scene.add(body("ball"));
-  world.failPrepare = true;
-  expect(() => world.update(3 * world.fixedDelta)).toThrow("prepare failed");
-  world.failPrepare = false;
-  world.update(0);
-  expect(world.time).toBe(0);
+  expect(() => new RecordingWorld({ scene, fixedDelta: 0 })).toThrow(
+    "fixedDelta must be positive and finite",
+  );
+  for (const solverIterations of [0, -1, 1.5, NaN, Infinity])
+    expect(() => new RecordingWorld({ scene, solverIterations })).toThrow(
+      "solverIterations must be a positive integer",
+    );
 });

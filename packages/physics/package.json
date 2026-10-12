@@ -13,6 +13,9 @@
       "default": "./dist/backend.js"
     }
   },
+  "browser": {
+    "./dist/colliders/decomposition/run.js": "./dist/colliders/decomposition/run.browser.js"
+  },
   "sideEffects": false,
   "files": [
     "dist",

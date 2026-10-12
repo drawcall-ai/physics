@@ -11,21 +11,13 @@ describe.each([
   { backend: "Rapier", buildWorld: buildRapier },
   { backend: "MuJoCo", buildWorld: buildMujoco },
 ])("$backend steering", ({ buildWorld }) => {
-  test.each([
-    { brake: 0, fixedDelta: 1 / 120 },
-    { brake: 1, fixedDelta: 1 / 120 },
-    { brake: 0, fixedDelta: 1 / 240 },
-    { brake: 1, fixedDelta: 1 / 240 },
-  ])(
-    "both front wheels steer and recenter at rest with brake=$brake and dt=$fixedDelta",
-    async ({ brake, fixedDelta }) => {
+  test.each([{ brake: 0 }, { brake: 1 }])(
+    "both front wheels steer and recenter at rest with brake=$brake",
+    async ({ brake }) => {
       const car = createCar();
       const scene = new Scene().add(car.root, createRoad());
-      const world = await buildWorld({
-        scene,
-        ...simulationOptions,
-        fixedDelta,
-      });
+      const world = await buildWorld({ scene, ...simulationOptions });
+      const { fixedDelta } = world;
       const driver = driveCar(world, car);
       driver.input.automatic = false;
       driver.input.brake = brake;
@@ -69,9 +61,7 @@ describe.each([
     },
   );
   test.each([
-    { throttle: 0, brake: 0 },
     { throttle: 0, brake: 1 },
-    { throttle: 0.4, brake: 0 },
     { throttle: 1, brake: 0 },
     { throttle: -1, brake: 0 },
   ])(

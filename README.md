@@ -79,7 +79,7 @@ the scene no longer holds the object.
 | `update(delta)`                              | Advances by `delta` seconds in fixed steps                                       |
 | `reset()`                                    | Syncs, then returns members to the state captured when they joined; `time` = 0   |
 | `raycast(...)`                               | Closest hit, see [Raycasts](#raycasts)                                           |
-| `decompose(root)`                            | Prepares convex parts, see [Triangle meshes](#triangle-meshes-and-decomposition) |
+| `decompose(root?)`                           | Prepares convex parts, see [Triangle meshes](#triangle-meshes-and-decomposition) |
 | `onBeforeStep(cb)`                           | Called with `fixedDelta` before each step; returns an unsubscribe function       |
 | `onAfterStep(cb)`                            | Called after each step and its events; returns an unsubscribe function           |
 | `time`                                       | Simulated seconds of completed steps                                             |
@@ -186,20 +186,31 @@ Collision groups are `{ membership, filter }` 16-bit masks. A pair collides when
 
 Where a backend cannot collide a `trimesh` as triangles (moving bodies in Rapier,
 everything in MuJoCo), the world decomposes it into convex parts with CoACD when it is
-built. For a mesh added or edited after the build, `await world.decompose(object)`
-before it joins; joining without parts throws and says so. CoACD needs closed,
-consistently wound surfaces; open surfaces fail, so use `"convexHull"` where one hull
-is enough.
+built. A mesh added or edited after the build joins at once as its convex hull while it
+decomposes in the background, and the first update after its parts arrive rebuilds it
+from them: its mass and inertia are recomputed unless `mass` is explicit. `await world.decompose(root?)` (the
+scene by default) resolves once the parts of every mesh under `root` arrive, so the next
+update collides them. Only a mesh's latest geometry is decomposed, so a mesh edited every
+frame stays on its hull, and `decompose` does not resolve while the edits continue.
 
 ```ts
-await world.decompose(asset); // only decomposes what this backend needs
-scene.add(asset);
+scene.add(asset); // collides as hulls at first
+await world.decompose(asset); // the next update collides the parts
 ```
 
-CoACD is embedded as a lazily imported module with inline WASM, so no asset hosting or
-bundler configuration is needed. It runs on the calling thread. In Node 20.16+, parts
-are cached in `node_modules/.cache/@drawcall/physics` under the working directory;
-delete it to decompose afresh.
+CoACD needs closed, consistently wound surfaces; an open surface fails the update that
+builds it, so use `"convexHull"` where one hull is enough. A decomposition that fails
+rejects `decompose` and fails every update until the mesh is edited or removed, like any
+broken collider.
+
+CoACD is embedded with inline WASM, so no asset hosting is needed. In browser bundles it
+runs in a module worker. With Vite before 8, add
+`optimizeDeps: { exclude: ["@drawcall/physics"] }` to the dev server; otherwise the
+worker cannot load and decomposition fails with an error that says so. Elsewhere,
+including Node, Bun, Deno, and browsers loading the package without a bundler, it runs on
+the calling thread, blocking it while CoACD runs; from Node 20.16 the parts are cached in
+`node_modules/.cache/@drawcall/physics` under the working directory; delete it to
+decompose afresh.
 
 Geometry edits are seen the way three.js renderers see them: replace the position or
 index attribute, or set `needsUpdate = true` after an in-place edit.
@@ -406,15 +417,18 @@ geometry)` selects the triangle meshes it collides as convex parts.
    `build(new MyWorld(...))`, which decomposes the scene's meshes and joins its objects.
 
 `prepare()` reconciles authored changes. Bodies, joints, triggers, and colliders count
-setting changes in `version`; `geometryVersion(geometry)` tracks geometry edits.
-`step()` should write poses back with `setWorldPose` and report overlaps and contacts
-through `this.interactions.replace(...)`.
+setting changes in `version`; `geometryVersion(geometry)` changes when a geometry is
+edited. A collider made of convex parts tracks `partsVersion(geometry)` instead, which also
+changes once its parts arrive, after which `convexParts(body, collider, scale)` returns
+them instead of the hull. `step()` should write poses back with `setWorldPose` and report
+overlaps and contacts through `this.interactions.replace(...)`.
 
 Helpers: `initialVelocity`; `JointBinding` (a joint's captured frames and
 continuous angle: `read(motion)`, pose-only `pose()`), `wrapAngle`, `dofState`,
 `dofPosition` (joint readings); `treeJoint`, `unconstrained` (joint graphs);
-`convexParts`; `lockScale` (scale fixed on joining); `resolveCollisionGroups`,
-`axisVector`; `cleanup` and `rollback` (error aggregation).
+`convexParts`, `vertices` (a geometry's flat positions); `lockScale` (scale fixed on
+joining); `resolveCollisionGroups`, `axisVector`; `cleanup` and `rollback` (error
+aggregation).
 
 The Rapier package's tests are the executable contract. Start a new backend from them
 and keep each engine limitation as a test next to its rejection, as
@@ -442,7 +456,7 @@ pnpm check
 ```
 
 `build:coacd` downloads pinned CoACD, CDT, and Chitin sources, installs Emscripten
-5.0.2 if needed, and writes the gitignored `packages/physics/src/colliders/coacd.ts`
+5.0.2 if needed, and writes the gitignored `packages/physics/src/colliders/decomposition/coacd.ts`
 (JavaScript with embedded WASM) and `packages/physics/generated/coacd/` (source archive
 and license notices). It needs Bash, curl, tar, CMake, Node.js, and Python 3. CI runs it
 before checks and publishing, so npm consumers need no compiler.

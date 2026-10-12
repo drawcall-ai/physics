@@ -14,7 +14,8 @@ function id(object: object): number {
 
 /**
  * Changes when a geometry's positions or triangles are replaced or marked edited, as three.js
- * requires for any edit (`needsUpdate`), so change detection never reads the vertices.
+ * requires for any edit (`needsUpdate`), so change detection never reads the vertices. Backends
+ * fingerprint a mesh collider by it, or by `partsVersion` if it collides as convex parts.
  */
 export function geometryVersion(geometry: BufferGeometry): string {
   const attribute = (
@@ -32,4 +33,12 @@ export function validateRange(geometry: BufferGeometry): void {
   if (geometry.drawRange.start !== 0 || geometry.drawRange.count !== Infinity) {
     throw new Error("Physics mesh geometry must use the full draw range");
   }
+}
+
+/** The geometry's vertex positions, as one flat list. */
+export function vertices(geometry: BufferGeometry): number[] {
+  const position = geometry.getAttribute("position");
+  return Array.from({ length: position.count * 3 }, (_, i) =>
+    position.getComponent(Math.floor(i / 3), i % 3),
+  );
 }

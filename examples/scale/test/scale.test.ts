@@ -7,10 +7,11 @@ import { cases } from "../cases";
 import { specimen, verify } from "../specimen";
 
 describe.each([
-  { backend: "Rapier", build: buildRapier },
-  { backend: "MuJoCo", build: buildMujoco },
-])("$backend", ({ build }) => {
-  it.each(cases)(
+  // One backend checks the invalid cases; MuJoCo's world tests cover its own scale lock.
+  { backend: "Rapier", build: buildRapier, invalid: true },
+  { backend: "MuJoCo", build: buildMujoco, invalid: false },
+])("$backend", ({ build, invalid }) => {
+  it.each(cases.filter((spec) => invalid || !spec.error))(
     "$name, including removal and recreation",
     async (spec) => {
       const world = await build({ scene: new Scene() });

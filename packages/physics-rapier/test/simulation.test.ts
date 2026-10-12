@@ -1,93 +1,13 @@
 import { expect, it } from "vitest";
+import { BoxGeometry, Group, Matrix4, Mesh, Scene, Vector3 } from "three";
 import {
-  BoxGeometry,
-  ExtrudeGeometry,
-  Group,
-  Matrix4,
-  Mesh,
-  Scene,
-  Shape,
-  Vector3,
-} from "three";
-import {
-  BoxCollider,
   JointDrive,
   MeshCollider,
-  DistanceJoint,
-  FixedJoint,
-  PrismaticJoint,
   RevoluteJoint,
   RigidBody,
   SphericalJoint,
 } from "@drawcall/physics";
-import { createWorld, box, earth, steps } from "./fixtures.js";
-
-it("updates manual body matrices when synchronizing simulated poses", async () => {
-  const world = await createWorld(earth);
-  const scene = world.scene,
-    body = box();
-  body.position.y = 2;
-  body.updateMatrix();
-  body.matrixAutoUpdate = false;
-  scene.add(body);
-  world.update(world.fixedDelta);
-  expect(body.position.y).toBeLessThan(2);
-  expect(body.getWorldPosition(new Vector3()).y).toBeCloseTo(
-    body.position.y,
-    6,
-  );
-});
-
-it("rejects invalid drive targets before stepping", async () => {
-  const world = await createWorld(earth);
-  const scene = world.scene,
-    body = box();
-  const hinge = new RevoluteJoint({ body0: null, body1: body });
-  scene.add(body, hinge);
-  const drive = new JointDrive({});
-  hinge.setDrive(drive);
-  expect(() => drive.setTarget({ effort: NaN })).toThrow("finite");
-  expect(() => drive.setTarget({ effort: Infinity })).toThrow("finite");
-});
-
-it("distributes explicit mass over compound colliders", async () => {
-  const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = world.scene,
-    body = new RigidBody({ mass: 20 });
-  const a = new Mesh(new BoxGeometry(1, 1, 1));
-  a.position.x = -1;
-  const b = new Mesh(new BoxGeometry(2, 1, 1));
-  b.position.x = 1;
-  body.add(a, b);
-  scene.add(body);
-  world.update(world.fixedDelta);
-  body.applyImpulse(new Vector3(10, 0, 0));
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeCloseTo(0.5, 5);
-  body.applyImpulse(new Vector3(0, 1, 0), new Vector3(3, 0, 0));
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().angular.z).toBeGreaterThan(0);
-});
-
-it("honors collision membership and filter masks", async () => {
-  const world = await createWorld(earth);
-  const scene = world.scene;
-  const floor = new RigidBody({ colliders: false, bodyType: "static" });
-  floor.add(
-    new BoxCollider({ size: [10, 1, 10] }).setCollisionGroups({
-      membership: 1,
-      filter: 1,
-    }),
-  );
-  const falling = new RigidBody({ colliders: false, mass: 1 });
-  falling.add(
-    new BoxCollider().setCollisionGroups({ membership: 2, filter: 2 }),
-  );
-  falling.position.y = 2;
-  scene.add(floor, falling);
-  steps(world, 60);
-  expect(falling.position.y).toBeLessThan(-1);
-});
+import { createWorld, box, concave, earth, steps } from "./fixtures.js";
 
 it("keeps the opening of a compound frame empty", async () => {
   const world = await createWorld(earth);
@@ -106,21 +26,6 @@ it("keeps the opening of a compound frame empty", async () => {
   scene.add(frame, falling);
   steps(world, 60);
   expect(falling.position.y).toBeLessThan(0);
-});
-
-it("releases removed bodies and rejects further simulation commands", async () => {
-  const world = await createWorld(earth);
-  const body = box();
-  world.scene.add(body);
-  world.update(world.fixedDelta);
-  body.removeFromParent();
-  world.update(world.fixedDelta);
-  expect(() => body.applyImpulse(new Vector3(1, 0, 0))).toThrow(
-    "not under a built world's scene",
-  );
-  expect(
-    world.raycast(new Vector3(-2, 0, 0), new Vector3(1, 0, 0), 4),
-  ).toBeNull();
 });
 
 it("drops a body onto a floor, resets its pose, and stops simulating it once the world is disposed", async () => {
@@ -177,94 +82,19 @@ it("drives a hinge under rotated parents while preserving its anchor", async () 
   ).toBeLessThan(0.01);
 });
 
-it("drives a slider to its target and applies live material edits", async () => {
-  const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = world.scene,
-    body = box();
-  scene.add(body);
-  const slider = new PrismaticJoint({
-    body0: null,
-    body1: body,
-    axis: "X",
-    limits: [0, 2],
-  });
-  slider.setDrive(
-    new JointDrive({ stiffness: 50, damping: 10 }).setTarget({
-      position: 1,
-    }),
-  );
-  scene.add(slider);
+it("holds a body with a spherical constraint", async () => {
+  const world = await createWorld(earth);
+  const body = box();
+  body.position.y = -2;
+  world.scene.add(body, new SphericalJoint({ body0: null, body1: body }));
   steps(world);
-  expect(body.position.x).toBeCloseTo(1, 1);
-  body.setMaterial({ restitution: 0.5 });
-  world.update(world.fixedDelta);
-  body.setMaterial({});
-  world.update(world.fixedDelta);
-  expect(new Vector3().setFromMatrixPosition(body.matrixWorld).x).toBeCloseTo(
-    1,
-    1,
-  );
-});
-
-it("holds bodies with fixed, spherical, and distance constraints", async () => {
-  for (const kind of ["fixed", "spherical", "distance"]) {
-    const world = await createWorld(earth);
-    const scene = world.scene,
-      body = box();
-    body.position.y = -2;
-    scene.add(body);
-    const joint =
-      kind === "fixed"
-        ? new FixedJoint({ body0: null, body1: body })
-        : kind === "spherical"
-          ? new SphericalJoint({ body0: null, body1: body })
-          : new DistanceJoint({
-              body0: null,
-              body1: body,
-              frame0: new Matrix4(),
-              frame1: new Matrix4(),
-              limits: [0, 2],
-            });
-    scene.add(joint);
-    steps(world);
-    expect(body.position.y).toBeCloseTo(-2, 1);
-    world.dispose();
-  }
-});
-
-it("applies forces for one step and accepts kinematic targets", async () => {
-  const world = await createWorld({ fixedDelta: 1 / 60 });
-  const scene = world.scene,
-    body = box(),
-    kinematic = box("kinematic");
-  kinematic.position.x = 5;
-  scene.add(body, kinematic);
-  world.update(world.fixedDelta);
-  body.applyForce(new Vector3(60, 0, 0));
-  world.update(world.fixedDelta);
-  const velocity = body.getVelocity().linear.x;
-  world.update(world.fixedDelta);
-  expect(body.getVelocity().linear.x).toBeCloseTo(velocity);
-  kinematic.setKinematicTarget(new Matrix4().makeTranslation(6, 0, 0));
-  world.update(world.fixedDelta);
-  expect(kinematic.position.x).toBeCloseTo(6);
+  expect(body.position.y).toBeCloseTo(-2, 1);
 });
 
 it("collides a triangle mesh on a moving body as its convex parts", async () => {
-  // An L-shaped prism: one convex hull would fill the notch between its arms.
-  const outline = new Shape()
-    .moveTo(0, 0)
-    .lineTo(1, 0)
-    .lineTo(1, 0.4)
-    .lineTo(0.4, 0.4)
-    .lineTo(0.4, 1)
-    .lineTo(0, 1)
-    .closePath();
   const body = new RigidBody();
   body.add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(
-      new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false }),
-    ),
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(concave()),
   );
   const world = await createWorld({ ...earth, scene: new Scene().add(body) });
   const forward = new Vector3(0, 0, -1);

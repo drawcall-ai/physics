@@ -49,20 +49,27 @@ test("decomposes initial meshes and preserves concavities with ancestor scale", 
   expect(world.raycast(new Vector3(1, 0.6, 3), forward, 6)).toBeNull();
 }, 15000);
 
-test("a trimesh that joins after the build needs world.decompose", async () => {
+test("a trimesh that joins or changes after the build collides as its hull until decomposed", async () => {
   const scene = new Scene();
   const world = await createWorld({ ...earth, scene });
-  const body = mesh();
+  const geometry = concave();
+  const body = mesh(geometry);
   scene.add(body);
-  expect(() => world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toThrow(
-    "await world.decompose(object)",
-  );
-  await world.decompose(body);
-  expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
-  expect(world.raycast(new Vector3(-0.2, 0.3, 3), forward, 6)).toMatchObject({
+  const notch = (x: number) =>
+    world.raycast(new Vector3(x + 0.4, 0.3, 3), forward, 6);
+  expect(notch(0)).toMatchObject({ kind: "body", body });
+  await world.decompose();
+  expect(notch(0)).toBeNull();
+  geometry.translate(2, 0, 0);
+  expect(notch(2)).toMatchObject({ kind: "body", body });
+  await world.decompose();
+  // The parts follow the edited mesh, never the stale ones.
+  expect(notch(2)).toBeNull();
+  expect(world.raycast(new Vector3(1.8, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body,
   });
+  expect(world.raycast(new Vector3(-0.3, 0.3, 3), forward, 6)).toBeNull();
 }, 15000);
 
 test("objects added while loading are included without losing removals", async () => {
@@ -107,24 +114,6 @@ test("explicit convexHull remains a hull when present before building", async ()
     body,
   });
 });
-
-test("changed initial geometry never reuses stale decompositions", async () => {
-  const geometry = concave();
-  const body = mesh(geometry);
-  const world = await createWorld({ ...earth, scene: new Scene().add(body) });
-  expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
-  geometry.translate(2, 0, 0);
-  expect(() => world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toThrow(
-    "await world.decompose(object)",
-  );
-  await world.decompose(body);
-  expect(world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toBeNull();
-  expect(world.raycast(new Vector3(1.8, 0.3, 3), forward, 6)).toMatchObject({
-    kind: "body",
-    body,
-  });
-  expect(world.raycast(new Vector3(-0.3, 0.3, 3), forward, 6)).toBeNull();
-}, 15000);
 
 test("collides a triangle mesh on a moving body as its convex parts", async () => {
   const body = new RigidBody();

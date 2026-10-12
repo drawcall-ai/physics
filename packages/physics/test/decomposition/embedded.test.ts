@@ -9,7 +9,7 @@ import { expect, it } from "vitest";
 const decompose = `
   globalThis.fetch = () => { throw new Error("Unexpected asset fetch"); };
   const { default: createCoACD } = await import(moduleUrl);
-  const api = await createCoACD();
+  const api = await createCoACD({ print() {} });
   const result = api.decompose(
     new Float64Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),
     new Int32Array([0,2,1, 0,1,3, 0,3,2, 1,2,3]),
@@ -31,7 +31,7 @@ it("decomposes from a standalone JavaScript file in Node and a worker without fe
   try {
     const file = join(directory, "coacd.mjs");
     await copyFile(
-      new URL("../dist/colliders/coacd.js", import.meta.url),
+      new URL("../../dist/colliders/decomposition/coacd.js", import.meta.url),
       file,
     );
     const moduleUrl = pathToFileURL(file).href;

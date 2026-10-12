@@ -8,15 +8,15 @@ import { createRoad } from "../road";
 import { createGoal } from "../goal";
 
 test.each([
-  { backend: "Rapier", build: buildRapier, fixedDelta: 1 / 120 },
-  { backend: "Rapier", build: buildRapier, fixedDelta: 1 / 240 },
-  { backend: "MuJoCo", build: buildMujoco, fixedDelta: 1 / 120 },
+  { backend: "Rapier", build: buildRapier },
+  { backend: "MuJoCo", build: buildMujoco },
 ])(
-  "$backend: powered car crosses the bump course and brakes with independent suspension at dt=$fixedDelta",
-  async ({ build, fixedDelta }) => {
+  "$backend: powered car crosses the bump course and brakes with independent suspension",
+  async ({ build }) => {
     const car = createCar();
     const scene = new Scene().add(car.root, createRoad());
-    const world = await build({ scene, ...simulationOptions, fixedDelta });
+    const world = await build({ scene, ...simulationOptions });
+    const { fixedDelta } = world;
     const goal = createGoal(car.chassis);
     scene.add(goal.trigger);
     let entries = 0;

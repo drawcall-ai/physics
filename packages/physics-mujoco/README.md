@@ -47,9 +47,10 @@ their geometry, and enabling, disabling, or re-driving joints recompile it. A re
 keeps the members' poses, joint velocities, and kinematic targets, but costs far more than
 an edit in Rapier. Drive target changes need no rebuild. Scale is fixed once compiled.
 
-Every `trimesh` collides as convex parts; those that join or change after the build need
-`await world.decompose(object)` before they join. Exception: a complete regular height
-grid with planar cells on a static body becomes a native heightfield.
+Every `trimesh` collides as convex parts. The model recompiles at most once per mesh
+whose parts arrive after the build, and a failed decomposition stalls the whole world
+until the mesh is edited or removed. Exception: a complete regular height grid with
+planar cells on a static body becomes a native heightfield.
 
 ## Engine differences
 

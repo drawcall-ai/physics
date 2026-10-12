@@ -1,11 +1,11 @@
-import type { BufferGeometry, Matrix4, Object3D, Vector3 } from "three";
+import type { Matrix4, Object3D, Vector3 } from "three";
 import { type RigidBody, assertBodyType, validateVelocity } from "./body.js";
 import { Joint } from "./joints/joint.js";
 import type { JointReading } from "./joints/reading.js";
 import { placeAssembly } from "./joints/assembly.js";
 import type { Trigger } from "./trigger.js";
 import type { Vec3 } from "./colliders/collider.js";
-import { prepareConvexParts } from "./colliders/decomposition.js";
+import { settle, type Decomposes } from "./colliders/decomposition/parts.js";
 import {
   rayDirection,
   type RaycastHit,
@@ -39,13 +39,8 @@ export interface PhysicsVelocity {
   angular: Vector3;
 }
 
-/** Selects the triangle meshes a backend collides as convex parts rather than as triangles. */
-export type Decomposes = (body: RigidBody, geometry: BufferGeometry) => boolean;
-
 /** The live reading of a joint, from the world that simulates it; for joints. */
 export let readJoint: (joint: Joint) => JointReading;
-/** Syncs a world's members with its scene, as before a query; for membership. */
-export let refresh: (world: PhysicsWorld) => void;
 
 /**
  * The fixed-step clock, step callbacks, event dispatch and command validation every backend
@@ -96,7 +91,6 @@ export abstract class PhysicsWorld {
       throw new Error("solverIterations must be a positive integer");
   }
   static {
-    refresh = (world) => world.refresh();
     readJoint = (joint) => {
       const world = commandWorld(joint);
       world.join(joint);
@@ -233,13 +227,14 @@ export abstract class PhysicsWorld {
     return this.cast(origin, unit, maxDistance, options);
   }
   /**
-   * Decomposes the triangle meshes under `root` that this backend collides as convex parts.
-   * Building a world decomposes those under its scene; await this for meshes that join later or
-   * whose geometry changed, before they join.
+   * Decomposes the triangle meshes under `root` that this backend collides as convex parts, and
+   * resolves once their parts arrive, so the next update collides them. Until then, meshes that
+   * join or change after the build collide as their convex hull. Rejects if decomposing one
+   * failed.
    */
-  async decompose(root: Object3D): Promise<void> {
+  async decompose(root: Object3D = this.scene): Promise<void> {
     this.assertLive();
-    await prepareConvexParts(root, this.decomposes);
+    await settle(root, this.decomposes);
   }
   update(delta: number): void {
     this.assertIdle();
@@ -343,7 +338,7 @@ export abstract class PhysicsWorld {
     const joining: Member[] = [];
     try {
       for (const object of entered) {
-        claim(object, this);
+        claim(object, this, (owner) => owner.refresh());
         // A listener of the previous world may have had this world take it already.
         if (this.members.has(object)) continue;
         this.add(object);
@@ -415,8 +410,8 @@ export async function build<World extends PhysicsWorld>(
   world: World,
 ): Promise<World> {
   try {
-    await world.decompose(world.scene);
-    // Claimed once decomposed, so commands join objects only once their meshes are ready.
+    // Claimed once decomposed, so a new world never collides a mesh as its hull.
+    await world.decompose();
     claimScene(world);
     world.update(0);
   } catch (error) {

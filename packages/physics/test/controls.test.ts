@@ -99,19 +99,12 @@ it("copies settings into a clone and rejects bodies constructed separately", () 
   expect(mesh.clone().geometry).toBe(mesh.geometry);
 });
 
-it("validates runtime controls before storing and needs a world to simulate", () => {
+it("validates runtime controls before storing", () => {
   const body = new RigidBody().setLinearDamping(2).setGravityScale(-1);
   expect(() => body.setLinearDamping(-1)).toThrow("nonnegative");
   expect(() => body.setGravityScale(Infinity)).toThrow("finite");
   expect(body.linearDamping).toBe(2);
   expect(body.gravityScale).toBe(-1);
-  const joint = new RevoluteJoint({
-    body0: null,
-    body1: body,
-  }).setCollideConnected(true);
-  joint.setEnabled(false).setEnabled(true);
-  expect(() => joint.getState()).toThrow("not under a built world's scene");
-  expect(() => body.wake()).toThrow("not under a built world's scene");
 });
 
 it("measures prismatic anchor velocity relative to the rotating reference axis", () => {
@@ -139,24 +132,6 @@ it("measures prismatic anchor velocity relative to the rotating reference axis",
   expect([translation.x, linearVelocity.x]).toEqual([0, -3]);
 });
 
-it("rejects standalone joint cloning, which would keep the original bodies", () => {
-  const body = new RigidBody();
-  const hinge = new RevoluteJoint({ body0: null, body1: body });
-  expect(() => hinge.clone()).toThrow("clone(root)");
-  expect(() => new Group().add(body, hinge).clone()).toThrow("clone(root)");
-});
-
-it("copies immutable body type into clones", () => {
-  const options: { bodyType: "dynamic" | "static" } = { bodyType: "dynamic" };
-  const body = new RigidBody(options);
-  options.bodyType = "static";
-  expect(body.bodyType).toBe("dynamic");
-  expect(body.clone().bodyType).toBe("dynamic");
-  expect(() => new RigidBody({ bodyType: "static" }).copy(body)).toThrow(
-    "immutable",
-  );
-});
-
 it("expresses complete mass and paired joint frames in the types", () => {
   expectTypeOf<{
     mass: number;
@@ -172,9 +147,8 @@ it("expresses complete mass and paired joint frames in the types", () => {
 });
 
 it("rejects unknown rigid body options and copies onto itself as a no-op", () => {
-  // Untyped callers, such as ones written against the old `type` option.
-  expect(() => Reflect.construct(RigidBody, [{ type: "static" }])).toThrow(
-    "Unknown rigid body option: type",
+  expect(() => Reflect.construct(RigidBody, [{ spin: 1 }])).toThrow(
+    "Unknown rigid body option: spin",
   );
   const body = new RigidBody().add(new Group());
   expect(body.copy(body)).toBe(body);

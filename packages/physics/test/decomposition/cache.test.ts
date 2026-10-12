@@ -10,25 +10,15 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BoxGeometry, Vector3 } from "three";
-import { MeshCollider, RigidBody } from "../src/index.js";
-import { convexParts } from "../src/backend.js";
-import { prepareConvexParts } from "../src/colliders/decomposition.js";
+import { MeshCollider, RigidBody } from "../../src/index.js";
+import { convexParts } from "../../src/backend.js";
+import { settle } from "../../src/colliders/decomposition/parts.js";
+import { decompose as coacd, part } from "./fake-coacd.js";
 
-const hull = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
-const decompose = vi.fn(() => ({
-  hulls: Object.assign(
-    [
-      {
-        vertices: Object.assign([...hull], { delete() {} }),
-        indices: { delete() {} },
-      },
-    ],
-    { delete() {} },
-  ),
-}));
-vi.mock("../src/colliders/coacd.js", () => ({
-  default: async () => ({ decompose }),
-}));
+vi.mock(
+  "../../src/colliders/decomposition/coacd.js",
+  () => import("./fake-coacd.js"),
+);
 
 let root: string;
 const cache = () =>
@@ -36,7 +26,7 @@ const cache = () =>
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "physics-cache-"));
   vi.spyOn(process, "cwd").mockReturnValue(root);
-  decompose.mockClear();
+  coacd.mockClear();
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -48,19 +38,19 @@ function box() {
   const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
     new BoxGeometry(),
   );
-  new RigidBody().add(collider);
-  return collider;
+  return { body: new RigidBody().add(collider), collider };
 }
-const prepare = (collider: MeshCollider) =>
-  prepareConvexParts(collider.parent!, () => true);
+const prepare = ({ body }: { body: RigidBody }) => settle(body, () => true);
 
 it("reads an identical mesh's parts back from disk", async () => {
   await mkdir(join(root, "node_modules"));
   await prepare(box());
   const again = box();
   await prepare(again);
-  expect(decompose).toHaveBeenCalledTimes(1);
-  expect(convexParts(again, new Vector3(1, 1, 1))).toEqual([hull]);
+  expect(coacd).toHaveBeenCalledTimes(1);
+  expect(convexParts(again.body, again.collider, new Vector3(1, 1, 1))).toEqual(
+    [part],
+  );
 });
 
 it("decomposes again when a cached entry is not valid parts", async () => {
@@ -69,7 +59,7 @@ it("decomposes again when a cached entry is not valid parts", async () => {
   for (const file of await readdir(cache()))
     await writeFile(join(cache(), file), "[[1, 2]]");
   await prepare(box());
-  expect(decompose).toHaveBeenCalledTimes(2);
+  expect(coacd).toHaveBeenCalledTimes(2);
 });
 
 // Permissions do not stop root, nor apply on Windows.
@@ -78,7 +68,7 @@ it.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
   async () => {
     await mkdir(join(root, "node_modules"), { mode: 0o500 });
     await prepare(box());
-    expect(decompose).toHaveBeenCalledTimes(1);
+    expect(coacd).toHaveBeenCalledTimes(1);
   },
 );
 

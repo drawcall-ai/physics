@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { BoxGeometry, Matrix4, Mesh, Scene } from "three";
+import { BoxGeometry, Matrix4, Mesh } from "three";
 import {
   DistanceJoint,
   JointDrive,
@@ -7,17 +7,8 @@ import {
   RigidBody,
 } from "@drawcall/physics";
 import { createWorld, inertialBody } from "./fixtures.js";
-import { buildWorld } from "../src/index.js";
 
 /** Engine limitations the adapter documents and rejects explicitly. */
-
-for (const solverIterations of [0, -1, 1.5, NaN, Infinity]) {
-  it(`rejects invalid solver iteration count ${solverIterations}`, async () => {
-    await expect(
-      buildWorld({ scene: new Scene(), solverIterations }),
-    ).rejects.toThrow("solverIterations must be a positive integer");
-  });
-}
 
 it("rejects a drive velocity limit, which its constant motor force cannot model", async () => {
   const world = await createWorld();

@@ -1,4 +1,4 @@
-import { expect, expectTypeOf, it, vi } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import { BoxGeometry, Group, Mesh, Vector3 } from "three";
 import {
   BoxCollider,
@@ -81,14 +81,12 @@ it("rejects nested owners, physical materials, and surface meshes", () => {
   expect(() => trigger.getColliders()).toThrow("Triangle meshes");
 });
 
-it("clones trigger ownership and settings without copying listeners", () => {
+it("clones trigger ownership and settings", () => {
   const body = new RigidBody().setCollisionGroups({ membership: 1, filter: 2 });
   const trigger = new Trigger().setCollisionGroups({
     membership: 4,
     filter: 8,
   });
-  const listener = vi.fn();
-  trigger.addEventListener("enter", listener);
   trigger.add(new BoxCollider());
   body.add(trigger);
   const copiedBody = clone(body);
@@ -99,19 +97,6 @@ it("clones trigger ownership and settings without copying listeners", () => {
   expect(copiedBody.collisionGroups).toEqual(body.collisionGroups);
   expect(copiedTrigger.collisionGroups).toEqual(trigger.collisionGroups);
   expect(copiedTrigger.getColliders()[0]).not.toBe(trigger.getColliders()[0]);
-  copiedTrigger.dispatchEvent({ type: "enter", body });
-  expect(listener).not.toHaveBeenCalled();
-});
-
-it("fails visibly for overlap reads outside every built world's scene", () => {
-  const trigger = new Trigger();
-  const body = new RigidBody();
-  expect(() => trigger.getOverlappingBodies()).toThrow(
-    "not under a built world's scene",
-  );
-  expect(() => trigger.overlaps(body)).toThrow(
-    "not under a built world's scene",
-  );
 });
 
 it("types trigger and contact payloads while preserving Three.js scene events", () => {

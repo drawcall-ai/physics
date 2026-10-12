@@ -2,7 +2,7 @@ import type { Object3D } from "three";
 import { RigidBody } from "./body.js";
 import { Joint } from "./joints/joint.js";
 import { Trigger } from "./trigger.js";
-import { refresh, type PhysicsWorld } from "./world.js";
+import type { PhysicsWorld } from "./world.js";
 
 export type Member = RigidBody | Joint | Trigger;
 
@@ -38,10 +38,15 @@ export function joinedWorld(object: Member): PhysicsWorld | undefined {
 }
 
 /**
- * Has the world that still holds `object` release it once its scene no longer does, so `world`
- * can take it. Its listeners may meanwhile have `world` take it already.
+ * Has the world that still holds `object` release it once its scene no longer does, by
+ * `refresh`ing that world, so `world` can take it. Its listeners may meanwhile have `world`
+ * take it already.
  */
-export function claim(object: Member, world: PhysicsWorld): void {
+export function claim(
+  object: Member,
+  world: PhysicsWorld,
+  refresh: (owner: PhysicsWorld) => void,
+): void {
   const owner = joined.get(object);
   if (owner && owner !== world && !holds(owner.scene, object)) {
     try {

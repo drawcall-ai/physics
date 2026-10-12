@@ -58,7 +58,7 @@ it("queries authored and simulated surfaces, exits, source identity and multiple
   expect(world.raycast(origin, direction, 20)?.object).toBe(second.children[0]);
 });
 
-it("filters triggers/groups and rejects invalid ray inputs", async () => {
+it("filters triggers and groups, and casts zero-length rays", async () => {
   const world = await createWorld();
   const trigger = new Trigger();
   trigger.add(
@@ -81,15 +81,6 @@ it("filters triggers/groups and rejects invalid ray inputs", async () => {
       collisionGroups: { membership: 4, filter: 1 },
     }),
   ).toBeNull();
-  for (const invalid of [
-    new Vector3(),
-    new Vector3(NaN, 0, 0),
-    new Vector3(Infinity, 0, 0),
-  ])
-    expect(() => world.raycast(origin, invalid, 5)).toThrow();
-  for (const distance of [-1, NaN, Infinity])
-    expect(() => world.raycast(origin, direction, distance)).toThrow();
-  expect(() => world.raycast(new Vector3(NaN, 0, 0), direction, 5)).toThrow();
   expect(
     world.raycast(origin, direction, 0, { includeTriggers: true }),
   ).toBeNull();

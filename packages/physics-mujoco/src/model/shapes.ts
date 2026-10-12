@@ -4,7 +4,12 @@ import {
   type Trigger,
   type CollisionGroups,
 } from "@drawcall/physics";
-import { convexParts, resolveCollisionGroups } from "@drawcall/physics/backend";
+import {
+  convexParts,
+  resolveCollisionGroups,
+  vertices,
+  type Decomposes,
+} from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { heightfield } from "./heightfield.js";
 import { placement, name } from "./markup.js";
@@ -22,6 +27,10 @@ interface Shapes {
   assets: string[];
   geometries: Geometry[];
 }
+/** MuJoCo collides only convex shapes: every triangle mesh but a static height grid. */
+export const decomposes: Decomposes = (body, geometry) =>
+  body.bodyType !== "static" || !heightfield(geometry, "grid");
+
 export function shapes(
   owner: RigidBody | Trigger,
   contact: (geometry: Geometry) => string,
@@ -83,33 +92,24 @@ export function shapes(
           `type="${shape.kind}" size="${shape.radius} ${shape.height / 2}"`,
           matrix,
         );
+      } else if (
+        shape.approximation === "trimesh" &&
+        !(owner instanceof RigidBody && decomposes(owner, shape.geometry))
+      ) {
+        const field = heightfield(shape.geometry, prefix);
+        if (!field)
+          throw new Error("Only a static height grid collides as triangles");
+        assets.push(field.asset);
+        add(
+          "",
+          `type="hfield" hfield="${prefix}"`,
+          part.matrix.clone().multiply(field.matrix),
+        );
       } else {
-        // A static height grid is a native height field; any other triangle mesh collides
-        // as its prepared convex parts.
-        const field =
-          shape.approximation === "trimesh" &&
-          owner instanceof RigidBody &&
-          owner.bodyType === "static"
-            ? heightfield(shape.geometry, prefix)
-            : undefined;
-        if (field) {
-          assets.push(field.asset);
-          add(
-            "",
-            `type="hfield" hfield="${prefix}"`,
-            part.matrix.clone().multiply(field.matrix),
-          );
-          continue;
-        }
-        const positions = shape.geometry.getAttribute("position");
         const hulls =
-          shape.approximation === "trimesh"
-            ? convexParts(collider, part.scale)
-            : [
-                Array.from({ length: positions.count * 3 }, (_, i) =>
-                  positions.getComponent(Math.floor(i / 3), i % 3),
-                ),
-              ];
+          shape.approximation === "trimesh" && owner instanceof RigidBody
+            ? convexParts(owner, collider, part.scale)
+            : [vertices(shape.geometry)];
         for (const [index, hull] of hulls.entries()) {
           const key = `${prefix}h${index}`;
           assets.push(`<mesh name="${key}" vertex="${hull.join(" ")}"/>`);

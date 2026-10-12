@@ -1,8 +1,8 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
+  RigidBody,
   resolveCollider,
   type Collider,
-  type RigidBody,
   type Shape,
   type Trigger,
 } from "@drawcall/physics";
@@ -10,16 +10,29 @@ import {
   convexParts,
   geometryVersion,
   lockScale,
+  partsVersion,
   resolveCollisionGroups,
+  vertices,
+  type Decomposes,
 } from "@drawcall/physics/backend";
 import { Quaternion, Vector3, type Matrix4, type Object3D } from "three";
 
 type Resolved = ReturnType<typeof resolveCollider>;
 
-/**
- * Rapier colliders for one authored body collider. Rapier keeps real triangle meshes for static
- * bodies; on a moving body a triangle mesh collides as its prepared convex parts.
- */
+/** Rapier keeps real triangle meshes for static bodies; on moving ones they collide as convex parts. */
+export const decomposes: Decomposes = (body) => body.bodyType !== "static";
+
+/** Whether the shape collides as convex parts on `owner`. */
+function decomposed(shape: Shape, owner: Object3D): boolean {
+  return (
+    shape.kind === "mesh" &&
+    shape.approximation === "trimesh" &&
+    owner instanceof RigidBody &&
+    decomposes(owner, shape.geometry)
+  );
+}
+
+/** Rapier colliders for one authored body collider. */
 export function colliderDescs(
   api: typeof Rapier,
   resolved: Resolved,
@@ -29,12 +42,8 @@ export function colliderDescs(
   const material = body.getMaterial(collider);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction");
-  const moving =
-    shape.kind === "mesh" &&
-    shape.approximation === "trimesh" &&
-    body.bodyType !== "static";
-  const descs = moving
-    ? convexParts(collider, scale).map((part) =>
+  const descs = decomposed(shape, body)
+    ? convexParts(body, collider, scale).map((part) =>
         hull(api, new Float32Array(part)),
       )
     : [descriptor(api, shape)];
@@ -80,26 +89,19 @@ export function descriptor(
     case "cylinder":
       return factory.cylinder(shape.height / 2, shape.radius);
     case "mesh": {
-      const positions = shape.geometry.getAttribute("position");
-      if (!positions) throw new Error("Mesh collider needs positions");
-      const vertices = new Float32Array(positions.count * 3);
-      for (let i = 0; i < positions.count; i++)
-        vertices.set(
-          [positions.getX(i), positions.getY(i), positions.getZ(i)],
-          i * 3,
-        );
-      if (shape.approximation === "convexHull") return hull(api, vertices);
+      const points = new Float32Array(vertices(shape.geometry));
+      if (shape.approximation === "convexHull") return hull(api, points);
       const index = shape.geometry.getIndex();
-      const indices = new Uint32Array(index ? index.count : positions.count);
+      const indices = new Uint32Array(index ? index.count : points.length / 3);
       for (let i = 0; i < indices.length; i++)
         indices[i] = index ? index.getX(i) : i;
-      return factory.trimesh(vertices, indices);
+      return factory.trimesh(points, indices);
     }
   }
 }
 
-function hull(api: typeof Rapier, vertices: Float32Array): Rapier.ColliderDesc {
-  const desc = api.ColliderDesc.convexHull(vertices);
+function hull(api: typeof Rapier, points: Float32Array): Rapier.ColliderDesc {
+  const desc = api.ColliderDesc.convexHull(points);
   if (!desc) throw new Error("Rapier could not construct the convex hull");
   return desc;
 }
@@ -127,7 +129,10 @@ export function fingerprint(collider: Collider, owner: Object3D): unknown {
       ? {
           kind: shape.kind,
           approximation: shape.approximation,
-          version: geometryVersion(shape.geometry),
+          // Only colliders made of convex parts change once those arrive.
+          version: decomposed(shape, owner)
+            ? partsVersion(shape.geometry)
+            : geometryVersion(shape.geometry),
         }
       : shape;
   // Relative transforms accumulate tiny roundoff as bodies move under parents.
