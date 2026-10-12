@@ -1,7 +1,14 @@
 import { expect, it } from "vitest";
-import { createWorld } from "./fixtures.js";
+import { concave, createWorld } from "./fixtures.js";
 import { buildWorld } from "../src/index.js";
-import { BoxGeometry, Group, Matrix4, Quaternion, Vector3 } from "three";
+import {
+  BoxGeometry,
+  Group,
+  Matrix4,
+  PlaneGeometry,
+  Quaternion,
+  Vector3,
+} from "three";
 import {
   BoxCollider,
   RigidBody,
@@ -383,17 +390,41 @@ it("teleports without a joint that waits to leave", async () => {
   expect(b.position.y).toBeCloseTo(0, 3);
 });
 
-it("requires world.decompose for a moving triangle mesh that joins after the build", async () => {
+it("collides a moving triangle mesh that joins after the build as its hull until decomposed", async () => {
   const world = await setup();
+  const geometry = concave();
   const body = new RigidBody().add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(
-      new BoxGeometry(),
-    ),
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
   );
   world.scene.add(body);
-  expect(() => world.update(0)).toThrow("await world.decompose(object)");
-  expect(body.world).toBeUndefined();
-  await world.decompose(body);
-  world.update(0);
+  // A command right after adding the body joins it at once, as its hull.
+  body.applyImpulse(new Vector3(0, 0, 1));
   expect(body.world).toBe(world);
+  const forward = new Vector3(0, 0, -1);
+  const notch = new Vector3(0.7, 0.7, 3);
+  expect(world.raycast(notch, forward, 6)).toMatchObject({ body });
+  await world.decompose();
+  expect(world.raycast(notch, forward, 6)).toBeNull();
+  // An edited mesh is its hull again until decomposed afresh.
+  geometry.translate(1, 0, 0);
+  const moved = new Vector3(1.7, 0.7, 3);
+  expect(world.raycast(moved, forward, 6)).toMatchObject({ body });
+  await world.decompose();
+  expect(world.raycast(moved, forward, 6)).toBeNull();
 }, 15000);
+
+it("fails the update that builds a moving triangle mesh it cannot decompose", async () => {
+  const world = await setup();
+  const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
+    new PlaneGeometry(),
+  );
+  collider.name = "surface";
+  const body = new RigidBody().add(collider);
+  body.name = "sheet";
+  world.scene.add(body);
+  expect(() => world.update(0)).toThrow(
+    "Convex decomposition failed for sheet/surface: the mesh is not closed",
+  );
+  expect(body.world).toBeUndefined();
+  await expect(world.decompose()).rejects.toThrow("sheet/surface");
+});

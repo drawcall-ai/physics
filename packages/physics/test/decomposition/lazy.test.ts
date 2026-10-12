@@ -1,10 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { BoxGeometry, Group } from "three";
-import { BoxCollider, MeshCollider, RigidBody } from "../src/index.js";
-import { prepareConvexParts } from "../src/colliders/decomposition.js";
+import { BoxCollider, MeshCollider, RigidBody } from "../../src/index.js";
+import { settle } from "../../src/colliders/decomposition/parts.js";
+import load from "./fake-coacd.js";
 
-const load = vi.fn();
-vi.mock("../src/colliders/coacd.js", () => ({ default: load }));
+vi.mock(
+  "../../src/colliders/decomposition/coacd.js",
+  () => import("./fake-coacd.js"),
+);
 
 it("loads CoACD only when some mesh needs decomposing", async () => {
   const box = new RigidBody().add(new BoxCollider());
@@ -13,8 +16,8 @@ it("loads CoACD only when some mesh needs decomposing", async () => {
       new BoxGeometry(),
     ),
   );
-  await prepareConvexParts(new Group(), () => true);
-  await prepareConvexParts(
+  await settle(new Group(), () => true);
+  await settle(
     new Group().add(box, scenery),
     (body) => body.bodyType !== "static",
   );

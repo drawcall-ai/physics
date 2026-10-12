@@ -4,7 +4,11 @@ import {
   type Trigger,
   type CollisionGroups,
 } from "@drawcall/physics";
-import { convexParts, resolveCollisionGroups } from "@drawcall/physics/backend";
+import {
+  convexParts,
+  resolveCollisionGroups,
+  vertices,
+} from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { heightfield } from "./heightfield.js";
 import { placement, name } from "./markup.js";
@@ -85,7 +89,7 @@ export function shapes(
         );
       } else {
         // A static height grid is a native height field; any other triangle mesh collides
-        // as its prepared convex parts.
+        // as its convex parts.
         const field =
           shape.approximation === "trimesh" &&
           owner instanceof RigidBody &&
@@ -101,15 +105,10 @@ export function shapes(
           );
           continue;
         }
-        const positions = shape.geometry.getAttribute("position");
         const hulls =
           shape.approximation === "trimesh"
-            ? convexParts(collider, part.scale)
-            : [
-                Array.from({ length: positions.count * 3 }, (_, i) =>
-                  positions.getComponent(Math.floor(i / 3), i % 3),
-                ),
-              ];
+            ? convexParts(owner, collider, part.scale)
+            : [vertices(shape.geometry)];
         for (const [index, hull] of hulls.entries()) {
           const key = `${prefix}h${index}`;
           assets.push(`<mesh name="${key}" vertex="${hull.join(" ")}"/>`);

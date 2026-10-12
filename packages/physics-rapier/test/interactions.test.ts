@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
-import { Group, Matrix4, Vector3 } from "three";
+import { BoxGeometry, Group, Matrix4, Vector3 } from "three";
 import {
   BoxCollider,
   DistanceJoint,
   FixedJoint,
+  MeshCollider,
   RigidBody,
   Trigger,
 } from "@drawcall/physics";
-import { box, createWorld, inertialBody, steps } from "./fixtures.js";
+import { box, createWorld, earth, inertialBody, steps } from "./fixtures.js";
 
 function region(size = 2) {
   return new Trigger().add(new BoxCollider({ size: [size, size, size] }));
@@ -475,4 +476,64 @@ it("delivers the whole batch of contact events even when a listener throws", asy
   floor.addEventListener("contactbegin", floorBegin);
   expect(() => world.update(world.fixedDelta)).toThrow("listener failed");
   expect(floorBegin).toHaveBeenCalledOnce();
+});
+
+it("reports a body resting on a static triangle mesh floor as on a box floor", async () => {
+  /** The steps at which a box dropped on the floor begins and ends contact. */
+  async function contacts(collider: BoxCollider | MeshCollider) {
+    const world = await createWorld(earth);
+    const floor = new RigidBody({ bodyType: "static" }).add(collider);
+    const body = box();
+    body.position.y = 1.5;
+    world.scene.add(floor, body);
+    const events: string[] = [];
+    for (const type of ["contactbegin", "contactend"] as const)
+      floor.addEventListener(type, () => events.push(`${type}@${step}`));
+    let step = 0;
+    for (; step < 120; step++) world.update(world.fixedDelta);
+    return events;
+  }
+  const boxFloor = await contacts(new BoxCollider({ size: [10, 1, 10] }));
+  // The step at which Rapier's solver contacts begin, which contacts reported before.
+  expect(boxFloor).toEqual(["contactbegin@19"]);
+  expect(
+    await contacts(
+      new MeshCollider({ approximation: "trimesh" }).setGeometry(
+        new BoxGeometry(10, 1, 10),
+      ),
+    ),
+  ).toEqual(boxFloor);
+});
+
+it("keeps contact and overlap state when a static mesh rebuilds as shared parts arrive", async () => {
+  const world = await createWorld(earth);
+  const geometry = new BoxGeometry(10, 1, 10);
+  const floor = new RigidBody({ bodyType: "static" }).add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+  );
+  const goal = region();
+  const body = box();
+  body.position.y = 1.5;
+  world.scene.add(floor, goal, body);
+  const events = vi.fn();
+  for (const type of ["contactbegin", "contactend"] as const)
+    floor.addEventListener(type, () => events(type));
+  for (const type of ["enter", "exit"] as const)
+    goal.addEventListener(type, ({ body }) => events(type, body === floor));
+  steps(world, 60);
+  // A moving body sharing the floor's geometry decomposes it, which rebuilds the floor.
+  const crate = new RigidBody().add(
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(geometry),
+  );
+  crate.position.set(30, 0, 0);
+  world.scene.add(crate);
+  world.update(world.fixedDelta);
+  await world.decompose();
+  steps(world, 10);
+  expect(events.mock.calls).toEqual([
+    ["enter", true],
+    ["enter", false],
+    ["contactbegin"],
+  ]);
+  expect(body.position.y).toBeCloseTo(1, 2);
 });

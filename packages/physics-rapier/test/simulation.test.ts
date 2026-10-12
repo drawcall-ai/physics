@@ -1,14 +1,5 @@
 import { expect, it } from "vitest";
-import {
-  BoxGeometry,
-  ExtrudeGeometry,
-  Group,
-  Matrix4,
-  Mesh,
-  Scene,
-  Shape,
-  Vector3,
-} from "three";
+import { BoxGeometry, Group, Matrix4, Mesh, Scene, Vector3 } from "three";
 import {
   BoxCollider,
   JointDrive,
@@ -20,7 +11,7 @@ import {
   RigidBody,
   SphericalJoint,
 } from "@drawcall/physics";
-import { createWorld, box, earth, steps } from "./fixtures.js";
+import { createWorld, box, concave, earth, steps } from "./fixtures.js";
 
 it("updates manual body matrices when synchronizing simulated poses", async () => {
   const world = await createWorld(earth);
@@ -251,20 +242,9 @@ it("applies forces for one step and accepts kinematic targets", async () => {
 });
 
 it("collides a triangle mesh on a moving body as its convex parts", async () => {
-  // An L-shaped prism: one convex hull would fill the notch between its arms.
-  const outline = new Shape()
-    .moveTo(0, 0)
-    .lineTo(1, 0)
-    .lineTo(1, 0.4)
-    .lineTo(0.4, 0.4)
-    .lineTo(0.4, 1)
-    .lineTo(0, 1)
-    .closePath();
   const body = new RigidBody();
   body.add(
-    new MeshCollider({ approximation: "trimesh" }).setGeometry(
-      new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false }),
-    ),
+    new MeshCollider({ approximation: "trimesh" }).setGeometry(concave()),
   );
   const world = await createWorld({ ...earth, scene: new Scene().add(body) });
   const forward = new Vector3(0, 0, -1);

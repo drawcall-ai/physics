@@ -1,5 +1,5 @@
 import { afterEach } from "vitest";
-import { BoxGeometry, Mesh, Scene } from "three";
+import { BoxGeometry, ExtrudeGeometry, Mesh, Scene, Shape } from "three";
 import {
   RigidBody,
   type PhysicsWorld,
@@ -46,4 +46,17 @@ export function box(bodyType: RigidBodyType = "dynamic") {
 
 export function steps(world: PhysicsWorld, count = 120) {
   for (let i = 0; i < count; i++) world.update(world.fixedDelta);
+}
+
+/** An L-shaped prism: one convex hull would fill the notch between its arms around (0.7, 0.7). */
+export function concave() {
+  const outline = new Shape()
+    .moveTo(0, 0)
+    .lineTo(1, 0)
+    .lineTo(1, 0.4)
+    .lineTo(0.4, 0.4)
+    .lineTo(0.4, 1)
+    .lineTo(0, 1)
+    .closePath();
+  return new ExtrudeGeometry(outline, { depth: 0.4, bevelEnabled: false });
 }

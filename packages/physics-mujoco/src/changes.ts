@@ -12,8 +12,8 @@ import {
 } from "@drawcall/physics";
 import {
   colliderSources,
-  geometryVersion,
   lockScale,
+  partsVersion,
 } from "@drawcall/physics/backend";
 import { Mesh, type Object3D, Vector3 } from "three";
 
@@ -47,7 +47,7 @@ export function fingerprint(member: RigidBody | Joint | Trigger): unknown[] {
     if (source instanceof Mesh || source instanceof MeshCollider) {
       const { drawRange, morphAttributes } = source.geometry;
       values.push(
-        geometryVersion(source.geometry),
+        partsVersion(source.geometry),
         drawRange.start,
         drawRange.count,
         Object.keys(morphAttributes).length,

@@ -6,7 +6,7 @@ import {
   RevoluteJoint,
   Trigger,
 } from "@drawcall/physics";
-import { Group, Scene, Vector3 } from "three";
+import { Group, PlaneGeometry, Scene, Vector3 } from "three";
 import { concave, createWorld } from "./fixtures.js";
 
 const earth = { gravity: [0, -9.81, 0] } as const;
@@ -49,21 +49,38 @@ test("decomposes initial meshes and preserves concavities with ancestor scale", 
   expect(world.raycast(new Vector3(1, 0.6, 3), forward, 6)).toBeNull();
 }, 15000);
 
-test("a trimesh that joins after the build needs world.decompose", async () => {
+test("a trimesh that joins after the build collides as its hull until decomposed", async () => {
   const scene = new Scene();
   const world = await createWorld({ ...earth, scene });
   const body = mesh();
   scene.add(body);
-  expect(() => world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toThrow(
-    "await world.decompose(object)",
-  );
-  await world.decompose(body);
+  expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toMatchObject({
+    kind: "body",
+    body,
+  });
+  await world.decompose();
   expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
   expect(world.raycast(new Vector3(-0.2, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",
     body,
   });
 }, 15000);
+
+test("a trimesh it cannot decompose fails the update that builds it", async () => {
+  const scene = new Scene();
+  const world = await createWorld({ ...earth, scene });
+  const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(
+    new PlaneGeometry(),
+  );
+  collider.name = "surface";
+  const body = new RigidBody().add(collider);
+  body.name = "sheet";
+  scene.add(body);
+  expect(() => world.update(world.fixedDelta)).toThrow(
+    "Convex decomposition failed for sheet/surface: the mesh is not closed",
+  );
+  await expect(world.decompose()).rejects.toThrow("sheet/surface");
+});
 
 test("objects added while loading are included without losing removals", async () => {
   const removed = new RigidBody({ mass: 1 }).add(new BoxCollider());
@@ -114,10 +131,12 @@ test("changed initial geometry never reuses stale decompositions", async () => {
   const world = await createWorld({ ...earth, scene: new Scene().add(body) });
   expect(world.raycast(new Vector3(0.4, 0.3, 3), forward, 6)).toBeNull();
   geometry.translate(2, 0, 0);
-  expect(() => world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toThrow(
-    "await world.decompose(object)",
-  );
-  await world.decompose(body);
+  // The edited mesh collides as its hull until decomposed afresh.
+  expect(world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toMatchObject({
+    kind: "body",
+    body,
+  });
+  await world.decompose();
   expect(world.raycast(new Vector3(2.4, 0.3, 3), forward, 6)).toBeNull();
   expect(world.raycast(new Vector3(1.8, 0.3, 3), forward, 6)).toMatchObject({
     kind: "body",

@@ -28,8 +28,7 @@ export function sampleInteractions(
       const hit = owners.get(other.handle);
       if (hit?.kind !== "body" || hit.body === owner.body) return;
       simulation.contactPair(collider, other, (manifold) => {
-        if (manifold.numSolverContacts() > 0)
-          pair(contacts, owner.body, hit.body);
+        if (manifold.numContacts() > 0) pair(contacts, owner.body, hit.body);
       });
     });
   }

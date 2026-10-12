@@ -40,15 +40,14 @@ test.each([
   30000,
 );
 
-test("the right frame needs world.decompose when added after building", async () => {
+test("the right frame added after building keeps its opening once decomposed", async () => {
   const world = await buildWorld({ scene: new Scene() });
   worlds.push(world);
   const { root, lanes } = decomposition();
   world.scene.add(root);
-  expect(() => world.update(world.fixedDelta)).toThrow(
-    "await world.decompose(object)",
-  );
-  await world.decompose(root);
+  // Until its parts arrive, the frame collides as its hull.
+  world.update(0);
+  await world.decompose();
   for (let i = 0; i < 240; i++) world.update(world.fixedDelta);
   const [left, right] = lanes;
   expect(left?.cube.position.y).toBeCloseTo(2.45, 2);

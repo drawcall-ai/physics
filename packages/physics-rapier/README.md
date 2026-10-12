@@ -26,8 +26,9 @@ Rapier's default.
 - Body and collider scale are captured on joining. A later scale edit throws;
   recreate the object. New colliders capture their own scale.
 - Triangle meshes stay exact on static bodies. On moving bodies they collide as convex
-  parts: those added or edited after the build need `await world.decompose(object)`
-  before they join.
+  parts; those added or edited after the build collide as their hull until their
+  decomposition finishes; `await world.decompose()` waits for it. A failed
+  decomposition fails every update until the mesh is edited or removed.
 - Static and dynamic friction must be equal.
 - An explicit mass without explicit inertia is split across colliders by volume.
 - A collider rebuild that fails keeps the previous colliders.

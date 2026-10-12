@@ -33,3 +33,11 @@ export function validateRange(geometry: BufferGeometry): void {
     throw new Error("Physics mesh geometry must use the full draw range");
   }
 }
+
+/** The geometry's vertex positions, as one flat list. */
+export function vertices(geometry: BufferGeometry): number[] {
+  const position = geometry.getAttribute("position");
+  return Array.from({ length: position.count * 3 }, (_, i) =>
+    position.getComponent(Math.floor(i / 3), i % 3),
+  );
+}

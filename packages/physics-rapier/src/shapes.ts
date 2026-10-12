@@ -8,18 +8,20 @@ import {
 } from "@drawcall/physics";
 import {
   convexParts,
-  geometryVersion,
   lockScale,
+  partsVersion,
   resolveCollisionGroups,
+  vertices,
+  type Decomposes,
 } from "@drawcall/physics/backend";
 import { Quaternion, Vector3, type Matrix4, type Object3D } from "three";
 
 type Resolved = ReturnType<typeof resolveCollider>;
 
-/**
- * Rapier colliders for one authored body collider. Rapier keeps real triangle meshes for static
- * bodies; on a moving body a triangle mesh collides as its prepared convex parts.
- */
+/** Rapier keeps real triangle meshes for static bodies; on moving ones they collide as convex parts. */
+export const decomposes: Decomposes = (body) => body.bodyType !== "static";
+
+/** Rapier colliders for one authored body collider. */
 export function colliderDescs(
   api: typeof Rapier,
   resolved: Resolved,
@@ -29,15 +31,14 @@ export function colliderDescs(
   const material = body.getMaterial(collider);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction");
-  const moving =
+  const descs =
     shape.kind === "mesh" &&
     shape.approximation === "trimesh" &&
-    body.bodyType !== "static";
-  const descs = moving
-    ? convexParts(collider, scale).map((part) =>
-        hull(api, new Float32Array(part)),
-      )
-    : [descriptor(api, shape)];
+    decomposes(body, shape.geometry)
+      ? convexParts(body, collider, scale).map((part) =>
+          hull(api, new Float32Array(part)),
+        )
+      : [descriptor(api, shape)];
   return descs.map((desc) =>
     place(desc, matrix, collider, body)
       .setDensity(material.density)
@@ -80,20 +81,13 @@ export function descriptor(
     case "cylinder":
       return factory.cylinder(shape.height / 2, shape.radius);
     case "mesh": {
-      const positions = shape.geometry.getAttribute("position");
-      if (!positions) throw new Error("Mesh collider needs positions");
-      const vertices = new Float32Array(positions.count * 3);
-      for (let i = 0; i < positions.count; i++)
-        vertices.set(
-          [positions.getX(i), positions.getY(i), positions.getZ(i)],
-          i * 3,
-        );
-      if (shape.approximation === "convexHull") return hull(api, vertices);
+      const points = new Float32Array(vertices(shape.geometry));
+      if (shape.approximation === "convexHull") return hull(api, points);
       const index = shape.geometry.getIndex();
-      const indices = new Uint32Array(index ? index.count : positions.count);
+      const indices = new Uint32Array(index ? index.count : points.length / 3);
       for (let i = 0; i < indices.length; i++)
         indices[i] = index ? index.getX(i) : i;
-      return factory.trimesh(vertices, indices);
+      return factory.trimesh(points, indices);
     }
   }
 }
@@ -127,7 +121,7 @@ export function fingerprint(collider: Collider, owner: Object3D): unknown {
       ? {
           kind: shape.kind,
           approximation: shape.approximation,
-          version: geometryVersion(shape.geometry),
+          version: partsVersion(shape.geometry),
         }
       : shape;
   // Relative transforms accumulate tiny roundoff as bodies move under parents.

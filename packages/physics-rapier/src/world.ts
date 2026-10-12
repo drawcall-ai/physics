@@ -19,9 +19,7 @@ import { sampleInteractions } from "./interactions.js";
 import { RapierJointBinding, prepareJoint } from "./joint.js";
 import { raycast, type Owner } from "./query.js";
 import { TriggerBinding, prepareTrigger, releaseTrigger } from "./trigger.js";
-
-/** Rapier collides triangle meshes on moving bodies as convex parts. */
-const decomposes = (body: RigidBody) => body.bodyType !== "static";
+import { decomposes } from "./shapes.js";
 
 export class RapierWorld extends PhysicsWorld {
   private readonly simulation: Rapier.World;
