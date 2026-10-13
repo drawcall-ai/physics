@@ -30,6 +30,7 @@ export abstract class ScalarJoint<
 }
 
 export type AxisJointOptions = JointOptions & {
+  /** The axis of the joint's frame it slides along or turns about, `"Y"` when omitted; positive turns follow the right-hand rule. */
   readonly axis?: "X" | "Y" | "Z";
   readonly limits?: readonly [number, number];
 };
@@ -55,6 +56,10 @@ export abstract class AxisJoint extends ScalarJoint<
         };
   }
 }
+/**
+ * Its angle counts whole turns, tracked step by step, so the joint must turn less than π per
+ * step.
+ */
 export class RevoluteJoint extends AxisJoint {
   readonly dof = "rotX";
 }

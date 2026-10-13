@@ -5,6 +5,7 @@ import type { Joint } from "./joint.js";
 import { axisVector, splitTransform } from "../transforms.js";
 
 export interface AxisJointState {
+  /** Meters, or radians counting whole turns; 0 where the two frames coincide. */
   position: number;
   velocity: number;
 }

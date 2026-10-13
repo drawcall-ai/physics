@@ -111,12 +111,14 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   get material(): PhysicsMaterial | undefined {
     return this.currentMaterial;
   }
+  /** A rate in 1/s, independent of mass. */
   setLinearDamping(value: number): this {
     validateDamping(value);
     this.currentLinearDamping = value;
     this.version++;
     return this;
   }
+  /** A rate in 1/s, independent of mass. */
   setAngularDamping(value: number): this {
     validateDamping(value);
     this.currentAngularDamping = value;

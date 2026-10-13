@@ -27,15 +27,20 @@ import {
 export interface PhysicsWorldOptions {
   /** The world simulates the bodies, joints and triggers under this object, normally the three.js Scene. */
   readonly scene: Object3D;
+  /** m/s²; `[0, -9.81, 0]` when omitted. */
   readonly gravity?: Vec3;
+  /** Fixed step in seconds; `1 / 60` when omitted. */
   readonly fixedDelta?: number;
+  /** Most steps one `update` takes, 5 when omitted; elapsed time beyond them is dropped. */
   readonly maxSubsteps?: number;
   /** Constraint solver iterations per step; the backend's own default when omitted. */
   readonly solverIterations?: number;
 }
 
 export interface PhysicsVelocity {
+  /** World space, m/s, of the center of mass. */
   linear: Vector3;
+  /** World space, rad/s. */
   angular: Vector3;
 }
 
@@ -97,6 +102,7 @@ export abstract class PhysicsWorld {
       return world.jointReading(joint);
     };
   }
+  /** Simulated seconds of the completed steps. */
   get time(): number {
     return this.completed;
   }
@@ -222,6 +228,7 @@ export abstract class PhysicsWorld {
     this.assertMember(trigger);
     return this.interactions.bodies(trigger);
   }
+  /** The closest hit, or null; a ray starting inside a shape hits its exit surface. */
   raycast(
     origin: Vector3,
     direction: Vector3,
@@ -243,6 +250,11 @@ export abstract class PhysicsWorld {
     this.assertLive();
     await settle(root, this.decomposes);
   }
+  /**
+   * Advances by `delta` elapsed seconds in fixed steps. Throws when called from a step callback or
+   * event listener. A step that throws ends the update: the steps before it count, the rest of
+   * its time is dropped.
+   */
   update(delta: number): void {
     this.assertIdle();
     if (!Number.isFinite(delta) || delta < 0)
@@ -285,6 +297,11 @@ export abstract class PhysicsWorld {
       }
     }
   }
+  /**
+   * Syncs, then returns the members to the pose and velocity they joined with, clearing contacts
+   * and overlaps without events; `time` restarts at 0. Throws when called from a step callback or
+   * event listener.
+   */
   reset(): void {
     this.assertIdle();
     this.refresh();
@@ -306,6 +323,10 @@ export abstract class PhysicsWorld {
     this.members.clear();
     if (!this.busy) this.free();
   }
+  /**
+   * Calls `callback` with `fixedDelta` before each step, from the next step on; objects it adds
+   * under the scene take part in that step. Returns an unsubscribe function.
+   */
   onBeforeStep(callback: (delta: number) => void): () => void {
     this.assertLive();
     this.before.add(callback);
@@ -313,6 +334,7 @@ export abstract class PhysicsWorld {
       this.before.delete(callback);
     };
   }
+  /** Calls `callback` after each step and its events; returns an unsubscribe function. */
   onAfterStep(callback: (delta: number) => void): () => void {
     this.assertLive();
     this.after.add(callback);

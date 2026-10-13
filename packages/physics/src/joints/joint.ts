@@ -48,6 +48,7 @@ export abstract class Joint<
   get enabled(): boolean {
     return this.currentEnabled;
   }
+  /** Whether the jointed bodies collide with each other; false by default. */
   get collideConnected(): boolean {
     return this.currentCollideConnected;
   }

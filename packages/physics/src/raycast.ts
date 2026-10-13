@@ -6,6 +6,7 @@ import { validateVector } from "./transforms.js";
 
 export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
+  /** False when omitted. */
   readonly includeTriggers?: boolean;
   readonly excludeBodies?: readonly RigidBody[];
 }

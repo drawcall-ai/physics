@@ -4,6 +4,7 @@ import { constructLike } from "../construct.js";
 export interface JointDriveOptions {
   /** N/m for translations, N·m/rad for rotations. */
   readonly stiffness?: number;
+  /** N·s/m for translations, N·m·s/rad for rotations. */
   readonly damping?: number;
   /** Cap on the drive force; unbounded when omitted. */
   readonly maxForce?: number;

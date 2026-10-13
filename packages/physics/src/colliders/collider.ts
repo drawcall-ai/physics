@@ -2,7 +2,13 @@ import { BufferGeometry, Object3D } from "three";
 import { constructLike } from "../construct.js";
 
 export type Vec3 = readonly [number, number, number];
+/**
+ * The colliders a body without explicit ones generates per visual mesh. `"auto"` keeps unchanged
+ * primitive geometries as primitives; other geometry becomes a convex hull on moving bodies and
+ * triangles on static ones. `false` generates none.
+ */
 export type AutoColliders = "auto" | "box" | "convexHull" | "trimesh" | false;
+/** Omitted values use the defaults `RigidBody.getMaterial` resolves. */
 export interface PhysicsMaterial {
   readonly staticFriction?: number;
   readonly dynamicFriction?: number;
@@ -13,6 +19,10 @@ export interface PhysicsMaterial {
   /** Resistance to rolling, m, likewise. */
   readonly rollingFriction?: number;
 }
+/**
+ * 16-bit masks. A pair collides when
+ * `(a.membership & b.filter) !== 0 && (b.membership & a.filter) !== 0`.
+ */
 export interface CollisionGroups {
   readonly membership: number;
   readonly filter: number;
@@ -88,6 +98,7 @@ export type Shape =
       approximation: "convexHull" | "trimesh";
     };
 export class BoxCollider extends Collider {
+  /** Full size, not half extents. */
   readonly size: Vec3;
   constructor(options: { readonly size?: Vec3 } = {}) {
     super();
@@ -108,8 +119,10 @@ export class SphereCollider extends Collider {
     return { kind: "sphere", radius: this.radius };
   }
 }
+/** Extends along Y. */
 export class CapsuleCollider extends Collider {
   readonly radius: number;
+  /** Length of the cylindrical part, excluding the caps. */
   readonly height: number;
   constructor(
     options: { readonly radius?: number; readonly height?: number } = {},
@@ -122,6 +135,7 @@ export class CapsuleCollider extends Collider {
     return { kind: "capsule", radius: this.radius, height: this.height };
   }
 }
+/** Extends along Y. */
 export class CylinderCollider extends Collider {
   readonly radius: number;
   readonly height: number;
