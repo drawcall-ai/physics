@@ -383,7 +383,7 @@ def Cube "Crate" (
     expect(text).not.toContain("glts:");
   });
 
-  it("rejects gravity scales and collision filters instead of dropping them", async () => {
+  it("rejects gravity scales, collision filters, and torsional and rolling friction instead of dropping them", async () => {
     const { scene, door } = doorAssembly();
     const exporter = new PhysicsUSDExporter();
     door.setGravityScale(0);
@@ -398,11 +398,19 @@ def Cube "Crate" (
     await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(
       Uint8Array,
     );
-    door.add(
-      new BoxCollider().setCollisionGroups({ membership: 1, filter: 2 }),
-    );
+    const shape = new BoxCollider().setCollisionGroups({
+      membership: 1,
+      filter: 2,
+    });
+    door.add(shape);
     await expect(exporter.parseAsync(scene)).rejects.toThrow(
       "collision filter",
+    );
+    shape
+      .setCollisionGroups(undefined)
+      .setMaterial({ torsionalFriction: 0.01 });
+    await expect(exporter.parseAsync(scene)).rejects.toThrow(
+      "no torsional or rolling friction",
     );
   });
 

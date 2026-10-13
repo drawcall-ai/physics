@@ -46,6 +46,8 @@ export function validateDrives(object: Joint): void {
       throw new Error(
         "Rapier motors take a constant force limit, so they cannot model maxVelocity",
       );
+    if (drive?.options.frictionLoss || drive?.options.armature)
+      throw new Error("Rapier joints have no friction or armature");
     if (
       drive?.options.maxForce !== undefined &&
       gains(drive) &&

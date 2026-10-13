@@ -20,7 +20,10 @@ interface Mask {
  * themselves share one bit in both masks, and each remaining colliding pair of groups gets a
  * bit from one to the other. Friction and restitution combine by MuJoCo's own rules.
  */
-export function contacts(bodies: readonly RigidBody[], fixedDelta: number) {
+export function contactAttributes(
+  bodies: readonly RigidBody[],
+  fixedDelta: number,
+) {
   const key = (groups: CollisionGroups) =>
     `${groups.membership}/${groups.filter}`;
   const distinct = new Map<string, CollisionGroups>();
@@ -44,7 +47,11 @@ export function contacts(bodies: readonly RigidBody[], fixedDelta: number) {
         ? 1
         : -Math.log(restitution) /
           Math.sqrt(Math.PI ** 2 + Math.log(restitution) ** 2);
-    return `contype="${mask.contype}" conaffinity="${mask.conaffinity}" condim="3" friction="${geometry.friction} 0 0" solref="${stiffness} ${damping}"`;
+    // MuJoCo gives a contact the larger condim and friction of its two geometries, so one
+    // collider with torsional or rolling friction gives it to all of its contacts.
+    const { friction, torsionalFriction, rollingFriction } = geometry;
+    const condim = rollingFriction > 0 ? 6 : torsionalFriction > 0 ? 4 : 3;
+    return `contype="${mask.contype}" conaffinity="${mask.conaffinity}" condim="${condim}" friction="${friction} ${torsionalFriction} ${rollingFriction}" solref="${stiffness} ${damping}"`;
   };
 }
 

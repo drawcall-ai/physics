@@ -76,6 +76,7 @@ Or add `scene` under an existing world's scene. Use `clone(scene)` from
   beyond embedded sublayers and visual-only references. Flatten first.
 - Units other than meters and kilograms, non-Y-up stages, reset transform stacks,
   unsupported transform ops.
+- Torsional and rolling friction, drive `frictionLoss` and `armature`.
 - Triggers, collision groups, damping, gravity scale, sleep settings, D6
   articulations, cone limits, breaking thresholds, partial or per-collider mass, and
   animated physics.

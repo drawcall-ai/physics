@@ -15,7 +15,7 @@ import { initialVelocity } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
 import { BodyBinding, prepareBody, writePose, writeBack } from "./body.js";
 import { applyDrives } from "./drive.js";
-import { sampleInteractions } from "./interactions.js";
+import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import { RapierJointBinding, prepareJoint } from "./joint.js";
 import { raycast, type Owner } from "./query.js";
 import { TriggerBinding, prepareTrigger, releaseTrigger } from "./trigger.js";
@@ -88,7 +88,11 @@ export class RapierWorld extends PhysicsWorld {
       body.resetTorques(false);
     }
     for (const binding of this.joints.values()) binding.track();
-    sampleInteractions(this.interactions, this.simulation, this.owners());
+    const owners = this.owners();
+    this.interactions.replace(
+      sampleOverlaps(this.simulation, owners),
+      sampleContacts(this.simulation, owners),
+    );
   }
   protected restore(): void {
     for (const [object, binding] of this.bodies) {

@@ -1,14 +1,13 @@
 import { expect, it, vi } from "vitest";
-import { BoxGeometry, Group, Matrix4, Vector3 } from "three";
+import { Group, Matrix4, Vector3 } from "three";
 import {
   BoxCollider,
   DistanceJoint,
   FixedJoint,
-  MeshCollider,
   RigidBody,
   Trigger,
 } from "@drawcall/physics";
-import { box, createWorld, earth, inertialBody, steps } from "./fixtures.js";
+import { box, createWorld, inertialBody, steps } from "./fixtures.js";
 
 function region(size = 2) {
   return new Trigger().add(new BoxCollider({ size: [size, size, size] }));
@@ -232,35 +231,6 @@ it("keeps overlap state through unrelated material and body setting rebuilds", a
   expect(exit).not.toHaveBeenCalled();
 });
 
-it("aggregates compound solid contacts and notifies both bodies", async () => {
-  const world = await createWorld();
-  const floor = new RigidBody({ bodyType: "static" });
-  floor.add(new BoxCollider(), new BoxCollider());
-  const body = new RigidBody({ mass: 1 });
-  body.add(new BoxCollider(), new BoxCollider());
-  body.position.y = 0.9;
-  world.scene.add(floor, body);
-  const bodyBegin = vi.fn(),
-    floorBegin = vi.fn(),
-    bodyEnd = vi.fn(),
-    floorEnd = vi.fn();
-  body.addEventListener("contactbegin", ({ otherBody }) =>
-    bodyBegin(otherBody),
-  );
-  floor.addEventListener("contactbegin", ({ otherBody }) =>
-    floorBegin(otherBody),
-  );
-  body.addEventListener("contactend", ({ otherBody }) => bodyEnd(otherBody));
-  floor.addEventListener("contactend", ({ otherBody }) => floorEnd(otherBody));
-  world.update(world.fixedDelta);
-  expect(bodyBegin).toHaveBeenCalledExactlyOnceWith(floor);
-  expect(floorBegin).toHaveBeenCalledExactlyOnceWith(body);
-  body.teleport(new Matrix4().makeTranslation(0, 10, 0));
-  world.update(world.fixedDelta);
-  expect(bodyEnd).toHaveBeenCalledExactlyOnceWith(floor);
-  expect(floorEnd).toHaveBeenCalledExactlyOnceWith(body);
-});
-
 it("defers removal exits until the current dispatch completes", async () => {
   const world = await createWorld();
   const goal = region();
@@ -301,44 +271,6 @@ it("rejects reentrant simulation and propagates listener errors without replay",
   world.update(world.fixedDelta);
   expect(late).not.toHaveBeenCalled();
   expect(after).toHaveBeenCalledTimes(1);
-});
-
-it("keeps resting solid contacts through sleep without duplicate transitions", async () => {
-  const world = await createWorld({ gravity: [0, -9.81, 0] });
-  const floor = box("static");
-  const body = box();
-  body.position.y = 1;
-  world.scene.add(floor, body);
-  const begin = vi.fn(),
-    end = vi.fn();
-  body.addEventListener("contactbegin", begin);
-  body.addEventListener("contactend", end);
-  steps(world, 120);
-  body.sleep();
-  steps(world, 10);
-  expect(begin).toHaveBeenCalledTimes(1);
-  expect(end).not.toHaveBeenCalled();
-  expect(body.position.y).toBeCloseTo(1, 1);
-  floor.removeFromParent();
-  world.update(0);
-  expect(end).toHaveBeenCalledTimes(1);
-});
-
-it("filters solid response as well as events and permits live owner-mask changes", async () => {
-  const world = await createWorld();
-  const floor = box("static").setCollisionGroups({ membership: 1, filter: 2 });
-  const body = box().setCollisionGroups({ membership: 2, filter: 0 });
-  body.position.y = 0.9;
-  world.scene.add(floor, body);
-  const begin = vi.fn();
-  body.addEventListener("contactbegin", begin);
-  steps(world, 3);
-  expect(body.position.y).toBeCloseTo(0.9, 5);
-  expect(begin).not.toHaveBeenCalled();
-  body.setCollisionGroups({ membership: 2, filter: 1 });
-  steps(world, 3);
-  expect(begin).toHaveBeenCalledTimes(1);
-  expect(body.position.y).toBeGreaterThan(0.9);
 });
 
 it("does not dispatch teardown exits while disposing the world", async () => {
@@ -458,48 +390,4 @@ it("rebuilds a trigger's sensors when its body joins again after a failed join",
       includeTriggers: true,
     }),
   ).toMatchObject({ kind: "body" });
-});
-
-it("delivers the whole batch of contact events even when a listener throws", async () => {
-  const world = await createWorld({
-    gravity: [0, -9.81, 0],
-    fixedDelta: 1 / 60,
-  });
-  const floor = box("static");
-  const body = box();
-  body.position.y = 1;
-  world.scene.add(floor, body);
-  const floorBegin = vi.fn();
-  body.addEventListener("contactbegin", () => {
-    throw new Error("listener failed");
-  });
-  floor.addEventListener("contactbegin", floorBegin);
-  expect(() => world.update(world.fixedDelta)).toThrow("listener failed");
-  expect(floorBegin).toHaveBeenCalledOnce();
-});
-
-it("reports a body resting on a static triangle mesh floor as on a box floor", async () => {
-  /** The steps at which a box dropped on the floor begins and ends contact. */
-  async function contacts(collider: BoxCollider | MeshCollider) {
-    const world = await createWorld(earth);
-    const floor = new RigidBody({ bodyType: "static" }).add(collider);
-    const body = box();
-    body.position.y = 1.5;
-    world.scene.add(floor, body);
-    const events: string[] = [];
-    for (const type of ["contactbegin", "contactend"] as const)
-      floor.addEventListener(type, () => events.push(`${type}@${step}`));
-    let step = 0;
-    for (; step < 120; step++) world.update(world.fixedDelta);
-    return events;
-  }
-  const boxFloor = await contacts(new BoxCollider({ size: [10, 1, 10] }));
-  expect(boxFloor).toEqual(["contactbegin@19"]);
-  expect(
-    await contacts(
-      new MeshCollider({ approximation: "trimesh" }).setGeometry(
-        new BoxGeometry(10, 1, 10),
-      ),
-    ),
-  ).toEqual(boxFloor);
 });

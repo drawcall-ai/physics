@@ -38,7 +38,7 @@ import {
 import { damp, wrench } from "./force.js";
 import { applyDrives } from "./drive.js";
 import { raycast } from "./query.js";
-import { sampleInteractions } from "./interactions.js";
+import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import {
   fingerprint,
   lockScales,
@@ -124,13 +124,14 @@ export class MujocoWorld extends PhysicsWorld {
     // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
     // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
     api.mj_step2(simulation.model, simulation.data);
+    const contacts = sampleContacts(api, simulation);
     api.mj_step1(simulation.model, simulation.data);
     checkState(api, simulation);
     array(simulation.data.qfrc_applied).fill(0);
     writeBack(simulation);
     for (const binding of this.joints.values()) binding.track();
     refreshPoses(api, simulation);
-    sampleInteractions(api, simulation, this.interactions);
+    this.interactions.replace(sampleOverlaps(api, simulation), contacts);
   }
   protected restore(): void {
     this.forces.length = 0;

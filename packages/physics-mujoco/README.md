@@ -70,5 +70,9 @@ planar cells on a static body becomes a native heightfield.
   Restitution maps to the contact damping ratio, so impacts differ from Rapier.
 - Hinge and slider drives are native actuators. Distance drives and drives on fully free
   generic joints are implicit springs. `maxVelocity` becomes joint damping.
+  `frictionLoss` holds a loaded joint still without creeping.
+- Torsional and rolling friction also combine as the larger value, so one collider with
+  them applies them to every contact it makes. They act per contact point, so a face's
+  holding torque grows with its number of contact points.
 - Collision groups map to `contype`/`conaffinity`; needing more than 32 bits throws.
 - MuJoCo warnings and non-finite state throw instead of silently resetting.

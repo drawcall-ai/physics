@@ -20,6 +20,8 @@ export interface Geometry {
   source: Object3D;
   groups: CollisionGroups;
   friction: number;
+  torsionalFriction: number;
+  rollingFriction: number;
   restitution: number;
 }
 interface Shapes {
@@ -65,6 +67,8 @@ export function shapes(
           source: collider.source,
           groups: resolveCollisionGroups(collider, owner),
           friction: material?.dynamicFriction ?? 0,
+          torsionalFriction: material?.torsionalFriction ?? 0,
+          rollingFriction: material?.rollingFriction ?? 0,
           restitution: material?.restitution ?? 0,
         };
         geometries.push(geometry);

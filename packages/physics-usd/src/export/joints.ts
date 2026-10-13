@@ -98,6 +98,8 @@ function writeDrive(prim: Prim, instance: string, drive: JointDrive): void {
     throw new Error(
       "USD PhysicsDriveAPI has no velocity limit; export drives without maxVelocity",
     );
+  if (drive.options.frictionLoss || drive.options.armature)
+    throw new Error("Core USD Physics has no joint friction or armature");
   const prefix = `drive:${instance}:physics:`;
   prim.schemas.push(`PhysicsDriveAPI:${instance}`);
   prim.properties.push(

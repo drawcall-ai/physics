@@ -28,6 +28,8 @@ it("keeps drive options and starts passive", () => {
     { stiffness: -1 },
     { damping: NaN },
     { maxForce: Infinity },
+    { frictionLoss: -1 },
+    { armature: NaN },
   ])
     expect(() => new JointDrive(invalid)).toThrow("finite and nonnegative");
 });

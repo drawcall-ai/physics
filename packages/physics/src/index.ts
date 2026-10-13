@@ -44,6 +44,7 @@ export {
   type PhysicsVelocity,
   PhysicsWorld,
 } from "./world.js";
+export { type Contact } from "./interactions.js";
 export {
   type AxisJointState,
   type SphericalJointState,

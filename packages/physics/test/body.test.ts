@@ -180,6 +180,8 @@ it("resolves plain material options without mutating them", () => {
     staticFriction: 0.5,
     dynamicFriction: 0.5,
     restitution: 0,
+    torsionalFriction: 0,
+    rollingFriction: 0,
   });
   expect(material).toEqual({ density: 42 });
   material.density = 43;

@@ -16,6 +16,10 @@ export class Materials {
     const existing = this.paths.get(key);
     if (existing) return existing;
     const material = body.getMaterial(collider);
+    if (material.torsionalFriction || material.rollingFriction)
+      throw new Error(
+        "USD PhysicsMaterialAPI has no torsional or rolling friction",
+      );
     const prim = new Prim(`Material${this.paths.size}`, "Material");
     prim.schemas.push("PhysicsMaterialAPI");
     for (const property of [

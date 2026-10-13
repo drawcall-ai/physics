@@ -38,6 +38,17 @@ export function steps(world: MujocoWorld, count: number): void {
   for (let i = 0; i < count; i++) world.update(world.fixedDelta);
 }
 
+export const earth = { gravity: [0, -9.81, 0] } as const;
+
+/** A static floor whose top face is y = 0. */
+export function ground(): RigidBody {
+  const ground = new RigidBody({ bodyType: "static" });
+  ground.add(new BoxCollider({ size: [4, 1, 4] }));
+  ground.position.y = -0.5;
+  scene.add(ground);
+  return ground;
+}
+
 /** A unit box body of mass 2, added to the default scene. */
 export function body(bodyType: RigidBodyType = "dynamic"): RigidBody {
   const body = new RigidBody({ bodyType, mass: 2 });

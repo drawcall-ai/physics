@@ -27,6 +27,7 @@ import type {
 } from "./colliders/collider.js";
 import { commandWorld, joinedWorld } from "./membership.js";
 import type { PhysicsVelocity, PhysicsWorld } from "./world.js";
+import type { Contact } from "./interactions.js";
 
 export type RigidBodyType = "dynamic" | "static" | "kinematic";
 
@@ -176,6 +177,10 @@ export class RigidBody extends Group<RigidBodyEventMap> {
   sleep(): void {
     commandWorld(this).sleep(this);
   }
+  /** Contacts with other bodies in the last step, one per contact point. */
+  getContacts(): Contact[] {
+    return commandWorld(this).getContacts(this);
+  }
 
   override clone(recursive = true): this {
     const target = constructLike(this, [this.options]);
@@ -209,6 +214,8 @@ export class RigidBody extends Group<RigidBodyEventMap> {
       dynamicFriction: material?.dynamicFriction ?? 0.5,
       restitution: material?.restitution ?? 0,
       density: material?.density ?? 1000,
+      torsionalFriction: material?.torsionalFriction ?? 0,
+      rollingFriction: material?.rollingFriction ?? 0,
     };
   }
 
