@@ -4,7 +4,7 @@ MuJoCo backend for
 [`@drawcall/physics`](https://github.com/drawcall-ai/physics#readme),
 built on the official [`@mujoco/mujoco`](https://github.com/google-deepmind/mujoco/tree/main/wasm)
 WASM bindings. It runs single-threaded in Node.js and in browsers without cross-origin
-isolation. The core guide covers the shared contracts; this page lists only
+isolation. The core package's `physics` skill covers the shared contracts; this page lists only
 MuJoCo-specific behavior.
 
 ```sh

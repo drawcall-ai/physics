@@ -2,7 +2,7 @@
 
 [Rapier](https://rapier.rs) backend for
 [`@drawcall/physics`](https://github.com/drawcall-ai/physics#readme).
-The guide there covers worlds, objects, commands, and events; this page lists only
+Its `physics` skill covers worlds, objects, commands, and events; this page lists only
 Rapier-specific behavior.
 
 ```sh
