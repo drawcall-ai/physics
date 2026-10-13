@@ -20,18 +20,15 @@ function add<T extends Object3D>(object: T): T {
   return object;
 }
 
-test("loads the real WASM in Node, falls, contacts, resets, and disposes", async () => {
+test("loads the real WASM in Node, comes to rest on a floor, resets, and disposes", async () => {
   const value = await createWorld({ gravity: [0, -10, 0] });
   const floor = body("static");
   floor.scale.set(10, 1, 10);
   floor.position.y = -0.5;
   const box = body();
   box.position.y = 2;
-  let contacts = 0;
-  box.addEventListener("contactbegin", () => contacts++);
   steps(value, 200);
   expect(box.position.y).toBeCloseTo(0.5, 3);
-  expect(contacts).toBeGreaterThan(0);
   value.reset();
   expect(box.position.y).toBe(2);
   expect(value.time).toBe(0);

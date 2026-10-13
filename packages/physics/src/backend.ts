@@ -1,7 +1,7 @@
 /** Helpers for simulation and interchange adapters, published as `@drawcall/physics/backend`. */
 export { build } from "./world.js";
 export { initialVelocity } from "./body.js";
-export { Interactions } from "./interactions.js";
+export { Interactions, addContact, type Contacts } from "./interactions.js";
 export { cleanup, rollback } from "./cleanup.js";
 export { resolveCollisionGroups } from "./colliders/collider.js";
 export { axisVector, setWorldPose, lockScale } from "./transforms.js";

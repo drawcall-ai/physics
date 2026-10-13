@@ -8,6 +8,10 @@ export interface PhysicsMaterial {
   readonly dynamicFriction?: number;
   readonly restitution?: number;
   readonly density?: number;
+  /** Resistance to spinning about the contact normal, m: the torque held per newton of normal force. */
+  readonly torsionalFriction?: number;
+  /** Resistance to rolling, m, likewise. */
+  readonly rollingFriction?: number;
 }
 export interface CollisionGroups {
   readonly membership: number;

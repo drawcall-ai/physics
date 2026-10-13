@@ -2,6 +2,7 @@ import {
   AxisJoint,
   FixedJoint,
   GenericJoint,
+  ScalarJoint,
   SphericalJoint,
   jointDofs,
   type Joint,
@@ -27,6 +28,7 @@ export function jointXml(
   joint: Joint,
   binding: JointBinding,
   coordinates: Coordinate[],
+  fixedDelta: number,
 ): string {
   const pose = binding.pose();
   validateAlignment(joint, pose);
@@ -46,13 +48,22 @@ export function jointXml(
     const key = coordinate.name;
     // Back-EMF resists motion whenever the motor is connected, so it belongs on the joint, where
     // MuJoCo integrates it implicitly. It is what settles a saturated drive at its rated speed.
-    const backEmf = driveOf(coordinate)?.backEmf;
+    const drive = driveOf(coordinate);
+    const backEmf = drive?.backEmf;
     const damping = backEmf === undefined ? "" : ` damping="${backEmf}"`;
+    // Gear friction and the rotor's inertia belong to the joint too. The friction constraint is
+    // as hard as MuJoCo allows (it clamps time constants to two steps) so that a joint held by
+    // friction does not creep under a steady load.
+    const { frictionLoss, armature } = drive?.options ?? {};
+    const frictionXml = frictionLoss
+      ? ` frictionloss="${frictionLoss}" solreffriction="${2 * fixedDelta} 1" solimpfriction="0.999 0.999 0.001"`
+      : "";
+    const armatureXml = armature ? ` armature="${armature}"` : "";
     if (limits && limits[0] === limits[1])
       throw new Error(
         "MuJoCo scalar limits must have a nonzero range; use a locked dof instead",
       );
-    return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}/>`;
+    return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}${frictionXml}${armatureXml}/>`;
   };
   if (joint instanceof FixedJoint) {
     // The child joins its parent's rigid body, and MuJoCo never collides a body with itself.
@@ -99,6 +110,15 @@ export function jointXml(
       .join("");
   throw new Error(`Unsupported MuJoCo joint: ${joint.constructor.name}`);
 }
+
+/** The drives in a joint's slots; which drives they hold shapes the model. */
+export function drives(joint: Joint): (JointDrive | undefined)[] {
+  if (joint instanceof ScalarJoint) return [joint.drive];
+  if (joint instanceof GenericJoint)
+    return jointDofs.map((axis) => joint.getDrive(axis));
+  return [];
+}
+
 export function driveOf(coordinate: Coordinate): JointDrive | undefined {
   return coordinate.kind === "axis"
     ? coordinate.joint.drive

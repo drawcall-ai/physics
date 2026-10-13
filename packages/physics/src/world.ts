@@ -13,7 +13,7 @@ import {
 } from "./raycast.js";
 import { assertRigidTransform, validateVector } from "./transforms.js";
 import { cleanup, rollback } from "./cleanup.js";
-import { Interactions } from "./interactions.js";
+import { Interactions, type Contact } from "./interactions.js";
 import {
   claim,
   claimScene,
@@ -208,6 +208,13 @@ export abstract class PhysicsWorld {
   sleep(body: RigidBody): void {
     this.join(body);
     this.writeSleeping(body, true);
+  }
+  /** The body's contacts with other bodies in the last step, one per point; none before the first. */
+  getContacts(body: RigidBody): Contact[] {
+    this.assertLive();
+    this.refresh();
+    this.assertMember(body);
+    return this.interactions.contactsOf(body);
   }
   getOverlappingBodies(trigger: Trigger): RigidBody[] {
     this.assertLive();

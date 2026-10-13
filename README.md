@@ -94,11 +94,11 @@ the update; the steps it completed count, and the rest of its time is dropped.
 
 The simulation reads and commands on objects need a world: `getVelocity`,
 `setVelocity`, `teleport`, `setKinematicTarget`, `applyImpulse`, `applyForce`,
-`wake`, `sleep`, `trigger.overlaps`, `getOverlappingBodies`, and joint `getState`. They
-go to the world the object joined while that world's scene still holds it, or else to
-the built world whose scene holds it, which the object joins right then. Anywhere else,
-including while its world is still building, they throw: add the object under a built
-world's scene first.
+`wake`, `sleep`, `getContacts`, `trigger.overlaps`, `getOverlappingBodies`, and
+joint `getState`. They go to the world the object joined while that world's scene
+still holds it, or else to the built world whose scene holds it, which the object
+joins right then. Anywhere else, including while its world is still building, they
+throw: add the object under a built world's scene first.
 
 An object joins at the world's next `update`, step, or query, or at the first command
 that reaches it, so a command right after adding an object works in any loop order
@@ -112,15 +112,19 @@ object. A command on an object moved under another world's scene syncs the world
 left, so it can throw the join errors of either world's other objects.
 
 The world methods `getVelocity`, `setVelocity`, `teleport`, `setKinematicTarget`,
-`applyImpulse`, `applyForce`, `wake`, `sleep`, and `getOverlappingBodies` take the
-object as their first argument. They only act on objects under that world's scene
-and throw for any other.
+`applyImpulse`, `applyForce`, `wake`, `sleep`, `getContacts`, and
+`getOverlappingBodies` take the object as their first argument. They only act on
+objects under that world's scene and throw for any other.
 
 Velocity, forces, and impulses require a dynamic body. `teleport` moves every
 dynamic body jointed to the body along with it, following the joints that have
 joined (it syncs first). An assembly jointed to the world or
 a static or kinematic base can only move within those joints; backends differ in
 how they handle that.
+
+`body.getContacts()` lists the body's contact points from the last step, each with the
+other body, a world point and normal, and the normal force in newtons. It is empty
+before the first step and after `reset`.
 
 Read poses from `body.matrixWorld`; steps and `teleport` keep it current. It includes
 scale; `splitTransform(matrix).pose` returns the rigid part.
@@ -176,8 +180,9 @@ Colliders have `setMaterial` and `setCollisionGroups`, which replace the body's
 defaults. `body.getColliders()` returns the explicit or generated colliders, and
 `body.getMaterial(collider)` the resolved material.
 
-Materials are plain objects: `{ staticFriction, dynamicFriction, restitution, density }`;
-omitted values use defaults.
+Materials are plain objects: `{ staticFriction, dynamicFriction, restitution, density,
+torsionalFriction, rollingFriction }`; omitted values use defaults. Torsional and
+rolling friction resist spinning and rolling at contacts; only MuJoCo simulates them.
 
 Collision groups are `{ membership, filter }` 16-bit masks. A pair collides when
 `(a.membership & b.filter) !== 0 && (b.membership & a.filter) !== 0`.
@@ -274,6 +279,9 @@ hinge.setDrive(undefined); // detach
 - `model: "acceleration"` scales gains by the driven mass; default `"force"`.
 - `maxVelocity` (needs `maxForce`) is the motor's no-load speed: it adds damping of
   `maxForce / maxVelocity`.
+- `frictionLoss` adds Coulomb friction to the joint, with or without a target or gains;
+  `armature` adds a geared rotor's inertia. Only MuJoCo simulates them, on joints
+  other than distance and unconstrained ones.
 - Subclasses survive cloning, so a drive can carry application data.
 
 A drive with a constant target is a spring. To drag a dynamic body while contacts

@@ -42,6 +42,8 @@ export function colliderDescs(
   const material = body.getMaterial(collider);
   if (material.staticFriction !== material.dynamicFriction)
     throw new Error("Rapier requires equal static and dynamic friction");
+  if (material.torsionalFriction || material.rollingFriction)
+    throw new Error("Rapier colliders have no torsional or rolling friction");
   const descs = decomposed(shape, body)
     ? convexParts(body, collider, scale).map((part) =>
         hull(api, new Float32Array(part)),

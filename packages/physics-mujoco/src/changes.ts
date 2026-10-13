@@ -1,12 +1,8 @@
 import {
   Collider,
-  GenericJoint,
   Joint,
   MeshCollider,
-  ScalarJoint,
-  jointDofs,
   splitTransform,
-  type JointDrive,
   type RigidBody,
   type Trigger,
 } from "@drawcall/physics";
@@ -16,6 +12,7 @@ import {
   partsVersion,
 } from "@drawcall/physics/backend";
 import { Mesh, type Object3D, Vector3 } from "three";
+import { drives } from "./model/joints.js";
 
 /** What a member's compiled model is made from; a different fingerprint needs a rebuild. */
 export type Fingerprints = Map<RigidBody | Joint | Trigger, unknown[]>;
@@ -96,12 +93,4 @@ export function lockScales(
       );
   }
   return scales;
-}
-
-/** The drives in a joint's slots; which drives they hold shapes the model. */
-function drives(joint: Joint): (JointDrive | undefined)[] {
-  if (joint instanceof ScalarJoint) return [joint.drive];
-  if (joint instanceof GenericJoint)
-    return jointDofs.map((axis) => joint.getDrive(axis));
-  return [];
 }

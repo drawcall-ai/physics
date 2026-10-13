@@ -8,7 +8,7 @@ import {
 } from "@drawcall/physics";
 import { PhysicsUSDExporter, PhysicsUSDLoader } from "../src/index.js";
 
-it("rejects untargeted, effort-driven and speed-limited export instead of changing actuation", async () => {
+it("rejects drives USD cannot express instead of changing actuation", async () => {
   const body = new RigidBody({ bodyType: "static" });
   const joint = new RevoluteJoint({ body0: null, body1: body });
   const drive = new JointDrive({ stiffness: 10 });
@@ -24,6 +24,14 @@ it("rejects untargeted, effort-driven and speed-limited export instead of changi
     }),
   );
   await expect(exporter.parseAsync(scene)).rejects.toThrow("no velocity limit");
+  joint.setDrive(
+    new JointDrive({ stiffness: 10, frictionLoss: 0.1 }).setTarget({
+      position: 1,
+    }),
+  );
+  await expect(exporter.parseAsync(scene)).rejects.toThrow(
+    "no joint friction or armature",
+  );
   joint.setDrive(undefined);
   await expect(exporter.parseAsync(scene)).resolves.toBeInstanceOf(Uint8Array);
 });

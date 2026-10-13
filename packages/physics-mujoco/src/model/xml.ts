@@ -7,8 +7,8 @@ import {
 } from "@drawcall/physics";
 import { treeJoint, type JointBinding } from "@drawcall/physics/backend";
 import { shapes, type Geometry } from "./shapes.js";
-import { contacts, exclusions } from "./contacts.js";
-import { jointXml, driveOf, type Coordinate } from "./joints.js";
+import { contactAttributes, exclusions } from "./contacts.js";
+import { jointXml, driveOf, drives, type Coordinate } from "./joints.js";
 import { name, placement } from "./markup.js";
 
 export interface ModelOptions {
@@ -29,9 +29,9 @@ export function modelXml(
     geometries: Geometry[] = [],
     coordinates: Coordinate[] = [];
   const { sites, tendons, equalities } = distanceXml(joints);
-  const contact = contacts(bodies, options.fixedDelta);
+  const attributes = contactAttributes(bodies, options.fixedDelta);
   function contents(owner: RigidBody | Trigger): string {
-    const result = shapes(owner, contact);
+    const result = shapes(owner, attributes);
     assets.push(...result.assets);
     geometries.push(...result.geometries);
     return result.xml;
@@ -44,7 +44,7 @@ export function modelXml(
           .multiply(parent.binding.frames[1].clone().invert())
       : splitTransform(body.matrixWorld).pose;
     const connection = parent
-      ? jointXml(parent.joint, parent.binding, coordinates)
+      ? jointXml(parent.joint, parent.binding, coordinates, options.fixedDelta)
       : body.bodyType === "static"
         ? ""
         : `<freejoint name="${name(body)}free"/>`;
@@ -104,7 +104,10 @@ function parentsOf(
 ) {
   const parents = new Map<RigidBody, { joint: Joint; binding: JointBinding }>();
   for (const [joint, binding] of joints) {
-    if (!treeJoint(joint)) continue;
+    if (!treeJoint(joint)) {
+      rejectCoordinateOptions(joint);
+      continue;
+    }
     const { body1 } = joint.options;
     if (body1.bodyType !== "dynamic")
       throw new Error("MuJoCo joint body1 must be dynamic");
@@ -125,6 +128,19 @@ function parentsOf(
     }
   }
   return parents;
+}
+
+/** Friction and armature live on joint coordinates, which only enabled tree joints have. */
+function rejectCoordinateOptions(joint: Joint): void {
+  if (!joint.enabled) return;
+  if (
+    drives(joint).some(
+      (drive) => drive?.options.frictionLoss || drive?.options.armature,
+    )
+  )
+    throw new Error(
+      "MuJoCo simulates frictionLoss and armature only on joints with coordinates, not distance or free joints",
+    );
 }
 
 function distanceXml(joints: ReadonlyMap<Joint, JointBinding>) {

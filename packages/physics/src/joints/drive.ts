@@ -13,6 +13,14 @@ export interface JointDriveOptions {
    * accelerating without limit. Needs `maxForce`; unlimited when omitted.
    */
   readonly maxVelocity?: number;
+  /**
+   * Coulomb friction of the coordinate, N for translations, N·m for rotations: it holds still
+   * until the other forces on it exceed this and resists motion with this force while it moves.
+   * It acts with or without a target, like a gearbox's friction.
+   */
+  readonly frictionLoss?: number;
+  /** Inertia added to the coordinate, kg·m² (kg for translations): a geared motor's reflected rotor. */
+  readonly armature?: number;
   /** `acceleration` scales gains by the driven mass; backends without it reject the drive. */
   readonly model?: "force" | "acceleration";
 }
@@ -25,7 +33,8 @@ export interface JointDriveTarget {
  * The force law on one joint coordinate:
  * `stiffness · (position − q) + damping · (velocity − q̇) + effort`, capped by `maxForce`.
  * Options are fixed at construction; the target changes at runtime. Without a target the
- * drive exerts no force. A drive with a constant target is a spring.
+ * force law exerts nothing, while back-EMF and friction still act. A drive with a constant
+ * target is a spring.
  */
 export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
   readonly options: Options;
@@ -37,11 +46,11 @@ export class JointDrive<Options extends JointDriveOptions = JointDriveOptions> {
       options.stiffness,
       options.damping,
       options.maxForce,
+      options.frictionLoss,
+      options.armature,
     ]) {
       if (value !== undefined && (!Number.isFinite(value) || value < 0))
-        throw new Error(
-          "Drive gains and maximum force must be finite and nonnegative",
-        );
+        throw new Error("Drive options must be finite and nonnegative");
     }
     const { maxVelocity, maxForce } = options;
     if (maxVelocity !== undefined) {

@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.20.0"
+    "@dimforge/rapier3d-compat": "^0.21.0"
   },
   "peerDependencies": {
     "@drawcall/physics": "^0.1.0",

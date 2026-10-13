@@ -7,9 +7,7 @@ import {
   Trigger,
 } from "@drawcall/physics";
 import { Group, Scene, Vector3 } from "three";
-import { concave, createWorld } from "./fixtures.js";
-
-const earth = { gravity: [0, -9.81, 0] } as const;
+import { concave, createWorld, earth } from "./fixtures.js";
 
 function mesh(geometry = concave()) {
   const body = new RigidBody({ bodyType: "static" });

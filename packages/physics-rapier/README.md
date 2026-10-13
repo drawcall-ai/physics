@@ -27,12 +27,14 @@ Rapier's default.
   recreate the object. New colliders capture their own scale.
 - Triangle meshes stay exact on static bodies. On moving bodies they collide as convex
   parts.
-- Static and dynamic friction must be equal.
+- Static and dynamic friction must be equal; torsional and rolling friction are rejected.
 - An explicit mass without explicit inertia is split across colliders by volume.
 - A collider rebuild that fails keeps the previous colliders.
 - Teleporting an assembly jointed to the world or a static or kinematic base applies
   the pose and lets the solver correct it on the next step. Joints the teleported
   assembly straddles restart their turn count.
+- Contacts include points Rapier predicts just before touching, with force 0.
+  Triangle-mesh contacts always report force 0 and may repeat points on shared edges.
 
 ## Joints and drives
 
@@ -45,7 +47,8 @@ Rapier's default.
 - Drive gains map to Rapier's force- or acceleration-based motors with `maxForce` as
   the motor limit. A drive without gains configures no motor.
 - Effort is applied as a force pair for one step, clamped to `maxForce` on its own. A
-  capped drive that combines gains with effort is rejected, as is `maxVelocity`.
+  capped drive that combines gains with effort is rejected, as are `maxVelocity`,
+  `frictionLoss`, and `armature`.
 - Rapier's motor takes the shortest arc, so a revolute position target with stiffness
   must stay within π of the current angle; longer moves need intermediate targets.
 
