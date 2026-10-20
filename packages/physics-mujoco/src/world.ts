@@ -1,6 +1,8 @@
 import type { MainModule } from "@mujoco/mujoco";
 import {
   RigidBody,
+  SoftBody,
+  SoftAttachment,
   Joint,
   PhysicsWorld,
   splitTransform,
@@ -14,8 +16,9 @@ import {
   setWorldPose,
   treeJoint,
   JointBinding,
+  type Member,
 } from "@drawcall/physics/backend";
-import type { Matrix4, Object3D, Vector3 } from "three";
+import { Vector3, type Matrix4, type Object3D } from "three";
 import { decomposes } from "./model/shapes.js";
 import {
   compile,
@@ -24,6 +27,15 @@ import {
 } from "./model/compile.js";
 import { carryState } from "./model/state.js";
 import { modelOptions, type MujocoWorldOptions } from "./options.js";
+import { softMesh, type SoftMesh } from "./soft/mesh.js";
+import { attachment, type Attachment } from "./soft/model.js";
+import {
+  carrySoft,
+  dampSoft,
+  softPositions,
+  softLoad,
+  writeSoftGeometry,
+} from "./soft/state.js";
 import { array } from "./heap.js";
 import {
   bodyId,
@@ -34,8 +46,8 @@ import {
   writeBack,
   refreshPoses,
   teleport,
-} from "./body.js";
-import { damp, wrench } from "./force.js";
+} from "./rigid/body.js";
+import { damp, wrench } from "./rigid/force.js";
 import { applyDrives } from "./drive.js";
 import { raycast } from "./query.js";
 import { sampleContacts, sampleOverlaps } from "./interactions.js";
@@ -56,6 +68,10 @@ export class MujocoWorld extends PhysicsWorld {
   private readonly bodies = new Map<RigidBody, Matrix4>();
   private readonly joints = new Map<Joint, JointBinding>();
   private readonly triggers = new Set<Trigger>();
+  private readonly soft = new Map<SoftBody, SoftMesh>();
+  private readonly attachments = new Map<SoftAttachment, Attachment>();
+  private softForces: { body: SoftBody; force: Vector3; point?: Vector3 }[] =
+    [];
   /** Bodies and joints no model has held yet; a successful rebuild binds them. */
   private readonly joining = new Set<RigidBody | Joint>();
   private simulation: Simulation;
@@ -77,8 +93,17 @@ export class MujocoWorld extends PhysicsWorld {
     });
     this.simulation = compile(api, [], this.joints, [], this.options);
   }
-  protected add(object: RigidBody | Joint | Trigger): void {
-    if (object instanceof RigidBody || object instanceof Joint)
+  protected add(object: Member): void {
+    if (object instanceof SoftBody) {
+      this.soft.set(object, softMesh(object));
+    } else if (object instanceof SoftAttachment) {
+      const mesh = this.soft.get(object.options.body);
+      if (!mesh) throw new Error("Soft attachment requires a joined body");
+      const positions = this.simulation.soft.has(object.options.body)
+        ? softPositions(this.simulation, object.options.body)
+        : mesh.rest;
+      this.attachments.set(object, attachment(object, mesh, positions));
+    } else if (object instanceof RigidBody || object instanceof Joint)
       this.joining.add(object);
     else this.triggers.add(object);
   }
@@ -86,9 +111,15 @@ export class MujocoWorld extends PhysicsWorld {
    * The model holds a member that left until the next rebuild, which can fail. Forgetting it
    * there now means no rebuild carries its simulated state over, even when it rejoins.
    */
-  protected remove(object: RigidBody | Joint | Trigger): void {
+  protected remove(object: Member): void {
     this.compiled = undefined;
-    if (object instanceof Joint) {
+    if (object instanceof SoftAttachment) {
+      this.attachments.delete(object);
+    } else if (object instanceof SoftBody) {
+      this.soft.delete(object);
+      this.simulation.soft.delete(object);
+      this.softForces = this.softForces.filter(({ body }) => body !== object);
+    } else if (object instanceof Joint) {
       this.joining.delete(object);
       this.joints.delete(object);
     } else if (object instanceof Trigger) {
@@ -111,6 +142,8 @@ export class MujocoWorld extends PhysicsWorld {
     const { api, simulation } = this;
     for (const { body, force, point } of this.forces.splice(0))
       wrench(api, simulation, bodyId(simulation, body), force, { point });
+    for (const { body, force, point } of this.softForces.splice(0))
+      softLoad(api, simulation, body, force, point, false);
     let moved = false;
     for (const [body, matrix] of this.targets) {
       const id = simulation.targets.get(body);
@@ -120,6 +153,7 @@ export class MujocoWorld extends PhysicsWorld {
     this.targets.clear();
     refreshPoses(api, simulation, moved);
     damp(api, simulation, this.fixedDelta);
+    dampSoft(simulation, this.fixedDelta);
     applyDrives(api, simulation, this.joints, this.fixedDelta);
     // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
     // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
@@ -129,12 +163,14 @@ export class MujocoWorld extends PhysicsWorld {
     checkState(api, simulation);
     array(simulation.data.qfrc_applied).fill(0);
     writeBack(simulation);
+    writeSoftGeometry(simulation);
     for (const binding of this.joints.values()) binding.track();
     refreshPoses(api, simulation);
     this.interactions.replace(sampleOverlaps(api, simulation), contacts);
   }
   protected restore(): void {
     this.forces.length = 0;
+    this.softForces.length = 0;
     this.targets.clear();
     for (const [body, pose] of this.bodies) setWorldPose(body, pose);
     for (const binding of this.joints.values()) binding.rebase();
@@ -143,6 +179,23 @@ export class MujocoWorld extends PhysicsWorld {
   }
   protected free(): void {
     this.simulation.free();
+  }
+  protected readSoftPositions(body: SoftBody): Float32Array {
+    return softPositions(this.simulation, body);
+  }
+  protected writeSoftForce(
+    body: SoftBody,
+    force: Vector3,
+    point?: Vector3,
+  ): void {
+    this.softForces.push({ body, force: force.clone(), point: point?.clone() });
+  }
+  protected writeSoftImpulse(
+    body: SoftBody,
+    impulse: Vector3,
+    point?: Vector3,
+  ): void {
+    softLoad(this.api, this.simulation, body, impulse, point, true);
   }
   protected readVelocity(body: RigidBody): PhysicsVelocity {
     return velocity(this.api, this.simulation, bodyId(this.simulation, body));
@@ -219,11 +272,19 @@ export class MujocoWorld extends PhysicsWorld {
     );
   }
   private fingerprints(): Fingerprints {
+    for (const [body, mesh] of this.soft) {
+      body.validate();
+      const scale = new Vector3().setFromMatrixScale(body.matrixWorld).x;
+      if (Math.abs(scale - mesh.scale) > 1e-6)
+        throw new Error("Soft body scale cannot change after joining a world");
+    }
     const members = [
       ...this.bodies.keys(),
       ...this.triggers,
       ...this.joints.keys(),
       ...this.joining,
+      ...this.soft.keys(),
+      ...this.attachments.keys(),
     ];
     return new Map(members.map((member) => [member, fingerprint(member)]));
   }
@@ -245,15 +306,20 @@ export class MujocoWorld extends PhysicsWorld {
       joints,
       triggers,
       this.options,
+      this.soft,
+      this.attachments.values(),
     );
     try {
       carryState(this.api, previous, next, joints);
+      carrySoft(previous, next);
       this.api.mj_forward(next.model, next.data);
+      checkState(this.api, next);
     } catch (error) {
       rollback(error, [() => next.free()], "MuJoCo model replacement failed");
     }
     this.simulation.free();
     this.simulation = next;
+    writeSoftGeometry(next);
     for (const [body, pose] of bodies) this.bodies.set(body, pose);
     for (const [joint, binding] of joints) this.joints.set(joint, binding);
     this.joining.clear();

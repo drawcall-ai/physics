@@ -34,6 +34,9 @@ const world = await buildWorld({ scene, wasmUrl });
 `MujocoWorldOptions` extend the shared options:
 
 - `solverIterations` defaults to 50.
+- `memory`: MuJoCo arena size in bytes, for example `128 * 1024 ** 2` for 128 MiB.
+  Omit it to use MuJoCo's estimate. Large deformable models can exceed the WASM
+  memory limit with the automatic estimate; an explicit arena must still fit their workload.
 - `frictionCone`: `"pyramidal"` (default) is more robust for kinematic contact at small
   steps; `"elliptic"` models friction faithfully.
 - `frictionImpedanceRatio` is MuJoCo's `impratio` (default 1). At 1 a resting or
@@ -76,3 +79,5 @@ planar cells on a static body becomes a native heightfield.
   holding torque grows with its number of contact points.
 - Collision groups map to `contype`/`conaffinity`; needing more than 32 bits throws.
 - MuJoCo warnings and non-finite state throw instead of silently resetting.
+- Soft attachments are compliant. Stiff, thin tetrahedral meshes may require smaller
+  steps and more solver iterations.

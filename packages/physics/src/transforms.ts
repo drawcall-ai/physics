@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3, type Object3D } from "three";
-import type { RigidBody } from "./body.js";
+import type { RigidBody } from "./rigid/body.js";
 
 export function validateVector(value: Vector3): void {
   if (![value.x, value.y, value.z].every(Number.isFinite))

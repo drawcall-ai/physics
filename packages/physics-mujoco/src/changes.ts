@@ -1,5 +1,7 @@
 import {
   Collider,
+  SoftBody,
+  SoftAttachment,
   Joint,
   MeshCollider,
   splitTransform,
@@ -10,19 +12,22 @@ import {
   colliderSources,
   lockScale,
   partsVersion,
+  type Member,
 } from "@drawcall/physics/backend";
 import { Mesh, type Object3D, Vector3 } from "three";
 import { drives } from "./model/joints.js";
 
 /** What a member's compiled model is made from; a different fingerprint needs a rebuild. */
-export type Fingerprints = Map<RigidBody | Joint | Trigger, unknown[]>;
+export type Fingerprints = Map<Member, unknown[]>;
 
 /**
  * The member's fingerprint, read without decomposing transforms: versions, an owner's world
  * scale, and its collider sources with the local transforms from them up to the owner, which
  * physics never writes. Moving bodies, and cameras or triggers moved inside them, read the same.
  */
-export function fingerprint(member: RigidBody | Joint | Trigger): unknown[] {
+export function fingerprint(member: Member): unknown[] {
+  if (member instanceof SoftBody || member instanceof SoftAttachment)
+    return [member.version];
   // Joint versions also count drive targets, which the model reads each step instead.
   if (member instanceof Joint)
     return [member.enabled, member.collideConnected, ...drives(member)];

@@ -11,14 +11,14 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@drawcall/physics": "workspace:*",
+    "@drawcall/physics-mujoco": "workspace:*",
+    "@drawcall/physics-rapier": "workspace:*",
+    "@mujoco/mujoco": "3.16.0",
     "@types/three": "^0.185.0",
     "prettier": "^3.9.6",
     "three": "0.185.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.17",
-    "@drawcall/physics": "workspace:*",
-    "@drawcall/physics-rapier": "workspace:*",
-    "@drawcall/physics-mujoco": "workspace:*",
-    "@mujoco/mujoco": "3.13.0"
+    "vitest": "^4.0.17"
   }
 }

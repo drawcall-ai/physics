@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { BoxCollider, RigidBody } from "@drawcall/physics";
+import { BoxCollider, RigidBody, type Body } from "@drawcall/physics";
 import { Matrix4 } from "three";
 import { createWorld, earth, ground, scene, steps } from "./fixtures.js";
 
@@ -42,7 +42,7 @@ test("contacts clear on reset and agree with contact events", async () => {
   const falling = box();
   falling.position.y = 0.5;
   const world = await createWorld(earth);
-  const touching = (other: RigidBody) =>
+  const touching = (other: Body) =>
     falling.getContacts().some(({ otherBody }) => otherBody === other);
   const begins: boolean[] = [],
     ends: boolean[] = [];

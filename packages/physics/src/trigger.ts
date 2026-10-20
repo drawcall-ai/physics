@@ -1,5 +1,5 @@
 import { Group, type Object3D, type Object3DEventMap } from "three";
-import { RigidBody } from "./body.js";
+import { RigidBody } from "./rigid/body.js";
 import { colliderSources } from "./colliders/sources.js";
 import {
   Collider,
@@ -11,10 +11,11 @@ import { validateShape } from "./colliders/shapes.js";
 import { assertPositiveScale, splitTransform } from "./transforms.js";
 import { commandWorld, joinedWorld } from "./membership.js";
 import type { PhysicsWorld } from "./world.js";
+import type { Body } from "./body.js";
 
 export interface TriggerEventMap extends Object3DEventMap {
-  enter: { readonly body: RigidBody };
-  exit: { readonly body: RigidBody };
+  enter: { readonly body: Body };
+  exit: { readonly body: Body };
 }
 /**
  * Detects the rigid bodies, static ones included, that overlap the colliders added beneath it.
@@ -39,10 +40,10 @@ export class Trigger extends Group<TriggerEventMap> {
     this.version++;
     return this;
   }
-  overlaps(body: RigidBody): boolean {
+  overlaps(body: Body): boolean {
     return this.getOverlappingBodies().includes(body);
   }
-  getOverlappingBodies(): RigidBody[] {
+  getOverlappingBodies(): Body[] {
     return commandWorld(this).getOverlappingBodies(this);
   }
   validate(): void {

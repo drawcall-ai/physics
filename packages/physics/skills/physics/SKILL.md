@@ -1,11 +1,11 @@
 ---
 name: physics
-description: Build and simulate physics in Three.js scenes with @drawcall/physics — rigid bodies, colliders, joints, drives, triggers, raycasts, and worlds built by a backend package such as @drawcall/physics-rapier or @drawcall/physics-mujoco. Use when adding physics to a three.js scene, authoring or cloning physics objects, driving joints, reacting to contacts or overlaps, or writing a new simulation backend.
+description: Build and simulate physics in Three.js scenes with @drawcall/physics — rigid and soft bodies, cloth, ropes, colliders, joints, drives, triggers, raycasts, and worlds built by a backend package such as @drawcall/physics-rapier or @drawcall/physics-mujoco. Use when adding physics to a three.js scene, authoring or cloning physics objects, driving joints, reacting to contacts or overlaps, or writing a new simulation backend.
 ---
 
 # @drawcall/physics
 
-Bodies, colliders, joints, and triggers are ordinary `Object3D`s. You build, clone, import, and export them without any engine; a backend package turns a scene into a running world. Reach for:
+Bodies, attachments, colliders, joints, and triggers are ordinary `Object3D`s. You build, clone, import, and export them without any engine; a backend package turns a scene into a running world. Reach for:
 
 - `@drawcall/physics` for the scene objects, `JointDrive`, `clone`, and shared types.
 - `@drawcall/physics-rapier` or `@drawcall/physics-mujoco` for `buildWorld`. Both simulate the same scene objects. Rapier suits games and interactive scenes that change often; MuJoCo suits robotics and articulated mechanisms, needs joints authored as a tree, and recompiles its model whenever the scene changes. Each backend package documents what its engine handles differently.
@@ -23,7 +23,11 @@ frame.add(new Mesh(new BoxGeometry(0.1, 2.2, 0.15)));
 const door = new RigidBody({ mass: 20 });
 door.position.x = 0.55;
 door.add(new Mesh(new BoxGeometry(0.98, 2, 0.06)));
-const hinge = new RevoluteJoint({ body0: frame, body1: door, limits: [0, Math.PI / 2] });
+const hinge = new RevoluteJoint({
+  body0: frame,
+  body1: door,
+  limits: [0, Math.PI / 2],
+});
 hinge.position.x = 0.06; // the joint's world placement is the hinge
 scene.add(frame, door, hinge);
 
@@ -74,6 +78,44 @@ A `"trimesh"` collider stays exact where the engine supports it (static bodies i
 
 In browser bundles decomposition runs in a module worker. With Vite before 8, add `optimizeDeps: { exclude: ["@drawcall/physics"] }`, or the worker cannot load and decomposition fails with an error saying so. Elsewhere (Node, Bun, Deno, unbundled browsers) it blocks the calling thread; Node 20.16+ caches parts in `node_modules/.cache/@drawcall/physics`, which you can delete to decompose afresh.
 
+## Soft bodies
+
+Use `SoftBody` for deformable solids, cloth, and ropes. Choose the elasticity law with the backend: the backend's `buildWorld` doc comment lists the supported combinations. Unsupported combinations throw; switching engines does not silently substitute a different material model. Material values need calibration against the physical sample and mesh resolution; a label such as TPU does not determine them.
+
+The constructor fixes rest shape and topology. `setMaterial` replaces physical properties while preserving deformation and velocity. A soft body owns its deformed render geometry; connect the visible mesh to that geometry rather than the original rest mesh:
+
+```ts
+const cloth = new SoftBody({
+  shape: {
+    kind: "surface",
+    geometry: new PlaneGeometry(1, 1, 12, 12),
+    thickness: 0.001,
+  },
+  material: {
+    density: 300,
+    elasticity: {
+      model: "spring",
+      stretch: { frequency: 30, dampingRatio: 1 },
+    },
+  },
+});
+cloth.add(new Mesh(cloth.geometry, visualMaterial));
+const pin = new SoftAttachment({
+  body: cloth,
+  region: { min: [-1, 0.49, -0.01], max: [1, 0.51, 0.01] },
+  target: null,
+});
+scene.add(cloth, pin);
+```
+
+An attachment selects simulation nodes in rest-local coordinates and retains their initial offsets from its rigid target, or from the world with `target: null`. A region box usually survives mesh-resolution changes better than node indices. Keep attached nodes clear of target colliders: attachments do not disable their contact. Disable and re-enable an attachment to release and restore its original anchors.
+
+Place and uniformly scale the body before it joins. Read deformed world nodes with `getPositions`; `matrixWorld` remains the body's frame, not its deformation. Apply forces or impulses to the body to distribute a total load, or supply a world point to load the nearest node. Replace the body to change topology. USD export currently rejects soft bodies and attachments.
+
+For physical comparisons, choose a constitutive model supported by the backend and use measured geometry, density, stiffness, and losses. Spring-frequency profiles depend on mesh resolution; they are not substitutes for a measured Young's modulus. Check mesh and timestep convergence against a known load or motion before trusting a real-world prediction. Backend-specific elastic laws and damping conventions are not interchangeable calibrations.
+
+Material damping dissipates deformation; it does not necessarily dissipate the motion of the whole assembly. Use `setLinearDamping` on soft or rigid bodies for an explicitly calibrated linear motion-loss model, independently of material damping. It does not model air flow or suspension friction automatically. Match a measured decay or drag law rather than interpreting a visually pleasing settling time as validation.
+
 ## Joints
 
 A joint connects `body0` (the base, or `null` for the world) to `body1`. By default its own world placement defines both anchors, so position and rotate the joint object where the hinge, slider, or socket is, and add it to the scene (anywhere under it, often under one of its bodies). Pass `frame0` and `frame1` instead when the anchors are known in body-local coordinates, as when the bodies are not yet in place.
@@ -97,10 +139,25 @@ const hold = new GenericJoint({
   body1: body,
   frame0: new Matrix4(),
   frame1: new Matrix4().makeTranslation(body.worldToLocal(point.clone())),
-  dofs: { transX: free, transY: free, transZ: free, rotX: free, rotY: free, rotZ: free },
+  dofs: {
+    transX: free,
+    transY: free,
+    transZ: free,
+    rotX: free,
+    rotY: free,
+    rotZ: free,
+  },
 });
 for (const axis of ["transX", "transY", "transZ"] as const)
-  hold.setDrive(axis, new JointDrive({ model: "acceleration", stiffness: 1000, damping: 63, maxForce: 600 }).setTarget({ position: 0 }));
+  hold.setDrive(
+    axis,
+    new JointDrive({
+      model: "acceleration",
+      stiffness: 1000,
+      damping: 63,
+      maxForce: 600,
+    }).setTarget({ position: 0 }),
+  );
 hand.add(hold);
 scene.add(hand);
 // each step: hand.setKinematicTarget(pose); to release: hand.removeFromParent()
@@ -114,7 +171,7 @@ scene.add(hand);
 
 ## Cloning
 
-Clone anything that holds joints with `clone(root)` from this package; it reconnects joints to the cloned bodies. `joint.clone()`, and therefore a plain three.js `clone()` of a hierarchy holding a joint, throws. Clones share geometry and materials and are simulated once added under a world's scene.
+Clone anything that holds joints or soft attachments with `clone(root)` from this package; it reconnects constraints to the cloned bodies. Cloning those constraints directly throws. Rigid clones share geometry and materials; soft clones own separate deformed geometry and start from their rest shape. Clones are simulated once added under a world's scene.
 
 ## Conventions
 

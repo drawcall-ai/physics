@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cargo hammock · Drawcall Physics</title>
+    <style>
+      nav {
+        max-width: 440px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0;
+        letter-spacing: -0.04em;
+      }
+      .eyebrow {
+        color: #83d9cb;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 14px 0;
+      }
+      .hint {
+        color: #b8c7d5;
+        line-height: 1.5;
+      }
+      nav label {
+        pointer-events: auto;
+      }
+      #damping {
+        width: 5em;
+        color: inherit;
+        background: #263748;
+        border: 1px solid #718398;
+        border-radius: 4px;
+        padding: 5px 8px;
+      }
+      output {
+        color: #83d9cb;
+        margin-top: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      aria-label="A cloth cargo hammock suspended by ropes, catching soft and rigid objects"
+    ></canvas>
+    <nav>
+      <p class="eyebrow">Drawcall Physics / Deformables</p>
+      <h1>Cargo hammock</h1>
+      <p class="hint">
+        Drop a load. Watch the fabric stretch, the ropes pull, and soft objects
+        compress.
+      </p>
+      <p class="hint">Illustrative material and damping values.</p>
+      <div class="actions">
+        <button id="rubber">Drop rubber</button>
+        <button id="foam">Drop foam</button>
+        <button id="rigid">Drop rigid cube</button>
+        <button id="reset">Reset</button>
+        <button
+          id="backend"
+          title="Switching backend restarts the scene with its own material presets"
+        >
+          Switch to MuJoCo
+        </button>
+      </div>
+      <label
+        >Fabric
+        <select id="fabric" aria-label="Fabric material">
+          <option value="canvas">Canvas</option>
+          <option value="stretch">Stretch fabric</option>
+        </select></label
+      >
+      <label
+        >Motion damping (1/s)
+        <input id="damping" type="number" min="0" step="any" required />
+      </label>
+      <label
+        ><input id="debug" type="checkbox" /> Mesh, simulation nodes &amp;
+        attachments</label
+      >
+      <p class="hint">
+        Drag a gold bar to move it · drag elsewhere to orbit<br />P pauses · R
+        resets
+      </p>
+      <output>Building simulation…</output>
+    </nav>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

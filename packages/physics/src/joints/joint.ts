@@ -1,6 +1,6 @@
 import { Object3D, Matrix4, Vector3 } from "three";
 import type { JointDrive } from "./drive.js";
-import { RigidBody } from "../body.js";
+import { RigidBody } from "../rigid/body.js";
 import { constructLike } from "../construct.js";
 import { assertRigidTransform, splitTransform } from "../transforms.js";
 import { joinedWorld } from "../membership.js";

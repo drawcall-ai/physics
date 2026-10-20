@@ -2,6 +2,7 @@ import {
   RigidBody,
   resolveCollider,
   type Trigger,
+  type SoftBody,
   type CollisionGroups,
 } from "@drawcall/physics";
 import {
@@ -16,7 +17,7 @@ import { placement, name } from "./markup.js";
 
 export interface Geometry {
   name: string;
-  owner: RigidBody | Trigger;
+  owner: RigidBody | Trigger | SoftBody;
   source: Object3D;
   groups: CollisionGroups;
   friction: number;

@@ -12,7 +12,7 @@ import {
   fingerprint,
   removeColliders,
   resolve,
-} from "./shapes.js";
+} from "../shapes.js";
 
 export class BodyBinding {
   readonly native: Rapier.RigidBody;

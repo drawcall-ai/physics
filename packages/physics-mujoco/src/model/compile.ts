@@ -5,6 +5,7 @@ import {
   DistanceJoint,
   SphericalJoint,
   type Joint,
+  type SoftBody,
 } from "@drawcall/physics";
 import {
   cleanup,
@@ -16,6 +17,13 @@ import type { Geometry } from "./shapes.js";
 import type { Coordinate } from "./joints.js";
 import { modelXml, type ModelOptions } from "./xml.js";
 import { name } from "./markup.js";
+import type { SoftMesh } from "../soft/mesh.js";
+import {
+  correctMembraneStiffness,
+  nodeName,
+  type Attachment,
+} from "../soft/model.js";
+import type { SoftState } from "../soft/state.js";
 import { at, array, rotation } from "../heap.js";
 export type { ModelOptions } from "./xml.js";
 
@@ -24,6 +32,7 @@ export interface Simulation {
   model: MjModel;
   data: MjData;
   bodies: Map<RigidBody, number>;
+  soft: Map<SoftBody, SoftState>;
   targets: Map<RigidBody, number>;
   triggers: Map<Trigger, number>;
   geometries: Map<number, Geometry>;
@@ -36,14 +45,54 @@ export function compile(
   joints: ReadonlyMap<Joint, JointBinding>,
   triggers: readonly Trigger[],
   options: ModelOptions,
+  soft: ReadonlyMap<SoftBody, SoftMesh> = new Map(),
+  attachments: Iterable<Attachment> = [],
 ): Simulation {
+  // The WASM distance query only accepts geoms; it cannot report flex-trigger overlaps.
+  if (soft.size && triggers.length)
+    throw new Error(
+      "MuJoCo soft bodies cannot share a world with triggers: flex overlap queries are unavailable",
+    );
   const { xml, geometries, coordinates } = modelXml(
     bodies,
     joints,
     triggers,
     options,
+    soft,
+    attachments,
   );
-  const model = api.MjModel.from_xml_string(xml);
+  const spec = api.parseXMLString(xml);
+  const release = [() => spec.delete()];
+  let model: MjModel;
+  try {
+    for (const body of soft.keys()) {
+      if (body.material.elasticity.model !== "neoHookean") continue;
+      // MuJoCo 3.16 exposes stable Neo-Hookean through mjSpec only, not MJCF.
+      const element = api.mjs_findElement(
+        spec,
+        api.mjtObj.mjOBJ_FLEX,
+        name(body),
+      );
+      if (!element) throw new Error(`Missing MuJoCo flex: ${name(body)}`);
+      release.unshift(() => element.delete());
+      const flex = api.mjs_asFlex(element);
+      if (!flex) throw new Error(`Invalid MuJoCo flex: ${name(body)}`);
+      release.unshift(() => flex.delete());
+      flex.elastic3d = 1;
+    }
+    model = api.mj_compile(spec);
+  } catch (error) {
+    rollback(error, release, "MuJoCo specification compilation failed");
+  }
+  try {
+    cleanup(release, "MuJoCo specification disposal failed");
+  } catch (error) {
+    rollback(
+      error,
+      [() => model.delete()],
+      "MuJoCo specification disposal failed",
+    );
+  }
   let data: MjData;
   try {
     data = new api.MjData(model);
@@ -75,6 +124,7 @@ export function compile(
         array(model.body_inertia)[index * 3 + j] =
           at(model.body_inertia, index * 3 + j) * ratio;
     }
+    correctMembraneStiffness(model);
     api.mj_setConst(model, data);
     api.mj_resetData(model, data);
     for (const coordinate of coordinates) {
@@ -107,6 +157,18 @@ export function compile(
       model,
       data,
       bodies: bodyIds,
+      soft: new Map(
+        [...soft].map(([body, mesh]) => [
+          body,
+          {
+            mesh,
+            id: id(api.mjtObj.mjOBJ_FLEX.value, name(body)),
+            nodes: Array.from(mesh.volumes, (_, node) =>
+              id(api.mjtObj.mjOBJ_BODY.value, nodeName(mesh, node)),
+            ),
+          },
+        ]),
+      ),
       targets: new Map(
         bodies
           .filter((body) => body.bodyType === "kinematic")

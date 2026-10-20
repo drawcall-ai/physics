@@ -19,7 +19,7 @@
     "bench:arm": "node bench/arm.ts"
   },
   "dependencies": {
-    "@mujoco/mujoco": "3.13.0"
+    "@mujoco/mujoco": "3.16.0"
   },
   "peerDependencies": {
     "@drawcall/physics": "^0.1.0",

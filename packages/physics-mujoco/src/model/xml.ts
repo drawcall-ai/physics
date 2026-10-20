@@ -4,14 +4,18 @@ import {
   DistanceJoint,
   splitTransform,
   type Joint,
+  type SoftBody,
 } from "@drawcall/physics";
 import { treeJoint, type JointBinding } from "@drawcall/physics/backend";
 import { shapes, type Geometry } from "./shapes.js";
 import { contactAttributes, exclusions } from "./contacts.js";
 import { jointXml, driveOf, drives, type Coordinate } from "./joints.js";
+import { softXml, type Attachment } from "../soft/model.js";
+import type { SoftMesh } from "../soft/mesh.js";
 import { name, placement } from "./markup.js";
 
 export interface ModelOptions {
+  memory?: number;
   fixedDelta: number;
   gravity: readonly number[];
   solverIterations: number;
@@ -23,13 +27,27 @@ export function modelXml(
   joints: ReadonlyMap<Joint, JointBinding>,
   triggers: readonly Trigger[],
   options: ModelOptions,
+  soft: ReadonlyMap<SoftBody, SoftMesh> = new Map(),
+  attachments: Iterable<Attachment> = [],
 ) {
   const parents = parentsOf(bodies, joints);
   const assets: string[] = [],
     geometries: Geometry[] = [],
     coordinates: Coordinate[] = [];
   const { sites, tendons, equalities } = distanceXml(joints);
-  const attributes = contactAttributes(bodies, options.fixedDelta);
+  const attributes = contactAttributes(bodies, options.fixedDelta, [
+    ...soft.keys(),
+  ]);
+  const deformable = softXml(
+    soft.values(),
+    attachments,
+    attributes,
+    options.fixedDelta,
+  );
+  tendons.push(...deformable.tendons);
+  equalities.push(...deformable.equalities);
+  for (const [owner, entries] of deformable.sites)
+    sites.set(owner, [...(sites.get(owner) ?? []), ...entries]);
   function contents(owner: RigidBody | Trigger): string {
     const result = shapes(owner, attributes);
     assets.push(...result.assets);
@@ -93,8 +111,10 @@ export function modelXml(
       return `<general name="${c.name}drive" joint="${c.name}" gainprm="1" biastype="affine" biasprm="0 0 0" ${max === undefined ? 'forcelimited="false"' : `forcelimited="true" forcerange="${-Math.max(max, 1e-30)} ${Math.max(max, 1e-30)}"`}/>`;
     })
     .join("");
+  const size =
+    options.memory === undefined ? "" : `<size memory="${options.memory}"/>`;
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option><asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${(sites.get(null) ?? []).join("")}</worldbody><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"${soft.size ? ' solver="CG"' : ""}><flag filterparent="disable"/></option>${size}<asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${deformable.bodies}${(sites.get(null) ?? []).join("")}</worldbody><deformable>${deformable.flexes}</deformable><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates };
 }
 

@@ -1,5 +1,5 @@
 import type { BufferGeometry, Mesh, Object3D, Vector3 } from "three";
-import type { RigidBody } from "../body.js";
+import type { RigidBody } from "../rigid/body.js";
 import type { Trigger } from "../trigger.js";
 import { Collider } from "./collider.js";
 import type { Shape } from "./collider.js";

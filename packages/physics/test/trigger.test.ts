@@ -7,6 +7,7 @@ import {
   Trigger,
   clone,
   type RaycastHit,
+  type Body,
 } from "../src/index.js";
 import { resolveCollisionGroups } from "../src/backend.js";
 
@@ -103,11 +104,11 @@ it("types trigger and contact payloads while preserving Three.js scene events", 
   const trigger = new Trigger();
   const body = new RigidBody();
   trigger.addEventListener("enter", (event) => {
-    expectTypeOf(event.body).toEqualTypeOf<RigidBody>();
+    expectTypeOf(event.body).toEqualTypeOf<Body>();
     expectTypeOf(event.target).toEqualTypeOf<Trigger>();
   });
   body.addEventListener("contactbegin", (event) => {
-    expectTypeOf(event.otherBody).toEqualTypeOf<RigidBody>();
+    expectTypeOf(event.otherBody).toEqualTypeOf<Body>();
     expectTypeOf(event.target).toEqualTypeOf<RigidBody>();
   });
   trigger.addEventListener("added", (event) =>

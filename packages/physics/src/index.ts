@@ -1,12 +1,10 @@
 export {
-  type RigidBodyEventMap,
   type RigidBodyType,
   type RigidBodyOptions,
-  type InitialVelocity,
   RigidBody,
   ancestorBody,
-} from "./body.js";
-export { type MassProperties } from "./mass.js";
+} from "./rigid/body.js";
+export { type MassProperties } from "./rigid/mass.js";
 export {
   type Vec3,
   type AutoColliders,
@@ -39,12 +37,29 @@ export {
   type GenericJointOptions,
   GenericJoint,
 } from "./joints/generic.js";
-export {
-  type PhysicsWorldOptions,
-  type PhysicsVelocity,
-  PhysicsWorld,
-} from "./world.js";
+export { type PhysicsWorldOptions, PhysicsWorld } from "./world.js";
 export { type Contact } from "./interactions.js";
+export {
+  type Body,
+  type BodyEventMap,
+  type BodyEventMap as RigidBodyEventMap,
+} from "./body.js";
+export {
+  type InitialVelocity,
+  type PhysicsVelocity,
+} from "./rigid/velocity.js";
+export { SoftBody, type SoftBodyOptions } from "./soft/body.js";
+export {
+  SoftAttachment,
+  type SoftAttachmentOptions,
+  type SoftRegion,
+} from "./soft/attachment.js";
+export { type SoftShape } from "./soft/shape.js";
+export {
+  type SoftMaterial,
+  type Elasticity,
+  type Softness,
+} from "./soft/material.js";
 export {
   type AxisJointState,
   type SphericalJointState,

@@ -7,6 +7,7 @@ import {
   RevoluteJoint,
   RigidBody,
   Trigger,
+  type Body,
   type Joint,
   type PhysicsVelocity,
   type PhysicsWorldOptions,
@@ -411,7 +412,7 @@ it("delivers the events listeners queue while another listener throws", async ()
   const b = body("b");
   scene.add(zone, a, b);
   const world = await create(scene);
-  const exits: RigidBody[] = [];
+  const exits: Body[] = [];
   zone.addEventListener("exit", ({ body }) => exits.push(body));
   zone.addEventListener("enter", ({ body }) => {
     if (body !== a) throw new Error("listener failed");
@@ -633,7 +634,7 @@ it("delivers the events leavers queued when joining fails", async () => {
   const world = await create(scene);
   world.overlap(zone, ball);
   world.update(0);
-  const exits: RigidBody[] = [];
+  const exits: Body[] = [];
   zone.addEventListener("exit", ({ body }) => exits.push(body));
   ball.removeFromParent();
   scene.add(body("late"));

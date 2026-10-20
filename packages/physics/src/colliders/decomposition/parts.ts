@@ -5,7 +5,7 @@
  * its convex hull, and `partsVersion` changes when they arrive, so backends rebuild it.
  */
 import type { BufferGeometry, Object3D, Vector3 } from "three";
-import { RigidBody } from "../../body.js";
+import { RigidBody } from "../../rigid/body.js";
 import type { Collider } from "../collider.js";
 import { geometryVersion, vertices } from "../geometry.js";
 import { closedMesh } from "./mesh.js";

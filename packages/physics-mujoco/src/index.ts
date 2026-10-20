@@ -6,7 +6,15 @@ export type { MujocoWorld } from "./world.js";
 export type { MujocoWorldOptions } from "./options.js";
 
 const modules = new Map<string | undefined, Promise<MainModule>>();
-/** Builds the world that simulates the bodies, joints and triggers under `options.scene`. */
+/**
+ * Builds the scene's rigid and deformable simulation. Soft surfaces and explicit tetrahedral
+ * volumes support Saint Venant–Kirchhoff elasticity; explicit volumes also support stable
+ * Neo-Hookean elasticity. Curves use stretch springs without bending.
+ * neoHookean selects MuJoCo's experimental simplified stable model; it remains defined
+ * through element inversion, but does not prevent inversion.
+ * Automatic volume meshing and worlds combining soft bodies with triggers are unsupported.
+ * Soft scenes use MuJoCo's CG solver for coupled elastic attachments.
+ */
 export async function buildWorld(
   options: MujocoWorldOptions,
 ): Promise<MujocoWorld> {

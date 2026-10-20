@@ -1,5 +1,5 @@
 import { Mesh, type Object3D } from "three";
-import { RigidBody } from "../body.js";
+import { RigidBody } from "../rigid/body.js";
 import { Trigger } from "../trigger.js";
 import { Collider } from "./collider.js";
 

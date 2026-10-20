@@ -1,4 +1,9 @@
-import { RigidBody, type CollisionGroups, type Joint } from "@drawcall/physics";
+import {
+  RigidBody,
+  SoftBody,
+  type CollisionGroups,
+  type Joint,
+} from "@drawcall/physics";
 import { resolveCollisionGroups } from "@drawcall/physics/backend";
 import { name } from "./markup.js";
 import { matches, type Geometry } from "./shapes.js";
@@ -23,6 +28,7 @@ interface Mask {
 export function contactAttributes(
   bodies: readonly RigidBody[],
   fixedDelta: number,
+  soft: readonly SoftBody[] = [],
 ) {
   const key = (groups: CollisionGroups) =>
     `${groups.membership}/${groups.filter}`;
@@ -32,12 +38,17 @@ export function contactAttributes(
       const groups = resolveCollisionGroups(collider, body);
       distinct.set(key(groups), groups);
     }
+  if (soft.length)
+    distinct.set("65535/65535", { membership: 0xffff, filter: 0xffff });
   const masks = new Map(
     groupMasks([...distinct.values()]).map((mask) => [key(mask.groups), mask]),
   );
   const stiffness = Math.max(0.004, fixedDelta * 2);
   return (geometry: Geometry): string => {
-    if (!(geometry.owner instanceof RigidBody))
+    if (
+      !(geometry.owner instanceof RigidBody) &&
+      !(geometry.owner instanceof SoftBody)
+    )
       return 'contype="0" conaffinity="0"';
     const mask = masks.get(key(geometry.groups));
     if (!mask) throw new Error("Missing MuJoCo contact mask");

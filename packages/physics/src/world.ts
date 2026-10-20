@@ -1,5 +1,6 @@
 import type { Matrix4, Object3D, Vector3 } from "three";
-import { type RigidBody, assertBodyType, validateVelocity } from "./body.js";
+import { type RigidBody, assertBodyType } from "./rigid/body.js";
+import { validateVelocity, type PhysicsVelocity } from "./rigid/velocity.js";
 import { Joint } from "./joints/joint.js";
 import type { JointReading } from "./joints/reading.js";
 import { placeAssembly } from "./joints/assembly.js";
@@ -14,6 +15,9 @@ import {
 import { assertRigidTransform, validateVector } from "./transforms.js";
 import { cleanup, rollback } from "./cleanup.js";
 import { Interactions, type Contact } from "./interactions.js";
+import type { Body } from "./body.js";
+import { SoftBody } from "./soft/body.js";
+import { SoftAttachment } from "./soft/attachment.js";
 import {
   claim,
   claimScene,
@@ -35,13 +39,6 @@ export interface PhysicsWorldOptions {
   readonly maxSubsteps?: number;
   /** Constraint solver iterations per step; the backend's own default when omitted. */
   readonly solverIterations?: number;
-}
-
-export interface PhysicsVelocity {
-  /** World space, m/s, of the center of mass. */
-  linear: Vector3;
-  /** World space, rad/s. */
-  angular: Vector3;
 }
 
 /** The live reading of a joint, from the world that simulates it; for joints. */
@@ -157,6 +154,28 @@ export abstract class PhysicsWorld {
   protected abstract writeSleeping(body: RigidBody, sleeping: boolean): void;
   protected abstract jointReading(joint: Joint): JointReading;
 
+  protected readSoftPositions(_body: SoftBody): Float32Array {
+    throw new Error("This backend does not support soft-body state");
+  }
+  protected writeSoftForce(
+    _body: SoftBody,
+    _force: Vector3,
+    _point?: Vector3,
+  ): void {
+    throw new Error("This backend does not support soft-body forces");
+  }
+  protected writeSoftImpulse(
+    _body: SoftBody,
+    _impulse: Vector3,
+    _point?: Vector3,
+  ): void {
+    throw new Error("This backend does not support soft-body impulses");
+  }
+  getSoftPositions(body: SoftBody): Float32Array {
+    this.join(body);
+    return this.readSoftPositions(body).slice();
+  }
+
   getVelocity(body: RigidBody): PhysicsVelocity {
     this.join(body);
     return this.readVelocity(body);
@@ -193,18 +212,23 @@ export abstract class PhysicsWorld {
     this.join(body);
     this.writeTarget(body, pose);
   }
-  applyImpulse(body: RigidBody, impulse: Vector3, point?: Vector3): void {
+  applyImpulse(body: Body, impulse: Vector3, point?: Vector3): void {
     validateVector(impulse);
     if (point) validateVector(point);
-    assertBodyType(body, "dynamic", "An impulse");
+    if (!(body instanceof SoftBody))
+      assertBodyType(body, "dynamic", "An impulse");
     this.join(body);
+    if (body instanceof SoftBody)
+      return this.writeSoftImpulse(body, impulse, point);
     this.writeImpulse(body, impulse, point);
   }
-  applyForce(body: RigidBody, force: Vector3, point?: Vector3): void {
+  applyForce(body: Body, force: Vector3, point?: Vector3): void {
     validateVector(force);
     if (point) validateVector(point);
-    assertBodyType(body, "dynamic", "A force");
+    if (!(body instanceof SoftBody)) assertBodyType(body, "dynamic", "A force");
     this.join(body);
+    if (body instanceof SoftBody)
+      return this.writeSoftForce(body, force, point);
     this.writeForce(body, force, point);
   }
   wake(body: RigidBody): void {
@@ -216,13 +240,13 @@ export abstract class PhysicsWorld {
     this.writeSleeping(body, true);
   }
   /** The body's contacts with other bodies in the last step, one per point; none before the first. */
-  getContacts(body: RigidBody): Contact[] {
+  getContacts(body: Body): Contact[] {
     this.assertLive();
     this.refresh();
     this.assertMember(body);
     return this.interactions.contactsOf(body);
   }
-  getOverlappingBodies(trigger: Trigger): RigidBody[] {
+  getOverlappingBodies(trigger: Trigger): Body[] {
     this.assertLive();
     this.refresh();
     this.assertMember(trigger);
@@ -391,7 +415,8 @@ export abstract class PhysicsWorld {
   private leave(object: Member): void {
     this.members.delete(object);
     setJoined(object, undefined);
-    if (!(object instanceof Joint)) this.interactions.remove(object);
+    if (!(object instanceof Joint) && !(object instanceof SoftAttachment))
+      this.interactions.remove(object);
     this.remove(object);
   }
   /** Joins `object` unless it is a member, then throws unless it is one. */

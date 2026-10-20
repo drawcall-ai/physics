@@ -1,10 +1,12 @@
 import type { Object3D } from "three";
-import { RigidBody } from "./body.js";
+import { RigidBody } from "./rigid/body.js";
 import { Joint } from "./joints/joint.js";
 import { Trigger } from "./trigger.js";
+import { SoftBody } from "./soft/body.js";
+import { SoftAttachment } from "./soft/attachment.js";
 import type { PhysicsWorld } from "./world.js";
 
-export type Member = RigidBody | Joint | Trigger;
+export type Member = RigidBody | Joint | Trigger | SoftBody | SoftAttachment;
 
 /** The live world of each scene, so a command finds the world an object sits under. */
 const scenes = new WeakMap<Object3D, PhysicsWorld>();
@@ -74,14 +76,22 @@ export function scan(
   members: ReadonlySet<Member>,
 ): { entered: Member[]; left: Member[] } {
   const current = new Set<Member>();
-  const joints: Joint[] = [];
+  const joints: (Joint | SoftAttachment)[] = [];
   scene.traverse((object) => {
-    if (object instanceof Joint) joints.push(object);
-    else if (object instanceof RigidBody || object instanceof Trigger)
+    if (object instanceof Joint || object instanceof SoftAttachment)
+      joints.push(object);
+    else if (
+      object instanceof RigidBody ||
+      object instanceof SoftBody ||
+      object instanceof Trigger
+    )
       current.add(object);
   });
   for (const joint of joints) {
-    const { body0, body1 } = joint.options;
+    const { body0, body1 } =
+      joint instanceof SoftAttachment
+        ? { body0: joint.options.target, body1: joint.options.body }
+        : joint.options;
     if ((body0 && !current.has(body0)) || !current.has(body1))
       throw new Error(
         `Joint ${joint.name || joint.type} connects a body outside the world's scene`,
@@ -92,7 +102,11 @@ export function scan(
     entered: [...current].filter((object) => !members.has(object)),
     left: [...members]
       .filter((object) => !current.has(object))
-      .sort((a, b) => Number(b instanceof Joint) - Number(a instanceof Joint)),
+      .sort(
+        (a, b) =>
+          Number(b instanceof Joint || b instanceof SoftAttachment) -
+          Number(a instanceof Joint || a instanceof SoftAttachment),
+      ),
   };
 }
 

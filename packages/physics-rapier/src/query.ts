@@ -3,13 +3,15 @@ import type {
   RaycastHit,
   RaycastOptions,
   RigidBody,
+  SoftBody,
   Trigger,
 } from "@drawcall/physics";
 import { Vector3, type Object3D } from "three";
 
 /** What a Rapier collider stands for in the scene, as a raycast hit names it. */
 export type Owner = (
-  { kind: "body"; body: RigidBody } | { kind: "trigger"; trigger: Trigger }
+  | { kind: "body"; body: RigidBody | SoftBody }
+  | { kind: "trigger"; trigger: Trigger }
 ) & { object: Object3D };
 
 export function raycast(

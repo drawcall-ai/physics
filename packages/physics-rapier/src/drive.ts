@@ -11,7 +11,7 @@ import {
 } from "@drawcall/physics";
 import { wrapAngle } from "@drawcall/physics/backend";
 import { Quaternion, Vector3 } from "three";
-import { bodyPose } from "./body.js";
+import { bodyPose } from "./rigid/body.js";
 
 type Axes = Record<"LinX" | "LinY" | "LinZ" | "AngX" | "AngY" | "AngZ", number>;
 

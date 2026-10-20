@@ -1,5 +1,5 @@
 import type { MainModule } from "@mujoco/mujoco";
-import { RigidBody, Trigger, ancestorBody } from "@drawcall/physics";
+import { RigidBody, SoftBody, Trigger, ancestorBody } from "@drawcall/physics";
 import { addContact, type Contacts } from "@drawcall/physics/backend";
 import type { Simulation } from "./model/compile.js";
 import { matches } from "./model/shapes.js";
@@ -49,13 +49,22 @@ export function sampleContacts(api: MainModule, sim: Simulation): Contacts {
       try {
         // Contacts without a constraint row (beyond the gap, or excluded) have no force.
         if (contact.efc_address < 0) continue;
-        const first = sim.geometries.get(contact.geom1),
-          second = sim.geometries.get(contact.geom2);
-        if (!first || !second)
+        const owner = (geom: number, side: number) => {
+          if (geom >= 0) return sim.geometries.get(geom)?.owner;
+          const id = at(contact.flex, side);
+          for (const [body, state] of sim.soft)
+            if (state.id === id) return body;
+          return undefined;
+        };
+        const a = owner(contact.geom1, 0),
+          b = owner(contact.geom2, 1);
+        if (!a || !b)
           throw new Error("Contact references an unknown MuJoCo geometry");
-        const a = first.owner,
-          b = second.owner;
-        if (!(a instanceof RigidBody) || !(b instanceof RigidBody) || a === b)
+        if (
+          !(a instanceof RigidBody || a instanceof SoftBody) ||
+          !(b instanceof RigidBody || b instanceof SoftBody) ||
+          a === b
+        )
           continue;
         api.mj_contactForce(sim.model, sim.data, i, force);
         const point = vector(contact.pos, 0);

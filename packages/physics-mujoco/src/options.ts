@@ -2,6 +2,8 @@ import type { PhysicsWorldOptions } from "@drawcall/physics";
 import type { ModelOptions } from "./model/compile.js";
 
 export interface MujocoWorldOptions extends PhysicsWorldOptions {
+  /** MuJoCo arena memory in bytes. Omit to use MuJoCo's allocation estimate. */
+  memory?: number;
   /**
    * MuJoCo's friction cone. Elliptic cones model friction faithfully; the default pyramids are what
    * MuJoCo ships, and they proved more robust for kinematic contact at small steps in this build.
@@ -25,6 +27,11 @@ export function modelOptions(
 ): ModelOptions {
   const frictionImpedanceRatio = options.frictionImpedanceRatio ?? 1;
   const frictionCone = options.frictionCone ?? "pyramidal";
+  if (
+    options.memory !== undefined &&
+    (!Number.isSafeInteger(options.memory) || options.memory <= 0)
+  )
+    throw new Error("memory must be a positive integer number of bytes");
   if (!Number.isFinite(frictionImpedanceRatio) || frictionImpedanceRatio < 1)
     throw new Error("frictionImpedanceRatio must be at least 1");
   if (frictionImpedanceRatio > 1 && frictionCone !== "elliptic")
@@ -33,6 +40,7 @@ export function modelOptions(
     );
   return {
     ...physics,
+    memory: options.memory,
     frictionImpedanceRatio,
     frictionCone,
   };

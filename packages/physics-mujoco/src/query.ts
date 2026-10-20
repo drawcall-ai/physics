@@ -1,18 +1,19 @@
 import type { DoubleBuffer, MainModule } from "@mujoco/mujoco";
 import {
   RigidBody,
+  SoftBody,
   Trigger,
   type RaycastHit,
   type RaycastOptions,
 } from "@drawcall/physics";
 import { Vector3 } from "three";
 import type { Simulation } from "./model/compile.js";
-import { array, at } from "./heap.js";
+import { array, at, vector } from "./heap.js";
 import { matches, type Geometry } from "./model/shapes.js";
 
 /** MuJoCo filters rays by geometry group; the adapter filters by collider instead. */
 const everyGroup = [1, 1, 1, 1, 1, 1];
-export function raycast(
+function rigidRaycast(
   api: MainModule,
   sim: Simulation,
   origin: Vector3,
@@ -50,7 +51,7 @@ export function raycast(
 function allows(geom: Geometry, options: RaycastOptions): boolean {
   if (geom.owner instanceof Trigger && !options.includeTriggers) return false;
   if (
-    geom.owner instanceof RigidBody &&
+    (geom.owner instanceof RigidBody || geom.owner instanceof SoftBody) &&
     options.excludeBodies?.includes(geom.owner)
   )
     return false;
@@ -72,7 +73,7 @@ function hit(
     normal: new Vector3().fromArray(array(normal.GetView())),
     object: geom.source,
   };
-  return geom.owner instanceof RigidBody
+  return geom.owner instanceof RigidBody || geom.owner instanceof SoftBody
     ? { ...common, kind: "body", body: geom.owner }
     : { ...common, kind: "trigger", trigger: geom.owner };
 }
@@ -125,4 +126,59 @@ function rayDistance(
     type,
     normal,
   );
+}
+
+export function raycast(
+  api: MainModule,
+  sim: Simulation,
+  origin: Vector3,
+  unit: Vector3,
+  maxDistance: number,
+  options: RaycastOptions,
+): RaycastHit | null {
+  let result = rigidRaycast(api, sim, origin, unit, maxDistance, options);
+  if (
+    options.collisionGroups &&
+    !matches(options.collisionGroups, { membership: 0xffff, filter: 0xffff })
+  )
+    return result;
+  const vertex = new api.IntBuffer(1),
+    normal = new api.DoubleBuffer(3);
+  try {
+    for (const [body, state] of sim.soft) {
+      if (options.excludeBodies?.includes(body)) continue;
+      const distance = api.mj_rayFlex(
+        sim.model,
+        sim.data,
+        0,
+        false,
+        false,
+        true,
+        true,
+        state.id,
+        origin.toArray(),
+        unit.toArray(),
+        vertex,
+        normal,
+      );
+      if (
+        distance < 0 ||
+        distance > maxDistance ||
+        (result && distance >= result.distance)
+      )
+        continue;
+      result = {
+        kind: "body",
+        body,
+        object: body,
+        distance,
+        point: origin.clone().addScaledVector(unit, distance),
+        normal: vector(normal.GetView(), 0),
+      };
+    }
+    return result;
+  } finally {
+    vertex.delete();
+    normal.delete();
+  }
 }

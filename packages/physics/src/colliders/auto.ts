@@ -8,7 +8,7 @@ import {
   type BufferGeometry,
   type Mesh,
 } from "three";
-import type { RigidBody } from "../body.js";
+import type { RigidBody } from "../rigid/body.js";
 import {
   BoxCollider,
   CapsuleCollider,

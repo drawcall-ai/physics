@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { RigidBody } from "../body.js";
+import type { RigidBody } from "../rigid/body.js";
 import { AxisJoint } from "./kinds.js";
 import type { Joint } from "./joint.js";
 import { axisVector, splitTransform } from "../transforms.js";

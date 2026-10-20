@@ -16,7 +16,7 @@ import { Quaternion, Vector3 } from "three";
 import type { Simulation } from "./model/compile.js";
 import { driveOf } from "./model/joints.js";
 import { array } from "./heap.js";
-import { bodyId, motionOf } from "./body.js";
+import { bodyId, motionOf } from "./rigid/body.js";
 import { project, inverseInertia, apply, type Load } from "./force.js";
 
 /**

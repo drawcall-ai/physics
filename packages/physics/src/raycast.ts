@@ -1,5 +1,5 @@
 import { Vector3, type Object3D } from "three";
-import type { RigidBody } from "./body.js";
+import type { Body } from "./body.js";
 import { validateGroups, type CollisionGroups } from "./colliders/collider.js";
 import type { Trigger } from "./trigger.js";
 import { validateVector } from "./transforms.js";
@@ -8,7 +8,7 @@ export interface RaycastOptions {
   readonly collisionGroups?: CollisionGroups;
   /** False when omitted. */
   readonly includeTriggers?: boolean;
-  readonly excludeBodies?: readonly RigidBody[];
+  readonly excludeBodies?: readonly Body[];
 }
 interface RaycastGeometry {
   distance: number;
@@ -18,7 +18,7 @@ interface RaycastGeometry {
   object: Object3D;
 }
 export type RaycastHit = RaycastGeometry &
-  ({ kind: "body"; body: RigidBody } | { kind: "trigger"; trigger: Trigger });
+  ({ kind: "body"; body: Body } | { kind: "trigger"; trigger: Trigger });
 
 /** Validates a raycast's arguments and returns its unit direction. */
 export function rayDirection(

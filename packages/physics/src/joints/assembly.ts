@@ -1,5 +1,5 @@
 import type { Matrix4, Object3D } from "three";
-import type { RigidBody } from "../body.js";
+import type { RigidBody } from "../rigid/body.js";
 import { setWorldPose, splitTransform } from "../transforms.js";
 import type { Joint } from "./joint.js";
 import { DistanceJoint } from "./kinds.js";

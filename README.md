@@ -1,6 +1,6 @@
 # @drawcall/physics
 
-Physics scene objects for Three.js. Bodies, colliders, and joints are ordinary
+Physics scene objects for Three.js. Rigid and soft bodies, colliders, and joints are ordinary
 `Object3D`s that you build, clone, import, and export without an engine. A backend
 package simulates them.
 
@@ -49,7 +49,7 @@ For MuJoCo, import `buildWorld` from `@drawcall/physics-mujoco` instead.
 
 The package ships an agent skill in
 [`skills/`](https://github.com/drawcall-ai/physics/tree/main/packages/physics/skills):
-`physics` covers worlds, bodies, colliders, joints, drives, triggers, raycasts, and
+`physics` covers worlds, bodies, cloth, ropes, deformable solids, joints, triggers, and
 choosing a backend. Each backend
 package's README lists its engine-specific behavior.
 
@@ -61,6 +61,7 @@ In a clone of the [repository](https://github.com/drawcall-ai/physics):
 pnpm --filter @drawcall/example-ragdoll dev # articulated ragdoll, pointer grab
 pnpm --filter @drawcall/example-car dev     # powered car with suspension
 pnpm --filter @drawcall/example-scale dev   # scaled colliders and decomposition
+pnpm --filter @drawcall/example-hammock dev # cloth, ropes, and deformable cargo
 ```
 
 ## Development

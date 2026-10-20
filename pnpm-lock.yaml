@@ -17,8 +17,8 @@ importers:
         specifier: workspace:*
         version: link:packages/physics-rapier
       "@mujoco/mujoco":
-        specifier: 3.13.0
-        version: 3.13.0
+        specifier: 3.16.0
+        version: 3.16.0
       "@types/three":
         specifier: ^0.185.0
         version: 0.185.4
@@ -47,8 +47,36 @@ importers:
         specifier: workspace:*
         version: link:../../packages/physics-rapier
       "@mujoco/mujoco":
-        specifier: 3.13.0
-        version: 3.13.0
+        specifier: 3.16.0
+        version: 3.16.0
+      three:
+        specifier: ^0.185.1
+        version: 0.185.1
+    devDependencies:
+      "@types/three":
+        specifier: ^0.185.0
+        version: 0.185.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.2.1
+        version: 8.2.2(@types/node@24.13.6)
+
+  examples/hammock:
+    dependencies:
+      "@drawcall/physics":
+        specifier: workspace:*
+        version: link:../../packages/physics
+      "@drawcall/physics-mujoco":
+        specifier: workspace:*
+        version: link:../../packages/physics-mujoco
+      "@drawcall/physics-rapier":
+        specifier: workspace:*
+        version: link:../../packages/physics-rapier
+      "@mujoco/mujoco":
+        specifier: 3.16.0
+        version: 3.16.0
       three:
         specifier: ^0.185.1
         version: 0.185.1
@@ -75,8 +103,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/physics-rapier
       "@mujoco/mujoco":
-        specifier: 3.13.0
-        version: 3.13.0
+        specifier: 3.16.0
+        version: 3.16.0
       "@pmndrs/pointer-events":
         specifier: ^6.6.30
         version: 6.6.30
@@ -106,8 +134,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/physics-rapier
       "@mujoco/mujoco":
-        specifier: 3.13.0
-        version: 3.13.0
+        specifier: 3.16.0
+        version: 3.16.0
       three:
         specifier: ^0.185.1
         version: 0.185.1
@@ -135,8 +163,8 @@ importers:
   packages/physics-mujoco:
     dependencies:
       "@mujoco/mujoco":
-        specifier: 3.13.0
-        version: 3.13.0
+        specifier: 3.16.0
+        version: 3.16.0
       three:
         specifier: ">=0.177.0"
         version: 0.185.1
@@ -202,10 +230,10 @@ packages:
         integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==,
       }
 
-  "@mujoco/mujoco@3.13.0":
+  "@mujoco/mujoco@3.16.0":
     resolution:
       {
-        integrity: sha512-9OAp3i2pR9U8SnJfr+/UcmxpbIOcUUSBjNGY79XS4NYcyYjztqHmx1kl/83yoEpxDd40WBcDOKZqNhEmhN1+Sg==,
+        integrity: sha512-mlMzM1pEkXsqH5O+DuIukahPEWJgZqBTXVszdtMeYBrEOXAOepwKZn4cz1rQ4BaqWzRe+GuOczr0CmOXdsW2Yw==,
       }
 
   "@oxc-project/types@0.149.0":
@@ -889,7 +917,7 @@ snapshots:
 
   "@jridgewell/sourcemap-codec@1.6.0": {}
 
-  "@mujoco/mujoco@3.13.0": {}
+  "@mujoco/mujoco@3.16.0": {}
 
   "@oxc-project/types@0.149.0": {}
 

@@ -16,7 +16,7 @@ import { Quaternion } from "three";
 import type { Simulation } from "./compile.js";
 import { name } from "./markup.js";
 import { array, at, vector } from "../heap.js";
-import { bodyId, pointVelocity, velocity, writeVelocity } from "../body.js";
+import { bodyId, pointVelocity, velocity, writeVelocity } from "../rigid/body.js";
 
 /**
  * Carries motion and kinematic targets from the model a rebuild replaces into `next`. Joints

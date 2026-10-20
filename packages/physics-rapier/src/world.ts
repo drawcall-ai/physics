@@ -1,6 +1,8 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
 import {
   RigidBody,
+  SoftBody,
+  SoftAttachment,
   Trigger,
   PhysicsWorld,
   type Joint,
@@ -11,17 +13,21 @@ import {
   type RaycastOptions,
   splitTransform,
 } from "@drawcall/physics";
-import { initialVelocity } from "@drawcall/physics/backend";
+import { initialVelocity, type Member } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import { BodyBinding, prepareBody, writePose, writeBack } from "./body.js";
+import { BodyBinding, prepareBody, writePose, writeBack } from "./rigid/body.js";
 import { applyDrives } from "./drive.js";
 import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import { RapierJointBinding, prepareJoint } from "./joint.js";
 import { raycast, type Owner } from "./query.js";
 import { TriggerBinding, prepareTrigger, releaseTrigger } from "./trigger.js";
 import { decomposes } from "./shapes.js";
+import { SoftBinding } from "./soft/body.js";
+import { SoftMount } from "./soft/attachment.js";
 
 export class RapierWorld extends PhysicsWorld {
+  private readonly softBodies = new Map<SoftBody, SoftBinding>();
+  private readonly attachments = new Map<SoftAttachment, SoftMount>();
   private readonly simulation: Rapier.World;
   private readonly bodies = new Map<RigidBody, BodyBinding>();
   private readonly joints = new Map<Joint, RapierJointBinding>();
@@ -40,8 +46,22 @@ export class RapierWorld extends PhysicsWorld {
     this.simulation.timestep = this.fixedDelta;
     this.ground = this.simulation.createRigidBody(api.RigidBodyDesc.fixed());
   }
-  protected add(object: RigidBody | Joint | Trigger): void {
-    if (object instanceof RigidBody)
+  protected add(object: Member): void {
+    if (object instanceof SoftBody)
+      this.softBodies.set(
+        object,
+        new SoftBinding(this.api, this.simulation, object),
+      );
+    else if (object instanceof SoftAttachment)
+      this.attachments.set(
+        object,
+        new SoftMount(
+          object,
+          need(this.softBodies, object.options.body),
+          object.options.target ? this.body(object.options.target) : null,
+        ),
+      );
+    else if (object instanceof RigidBody)
       this.bodies.set(
         object,
         new BodyBinding(this.api, this.simulation, object),
@@ -57,8 +77,14 @@ export class RapierWorld extends PhysicsWorld {
       this.joints.set(object, new RapierJointBinding(object, bodies));
     }
   }
-  protected remove(object: RigidBody | Joint | Trigger): void {
-    if (object instanceof RigidBody) {
+  protected remove(object: Member): void {
+    if (object instanceof SoftAttachment) {
+      need(this.attachments, object).release();
+      this.attachments.delete(object);
+    } else if (object instanceof SoftBody) {
+      this.simulation.removeSoftBody(need(this.softBodies, object).native);
+      this.softBodies.delete(object);
+    } else if (object instanceof RigidBody) {
       this.simulation.removeRigidBody(this.body(object));
       this.bodies.delete(object);
     } else if (object instanceof Trigger) {
@@ -71,6 +97,8 @@ export class RapierWorld extends PhysicsWorld {
     }
   }
   protected prepare(): void {
+    for (const binding of this.softBodies.values()) binding.prepare();
+    for (const binding of this.attachments.values()) binding.prepare();
     for (const [object, binding] of this.bodies)
       prepareBody(this.api, this.simulation, object, binding);
     for (const [object, binding] of this.triggers)
@@ -81,11 +109,16 @@ export class RapierWorld extends PhysicsWorld {
   protected step(): void {
     for (const [object, { native }] of this.joints)
       if (native) applyDrives(object, native);
+    for (const binding of this.softBodies.values()) binding.applyForces();
     this.simulation.step();
     for (const [object, { native: body }] of this.bodies) {
       writeBack(object, body);
       body.resetForces(false);
       body.resetTorques(false);
+    }
+    for (const binding of this.softBodies.values()) {
+      binding.writeBack();
+      binding.native.resetForces(false);
     }
     for (const binding of this.joints.values()) binding.track();
     const owners = this.owners();
@@ -110,6 +143,8 @@ export class RapierWorld extends PhysicsWorld {
       body.resetTorques(false);
       writeBack(object, body);
     }
+    for (const binding of this.softBodies.values()) binding.restore();
+    for (const binding of this.attachments.values()) binding.prepare();
     for (const binding of this.joints.values()) binding.rebase();
   }
   protected free(): void {
@@ -131,6 +166,23 @@ export class RapierWorld extends PhysicsWorld {
       maxDistance,
       options,
     );
+  }
+  protected readSoftPositions(object: SoftBody): Float32Array {
+    return need(this.softBodies, object).native.particlePositions();
+  }
+  protected writeSoftImpulse(
+    object: SoftBody,
+    impulse: Vector3,
+    point?: Vector3,
+  ): void {
+    need(this.softBodies, object).impulse(impulse, point);
+  }
+  protected writeSoftForce(
+    object: SoftBody,
+    force: Vector3,
+    point?: Vector3,
+  ): void {
+    need(this.softBodies, object).force(force, point);
   }
   protected readVelocity(object: RigidBody): PhysicsVelocity {
     const body = this.body(object);
@@ -196,6 +248,12 @@ export class RapierWorld extends PhysicsWorld {
     for (const [body, { sources }] of this.bodies)
       for (const [collider, object] of sources)
         owners.set(collider.handle, { kind: "body", body, object });
+    for (const [body, binding] of this.softBodies)
+      for (let i = 0; i < binding.native.numMeshes(); i++) {
+        const collider = binding.native.meshCollider(i);
+        if (collider)
+          owners.set(collider.handle, { kind: "body", body, object: body });
+      }
     for (const [trigger, { sources }] of this.triggers)
       for (const [collider, object] of sources)
         owners.set(collider.handle, { kind: "trigger", trigger, object });

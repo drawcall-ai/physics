@@ -1,5 +1,10 @@
 import type * as Rapier from "@dimforge/rapier3d-compat";
-import { ancestorBody, type RigidBody, type Trigger } from "@drawcall/physics";
+import {
+  ancestorBody,
+  type RigidBody,
+  type SoftBody,
+  type Trigger,
+} from "@drawcall/physics";
 import { addContact, type Contacts } from "@drawcall/physics/backend";
 import { Quaternion, Vector3 } from "three";
 import type { Owner } from "./query.js";
@@ -8,12 +13,13 @@ import type { Owner } from "./query.js";
 export function sampleOverlaps(
   simulation: Rapier.World,
   owners: ReadonlyMap<number, Owner>,
-): Map<Trigger, Set<RigidBody>> {
-  const overlaps = new Map<Trigger, Set<RigidBody>>();
+): Map<Trigger, Set<RigidBody | SoftBody>> {
+  const overlaps = new Map<Trigger, Set<RigidBody | SoftBody>>();
   for (const [handle, owner] of owners) {
     if (owner.kind !== "trigger") continue;
     const parent = ancestorBody(owner.trigger);
-    const bodies = overlaps.get(owner.trigger) ?? new Set<RigidBody>();
+    const bodies =
+      overlaps.get(owner.trigger) ?? new Set<RigidBody | SoftBody>();
     overlaps.set(owner.trigger, bodies);
     simulation.intersectionPairsWith(
       simulation.getCollider(handle),

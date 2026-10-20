@@ -6,7 +6,7 @@ import {
   type Trigger,
 } from "@drawcall/physics";
 import type { Object3D, Vector3 } from "three";
-import type { BodyBinding } from "./body.js";
+import type { BodyBinding } from "./rigid/body.js";
 import {
   descriptor,
   fingerprint,

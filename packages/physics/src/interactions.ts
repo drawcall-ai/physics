@@ -1,12 +1,12 @@
-import { RigidBody } from "./body.js";
+import type { Body } from "./body.js";
 import { Trigger } from "./trigger.js";
 import { cleanup } from "./cleanup.js";
 import type { Vector3 } from "three";
-type Pairs<T> = Map<T, Set<RigidBody>>;
+type Pairs<T> = Map<T, Set<Body>>;
 
 /** One contact point of a body in the last step. */
 export interface Contact {
-  otherBody: RigidBody;
+  otherBody: Body;
   /** World coordinates. */
   point: Vector3;
   /** Unit vector, world coordinates, along which the other body pushes this one. */
@@ -15,11 +15,11 @@ export interface Contact {
   force: number;
 }
 /** Each body's contact points in the last step. */
-export type Contacts = Map<RigidBody, Contact[]>;
+export type Contacts = Map<Body, Contact[]>;
 
 export function addContact(
   contacts: Contacts,
-  body: RigidBody,
+  body: Body,
   contact: Contact,
 ): void {
   const list = contacts.get(body) ?? [];
@@ -34,18 +34,18 @@ export class Interactions {
   private events: (() => void)[] = [];
   private delivering = false;
 
-  bodies(trigger: Trigger): RigidBody[] {
+  bodies(trigger: Trigger): Body[] {
     return [...(this.overlaps.get(trigger) ?? [])];
   }
   /** Copies, so callers cannot change what later calls return. */
-  contactsOf(body: RigidBody): Contact[] {
+  contactsOf(body: Body): Contact[] {
     return (this.contacts.get(body) ?? []).map((contact) => ({
       ...contact,
       point: contact.point.clone(),
       normal: contact.normal.clone(),
     }));
   }
-  remove(object: RigidBody | Trigger): void {
+  remove(object: Body | Trigger): void {
     const overlaps = without(this.overlaps, object);
     const contacts: Contacts = new Map();
     for (const [body, list] of this.contacts) {
@@ -102,8 +102,8 @@ export class Interactions {
   }
 }
 
-function partners(contacts: Contacts): Pairs<RigidBody> {
-  const pairs: Pairs<RigidBody> = new Map();
+function partners(contacts: Contacts): Pairs<Body> {
+  const pairs: Pairs<Body> = new Map();
   for (const [body, list] of contacts)
     pairs.set(body, new Set(list.map(({ otherBody }) => otherBody)));
   return pairs;
@@ -111,7 +111,7 @@ function partners(contacts: Contacts): Pairs<RigidBody> {
 
 function without(
   pairs: Pairs<Trigger>,
-  removed: RigidBody | Trigger,
+  removed: Body | Trigger,
 ): Pairs<Trigger> {
   const result: Pairs<Trigger> = new Map();
   for (const [owner, bodies] of pairs) {
@@ -124,7 +124,7 @@ function without(
 function transitions<T>(
   previous: Pairs<T>,
   next: Pairs<T>,
-  emit: (owner: T, body: RigidBody, entered: boolean) => void,
+  emit: (owner: T, body: Body, entered: boolean) => void,
 ): void {
   for (const [owner, bodies] of previous)
     for (const body of bodies)

@@ -1,4 +1,4 @@
-import type { Vec3 } from "./colliders/collider.js";
+import type { Vec3 } from "../colliders/collider.js";
 
 export type MassProperties =
   | {

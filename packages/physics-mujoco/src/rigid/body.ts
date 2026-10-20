@@ -6,7 +6,7 @@ import {
 } from "@drawcall/physics";
 import { setWorldPose, type Motion } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import type { Simulation } from "./model/compile.js";
+import type { Simulation } from "../model/compile.js";
 import {
   array,
   at,
@@ -15,7 +15,7 @@ import {
   rotation,
   vector,
   type HeapView,
-} from "./heap.js";
+} from "../heap.js";
 
 export function bodyId(sim: Simulation, body: RigidBody): number {
   const id = sim.bodies.get(body);
@@ -196,5 +196,6 @@ export function refreshPoses(
     if (writePose(api, sim, id, splitTransform(trigger.matrixWorld).pose))
       moved = true;
   }
-  if (moved) api.mj_forward(sim.model, sim.data);
+  // Refresh geometry and passive forces; the split step solves constraints in mj_step2.
+  if (moved) api.mj_step1(sim.model, sim.data);
 }

@@ -15,7 +15,7 @@
     "@pmndrs/pointer-events": "^6.6.30",
     "three": "^0.185.1",
     "@drawcall/physics-mujoco": "workspace:*",
-    "@mujoco/mujoco": "3.13.0"
+    "@mujoco/mujoco": "3.16.0"
   },
   "devDependencies": {
     "@types/three": "^0.185.0",

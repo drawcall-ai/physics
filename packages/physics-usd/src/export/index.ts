@@ -7,6 +7,8 @@ import {
   Joint,
   RigidBody,
   Trigger,
+  SoftBody,
+  SoftAttachment,
   ancestorBody,
   splitTransform,
 } from "@drawcall/physics";
@@ -100,6 +102,8 @@ function collect(scene: Object3D): { bodies: RigidBody[]; joints: Joint[] } {
   const joints: Joint[] = [];
   scene.updateWorldMatrix(true, true);
   scene.traverse((object) => {
+    if (object instanceof SoftBody || object instanceof SoftAttachment)
+      throw new Error("Core USD Physics export does not support deformables");
     if (object instanceof Trigger)
       throw new Error("Core USD Physics cannot represent Trigger volumes");
     if (object instanceof RigidBody) bodies.push(object);
