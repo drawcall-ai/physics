@@ -19,7 +19,7 @@
   "scripts": {
     "build": "node scripts/assets.mjs && node scripts/embed.mjs && rm -rf dist && tsc -p tsconfig.json && node scripts/bundle.mjs",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "vitest run && node --test test/prepare.mjs",
+    "test": "vitest run --dir test && node --test test/prepare.mjs",
     "build:gmsh": "node scripts/gmsh.mjs"
   },
   "dependencies": {

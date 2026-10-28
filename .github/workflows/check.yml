@@ -21,6 +21,10 @@ jobs:
       - uses: emscripten-core/setup-emsdk@v15
         with:
           version: 5.0.2
+      - uses: actions/cache@v4
+        with:
+          path: packages/physics-fem/.cache/gmsh
+          key: ${{ runner.os }}-fem-gmsh-${{ hashFiles('packages/physics-fem/scripts/gmsh.mjs') }}
       - run: pnpm install --frozen-lockfile
       - name: Build CoACD WASM
         run: pnpm --filter @drawcall/physics build:coacd
