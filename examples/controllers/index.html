@@ -4,29 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#e8e9e2" />
-    <title>Character playground · Drawcall Physics</title>
+    <title>Controller playground · Drawcall Physics</title>
   </head>
   <body>
     <canvas
       tabindex="0"
-      aria-label="Playable character physics obstacle course"
+      aria-label="Playable physics controller showcase"
     ></canvas>
     <nav aria-label="Example controls">
       <div class="identity">
-        <h1>Character playground</h1>
-        <p>Shared capsule controller</p>
+        <h1>Controller playground</h1>
+        <p class="description">Four ways to move. One physics API.</p>
+        <div class="modes" aria-label="Choose a controller"></div>
       </div>
       <button class="reset" type="button">Reset <kbd>R</kbd></button>
     </nav>
-    <aside class="telemetry" aria-label="Character state">
+    <aside class="telemetry" aria-label="Controller state">
       <span class="state-dot" aria-hidden="true"></span>
       <output>Preparing the course…</output>
     </aside>
     <footer>
-      <p>
-        <kbd>W A S D</kbd> move <kbd>Space</kbd> jump <kbd>Shift</kbd> run
-        <kbd>C</kbd> crouch
-      </p>
+      <p class="hints"></p>
       <p class="camera-hint">Drag to orbit <span>·</span> Scroll to zoom</p>
     </footer>
     <div class="touch-controls" aria-label="Touch movement controls">
@@ -36,10 +34,7 @@
         <button data-key="KeyS" aria-label="Move backward">↓</button>
         <button data-key="KeyD" aria-label="Move right">→</button>
       </div>
-      <div class="actions">
-        <button data-key="Space">Jump</button>
-        <button data-key="KeyC">Crouch</button>
-      </div>
+      <div class="actions"></div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

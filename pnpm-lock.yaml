@@ -58,7 +58,7 @@ importers:
         specifier: ^8.2.1
         version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
 
-  examples/character:
+  examples/controllers:
     dependencies:
       '@drawcall/physics':
         specifier: workspace:*

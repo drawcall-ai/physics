@@ -46,6 +46,43 @@ h1 {
   font-size: 14px;
   color: var(--muted);
 }
+.modes {
+  display: flex;
+  gap: 4px;
+  margin-top: 18px;
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  pointer-events: auto;
+}
+.modes a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 8px 13px;
+  border-radius: 4px;
+}
+.modes a:hover {
+  background: #e5e9df;
+}
+.modes a[aria-current] {
+  color: #fff8e9;
+  background: #334f47;
+}
+.modes a:focus-visible {
+  outline: 2px solid #a84c28;
+  outline-offset: 2px;
+}
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.hints span {
+  color: var(--muted);
+}
 nav > label {
   display: flex;
   gap: 10px;
@@ -169,7 +206,7 @@ footer kbd:first-child {
     gap: 10px;
   }
   .identity {
-    flex-basis: calc(100% - 90px);
+    flex-basis: 100%;
   }
   h1 {
     font-size: 21px;
@@ -182,6 +219,13 @@ footer kbd:first-child {
   }
   .reset {
     order: 2;
+  }
+  .modes {
+    margin-top: 12px;
+  }
+  .modes a {
+    font-size: 12px;
+    padding: 8px 10px;
   }
   .telemetry {
     left: 18px;
@@ -211,7 +255,7 @@ footer kbd:first-child {
     display: none;
   }
   .telemetry {
-    bottom: 148px;
+    bottom: 192px;
   }
   .touch-controls {
     position: fixed;
@@ -242,7 +286,10 @@ footer kbd:first-child {
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    max-width: 185px;
     gap: 7px;
     align-items: flex-end;
+    justify-content: flex-end;
   }
 }

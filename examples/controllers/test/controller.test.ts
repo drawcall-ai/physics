@@ -3,8 +3,8 @@ import { Group, Matrix4, Quaternion, Scene, Vector3 } from "three";
 import { BoxCollider, RigidBody, type PhysicsWorld } from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
-import { CharacterController } from "../controller";
-import { CapsuleMotor } from "../motor";
+import { CharacterController } from "../character/controller";
+import { CapsuleMotor } from "../character/motor";
 
 const worlds: PhysicsWorld[] = [];
 afterEach(() => {

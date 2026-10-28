@@ -52,6 +52,7 @@ import { array } from "./heap.js";
 import {
   bodyId,
   motionOf,
+  pointVelocity,
   velocity,
   writeVelocity,
   writePose,
@@ -113,8 +114,13 @@ export class MujocoWorld extends PhysicsWorld {
   /** The fingerprints the model was compiled from; undefined once a member left it. */
   private compiled: Fingerprints | undefined = new Map();
   private scales = new Map<Object3D, Vector3>();
-  // Forces and targets wait for the step: a rebuild while refreshing would discard their writes.
-  private forces: { body: RigidBody; force: Vector3; point?: Vector3 }[] = [];
+  // Loads and targets wait for the step: a rebuild while refreshing would discard their writes.
+  private loads: {
+    body: RigidBody;
+    force: Vector3;
+    point?: Vector3;
+    torque?: Vector3;
+  }[] = [];
   private readonly targets = new Map<RigidBody, Matrix4>();
   constructor(
     private readonly api: MainModule,
@@ -173,7 +179,7 @@ export class MujocoWorld extends PhysicsWorld {
       this.simulation.bodies.delete(object);
       this.simulation.targets.delete(object);
       this.targets.delete(object);
-      this.forces = this.forces.filter(({ body }) => body !== object);
+      this.loads = this.loads.filter(({ body }) => body !== object);
     }
   }
   protected prepare(): void {
@@ -194,8 +200,11 @@ export class MujocoWorld extends PhysicsWorld {
     checkReducedContacts(api, simulation);
     let contacts: ReturnType<typeof sampleContacts>;
     try {
-      for (const { body, force, point } of this.forces.splice(0))
-        wrench(api, simulation, bodyId(simulation, body), force, { point });
+      for (const { body, force, point, torque } of this.loads.splice(0))
+        wrench(api, simulation, bodyId(simulation, body), force, {
+          point,
+          torque,
+        });
       for (const { body, force, point } of this.softForces.splice(0))
         (body.model ? reducedLoad : softLoad)(
           api,
@@ -227,7 +236,7 @@ export class MujocoWorld extends PhysicsWorld {
     this.interactions.replace(sampleOverlaps(api, simulation), contacts);
   }
   protected restore(): void {
-    this.forces.length = 0;
+    this.loads.length = 0;
     this.softForces.length = 0;
     this.targets.clear();
     for (const [body, pose] of this.bodies) setWorldPose(body, pose);
@@ -267,6 +276,14 @@ export class MujocoWorld extends PhysicsWorld {
   }
   protected readVelocity(body: RigidBody): PhysicsVelocity {
     return velocity(this.api, this.simulation, bodyId(this.simulation, body));
+  }
+  protected readPointVelocity(body: RigidBody, point: Vector3): Vector3 {
+    return pointVelocity(
+      this.api,
+      this.simulation,
+      bodyId(this.simulation, body),
+      point,
+    );
   }
   protected capsuleContactQuery(
     shape: CapsuleShape,
@@ -336,7 +353,10 @@ export class MujocoWorld extends PhysicsWorld {
     this.targets.set(body, pose.clone());
   }
   protected writeForce(body: RigidBody, force: Vector3, point?: Vector3): void {
-    this.forces.push({ body, force: force.clone(), point: point?.clone() });
+    this.loads.push({ body, force: force.clone(), point: point?.clone() });
+  }
+  protected writeTorque(body: RigidBody, torque: Vector3): void {
+    this.loads.push({ body, force: new Vector3(), torque: torque.clone() });
   }
   protected writeImpulse(
     body: RigidBody,

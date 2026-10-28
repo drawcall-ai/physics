@@ -154,6 +154,9 @@ export abstract class PhysicsWorld {
     throw new Error("This backend does not support capsule casts");
   }
   protected abstract readVelocity(body: RigidBody): PhysicsVelocity;
+  protected readPointVelocity(_body: RigidBody, _point: Vector3): Vector3 {
+    throw new Error("This backend does not support point velocity queries");
+  }
   /** Changes the given parts of a dynamic body's velocity. */
   protected abstract writeVelocity(
     body: RigidBody,
@@ -178,6 +181,9 @@ export abstract class PhysicsWorld {
     force: Vector3,
     point?: Vector3,
   ): void;
+  protected writeTorque(_body: RigidBody, _torque: Vector3): void {
+    throw new Error("This backend does not support torques");
+  }
   protected abstract writeSleeping(body: RigidBody, sleeping: boolean): void;
   protected abstract jointReading(joint: Joint): JointReading;
 
@@ -206,6 +212,12 @@ export abstract class PhysicsWorld {
   getVelocity(body: RigidBody): PhysicsVelocity {
     this.join(body);
     return this.readVelocity(body);
+  }
+  /** Velocity in m/s of a world-space point fixed to the body, including its rotation. */
+  getVelocityAtPoint(body: RigidBody, point: Vector3): Vector3 {
+    validateVector(point);
+    this.join(body);
+    return this.readPointVelocity(body, point);
   }
   setVelocity(body: RigidBody, value: Partial<PhysicsVelocity>): void {
     validateVelocity(body, value);
@@ -257,6 +269,13 @@ export abstract class PhysicsWorld {
     if (body instanceof SoftBody)
       return this.writeSoftForce(body, force, point);
     this.writeForce(body, force, point);
+  }
+  /** Adds a world-space torque in N·m for the next fixed step. */
+  applyTorque(body: RigidBody, torque: Vector3): void {
+    validateVector(torque);
+    assertBodyType(body, "dynamic", "A torque");
+    this.join(body);
+    this.writeTorque(body, torque);
   }
   wake(body: RigidBody): void {
     this.join(body);

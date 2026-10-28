@@ -143,6 +143,10 @@ export class RigidBody extends Group<BodyEventMap> {
   getVelocity(): PhysicsVelocity {
     return commandWorld(this).getVelocity(this);
   }
+  /** Velocity in m/s at a world-space point, including the body's rotation. */
+  getVelocityAtPoint(point: Vector3): Vector3 {
+    return commandWorld(this).getVelocityAtPoint(this, point);
+  }
   setVelocity(value: Partial<PhysicsVelocity>): this {
     commandWorld(this).setVelocity(this, value);
     return this;
@@ -165,6 +169,10 @@ export class RigidBody extends Group<BodyEventMap> {
   }
   applyForce(force: Vector3, point?: Vector3): void {
     commandWorld(this).applyForce(this, force, point);
+  }
+  /** Adds a world-space torque in N·m for the next fixed step. */
+  applyTorque(torque: Vector3): void {
+    commandWorld(this).applyTorque(this, torque);
   }
   wake(): void {
     commandWorld(this).wake(this);

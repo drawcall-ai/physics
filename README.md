@@ -40,9 +40,9 @@ In a clone of the [repository](https://github.com/drawcall-ai/physics):
 ```sh
 pnpm --filter @drawcall/example-ragdoll dev  # articulated ragdoll, pointer grab
 pnpm --filter @drawcall/example-car dev      # powered car with suspension
-pnpm --filter @drawcall/example-character dev # shared capsule controller and obstacle course
+pnpm --filter @drawcall/example-controllers dev # character, car, plane, quadcopter
 pnpm --filter @drawcall/example-scale dev    # scaled colliders and decomposition
 pnpm --filter @drawcall/example-softbody dev # grip a block, cloth, or cord with reduced FEM pads
 ```
 
-The [character playground](examples/character) runs the same movement controller with Rapier or MuJoCo. Switch backends in the page to try stairs, slopes, crouching, and moving platforms.
+The [controller playground](examples/controllers) shows four game controllers built on the shared API: capsule movement, a raycast car, an assisted plane, and a hovering quadcopter. Switch modes and backends in the page; every controller runs on Rapier and MuJoCo.

@@ -251,6 +251,9 @@ export class RapierWorld extends PhysicsWorld {
       angular: new Vector3().copy(body.angvel()),
     };
   }
+  protected readPointVelocity(object: RigidBody, point: Vector3): Vector3 {
+    return new Vector3().copy(this.body(object).velocityAtPoint(point));
+  }
   protected writeVelocity(
     object: RigidBody,
     value: Partial<PhysicsVelocity>,
@@ -286,6 +289,9 @@ export class RapierWorld extends PhysicsWorld {
     const body = this.body(object);
     if (point) body.addForceAtPoint(force, point, true);
     else body.addForce(force, true);
+  }
+  protected writeTorque(object: RigidBody, torque: Vector3): void {
+    this.body(object).addTorque(torque, true);
   }
   protected writeSleeping(object: RigidBody, sleeping: boolean): void {
     if (sleeping) this.body(object).sleep();
