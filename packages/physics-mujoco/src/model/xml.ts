@@ -132,7 +132,10 @@ export function modelXml(
     options.memory === undefined ? "" : `<size memory="${options.memory}"/>`;
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
   // Independent XYZ flex particles support the default Newton solver, including connect attachments.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option>${size}<asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${deformable.bodies}${condensed.bodies}${(sites.get(null) ?? []).join("")}</worldbody><deformable>${deformable.flexes}${condensed.flexes}${guards}</deformable><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  // Query-only geometry never contributes contacts or ray hits (group 5 is reserved).
+  const probe =
+    '<geom name="capsule-query" type="capsule" size="0.1 0.1" contype="0" conaffinity="0" group="5"/>';
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option>${size}<asset>${assets.join("")}</asset><worldbody>${probe}${xmlBodies}${xmlTargets}${xmlTriggers}${deformable.bodies}${condensed.bodies}${(sites.get(null) ?? []).join("")}</worldbody><deformable>${deformable.flexes}${condensed.flexes}${guards}</deformable><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates };
 }
 

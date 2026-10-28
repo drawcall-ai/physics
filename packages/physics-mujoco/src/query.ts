@@ -12,7 +12,7 @@ import { array, at, vector } from "./heap.js";
 import { matches, type Geometry } from "./model/shapes.js";
 
 /** MuJoCo filters rays by geometry group; the adapter filters by collider instead. */
-const everyGroup = [1, 1, 1, 1, 1, 1];
+const rayGroups = [1, 1, 1, 1, 1, 0];
 function rigidRaycast(
   api: MainModule,
   sim: Simulation,
@@ -30,7 +30,7 @@ function rigidRaycast(
       sim.data,
       origin.toArray(),
       unit.toArray(),
-      everyGroup,
+      rayGroups,
       true,
       -1,
       found,

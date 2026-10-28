@@ -1,0 +1,23 @@
+{
+  "name": "@drawcall/example-character",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --testTimeout=30000"
+  },
+  "dependencies": {
+    "@drawcall/physics": "workspace:*",
+    "@drawcall/physics-rapier": "workspace:*",
+    "@drawcall/physics-mujoco": "workspace:*",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1"
+  }
+}

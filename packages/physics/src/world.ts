@@ -19,6 +19,13 @@ import type { Body } from "./body.js";
 import { SoftBody } from "./soft/body.js";
 import { SoftAttachment } from "./soft/attachment.js";
 import {
+  validateCapsule,
+  type CapsuleShape,
+  type CapsuleQueryOptions,
+  type CapsuleContact,
+  type CapsuleCastHit,
+} from "./capsule.js";
+import {
   claim,
   claimScene,
   commandWorld,
@@ -130,6 +137,22 @@ export abstract class PhysicsWorld {
     maxDistance: number,
     options: RaycastOptions,
   ): RaycastHit | null;
+  protected capsuleContactQuery(
+    _shape: CapsuleShape,
+    _pose: Matrix4,
+    _maxDistance: number,
+    _options: CapsuleQueryOptions,
+  ): CapsuleContact[] {
+    throw new Error("This backend does not support capsule contacts");
+  }
+  protected capsuleCastQuery(
+    _shape: CapsuleShape,
+    _pose: Matrix4,
+    _displacement: Vector3,
+    _options: CapsuleQueryOptions,
+  ): CapsuleCastHit | null {
+    throw new Error("This backend does not support capsule casts");
+  }
   protected abstract readVelocity(body: RigidBody): PhysicsVelocity;
   /** Changes the given parts of a dynamic body's velocity. */
   protected abstract writeVelocity(
@@ -267,6 +290,44 @@ export abstract class PhysicsWorld {
     this.assertLive();
     this.refresh();
     return this.cast(origin, unit, maxDistance, options);
+  }
+  /** Contacts within `maxDistance` of a capsule at an arbitrary rigid pose. */
+  capsuleContacts(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    maxDistance: number,
+    options: CapsuleQueryOptions = {},
+  ): CapsuleContact[] {
+    validateCapsule(shape, pose, options);
+    if (!Number.isFinite(maxDistance) || maxDistance < 0)
+      throw new Error(
+        "Capsule contact distance must be finite and nonnegative",
+      );
+    this.assertLive();
+    this.refresh();
+    this.assertLive();
+    return this.capsuleContactQuery(shape, pose, maxDistance, options);
+  }
+  /**
+   * Sweeps a capsule by a world-space translation, without rotating it. Returns the first
+   * blocking contact; touching or penetrating convex surfaces allow motion away or tangent.
+   * Zero translation has no hit; use capsuleContacts to inspect the starting pose.
+   */
+  castCapsule(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    displacement: Vector3,
+    options: CapsuleQueryOptions = {},
+  ): CapsuleCastHit | null {
+    validateCapsule(shape, pose, options);
+    validateVector(displacement);
+    if (!Number.isFinite(displacement.length()))
+      throw new Error("Capsule translation length must be finite");
+    this.assertLive();
+    this.refresh();
+    this.assertLive();
+    if (displacement.lengthSq() === 0) return null;
+    return this.capsuleCastQuery(shape, pose, displacement, options);
   }
   /**
    * Decomposes the triangle meshes under `root` that this backend collides as convex parts, and

@@ -1,0 +1,248 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #263d3a;
+  background: #e8e9e2;
+  font-synthesis: none;
+  --surface: #f5f5ef;
+  --line: #bfc8bf;
+  --muted: #526963;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  touch-action: none;
+  outline: none;
+}
+nav {
+  position: fixed;
+  top: 24px;
+  left: 28px;
+  right: 28px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  pointer-events: none;
+}
+.identity {
+  flex: 1;
+}
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.identity p {
+  margin: 7px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+nav > label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  order: 1;
+}
+button,
+select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  min-height: 38px;
+  padding: 8px 12px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+button:hover,
+select:hover {
+  background: #fff;
+  border-color: #82968a;
+}
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid #a84c28;
+  outline-offset: 4px;
+}
+button:active {
+  background: #dce4da;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.reset {
+  order: 2;
+}
+.reset kbd {
+  margin-left: 10px;
+}
+kbd {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+.telemetry {
+  position: fixed;
+  left: 28px;
+  bottom: 82px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  padding: 9px 12px;
+  background: var(--surface);
+  border-radius: 5px;
+}
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #407461;
+  flex-shrink: 0;
+}
+body[data-airborne="true"] .state-dot {
+  background: #bc6b38;
+}
+body[data-error="true"] .state-dot {
+  background: #b82c2c;
+}
+footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  min-height: 60px;
+  padding: 17px 28px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+footer p {
+  margin: 0;
+  font-size: 12px;
+}
+footer kbd {
+  margin-left: 15px;
+  margin-right: 5px;
+}
+footer kbd:first-child {
+  margin-left: 0;
+}
+.camera-hint {
+  color: var(--muted);
+}
+.camera-hint span {
+  margin: 0 6px;
+}
+.touch-controls {
+  display: none;
+}
+@media (max-width: 720px) {
+  nav {
+    top: 18px;
+    left: 18px;
+    right: 18px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .identity {
+    flex-basis: calc(100% - 90px);
+  }
+  h1 {
+    font-size: 21px;
+  }
+  .identity p {
+    font-size: 12px;
+  }
+  nav > label {
+    order: 3;
+  }
+  .reset {
+    order: 2;
+  }
+  .telemetry {
+    left: 18px;
+    bottom: 74px;
+    max-width: calc(100% - 36px);
+    font-size: 12px;
+  }
+  footer {
+    padding: 12px 18px;
+    min-height: 55px;
+  }
+  footer p {
+    font-size: 11px;
+    line-height: 2;
+  }
+  footer kbd {
+    margin-left: 7px;
+    margin-right: 2px;
+    font-size: 10px;
+  }
+  .camera-hint {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  footer {
+    display: none;
+  }
+  .telemetry {
+    bottom: 148px;
+  }
+  .touch-controls {
+    position: fixed;
+    display: flex;
+    justify-content: space-between;
+    left: 18px;
+    right: 18px;
+    bottom: 22px;
+    pointer-events: none;
+  }
+  .touch-controls button {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: none;
+    user-select: none;
+  }
+  .directions {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(2, 44px);
+    gap: 4px;
+  }
+  .directions button:first-child {
+    grid-column: 2;
+  }
+  .directions button:nth-child(2) {
+    grid-column: 1;
+  }
+  .actions {
+    display: flex;
+    gap: 7px;
+    align-items: flex-end;
+  }
+}

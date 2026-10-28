@@ -34,6 +34,7 @@ export type { ModelOptions } from "./xml.js";
 export interface Simulation {
   model: MjModel;
   data: MjData;
+  capsuleProbe: number;
   bodies: Map<RigidBody, number>;
   soft: Map<SoftBody, SoftState>;
   reduced: Map<SoftBody, ReducedState>;
@@ -164,6 +165,7 @@ export function compile(
     return {
       model,
       data,
+      capsuleProbe: id(api.mjtObj.mjOBJ_GEOM.value, "capsule-query"),
       bodies: bodyIds,
       soft: new Map(
         [...soft].map(([body, mesh]) => [

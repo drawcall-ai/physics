@@ -10,6 +10,8 @@ import {
   type JointReading,
   type PhysicsVelocity,
   type RaycastOptions,
+  type CapsuleShape,
+  type CapsuleQueryOptions,
 } from "@drawcall/physics";
 import {
   rollback,
@@ -60,6 +62,7 @@ import {
 import { damp, wrench } from "./rigid/force.js";
 import { applyDrives } from "./drive.js";
 import { raycast } from "./query.js";
+import { capsuleContacts, castCapsule } from "./capsule.js";
 import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import {
   fingerprint,
@@ -87,6 +90,10 @@ import {
  * contact point, so holding torque depends on the contact manifold. Restitution maps to contact
  * damping. Collision groups that need more than 32 contact bits, engine warnings, and
  * non-finite simulation state throw.
+ *
+ * Capsule queries support rigid primitives and convex mesh parts, with linear candidate scans.
+ * Heightfields are unsupported; soft bodies and triggers are omitted. Sweeps translate against
+ * the current obstacle poses and do not predict obstacle motion.
  */
 export class MujocoWorld extends PhysicsWorld {
   private readonly options: ModelOptions;
@@ -260,6 +267,38 @@ export class MujocoWorld extends PhysicsWorld {
   }
   protected readVelocity(body: RigidBody): PhysicsVelocity {
     return velocity(this.api, this.simulation, bodyId(this.simulation, body));
+  }
+  protected capsuleContactQuery(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    maxDistance: number,
+    options: CapsuleQueryOptions,
+  ) {
+    refreshPoses(this.api, this.simulation);
+    return capsuleContacts(
+      this.api,
+      this.simulation,
+      shape,
+      pose,
+      maxDistance,
+      options,
+    );
+  }
+  protected capsuleCastQuery(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    displacement: Vector3,
+    options: CapsuleQueryOptions,
+  ) {
+    refreshPoses(this.api, this.simulation);
+    return castCapsule(
+      this.api,
+      this.simulation,
+      shape,
+      pose,
+      displacement,
+      options,
+    );
   }
   protected writeVelocity(
     body: RigidBody,

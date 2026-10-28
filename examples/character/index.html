@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#e8e9e2" />
+    <title>Character playground · Drawcall Physics</title>
+  </head>
+  <body>
+    <canvas
+      tabindex="0"
+      aria-label="Playable character physics obstacle course"
+    ></canvas>
+    <nav aria-label="Example controls">
+      <div class="identity">
+        <h1>Character playground</h1>
+        <p>Shared capsule controller</p>
+      </div>
+      <button class="reset" type="button">Reset <kbd>R</kbd></button>
+    </nav>
+    <aside class="telemetry" aria-label="Character state">
+      <span class="state-dot" aria-hidden="true"></span>
+      <output>Preparing the course…</output>
+    </aside>
+    <footer>
+      <p>
+        <kbd>W A S D</kbd> move <kbd>Space</kbd> jump <kbd>Shift</kbd> run
+        <kbd>C</kbd> crouch
+      </p>
+      <p class="camera-hint">Drag to orbit <span>·</span> Scroll to zoom</p>
+    </footer>
+    <div class="touch-controls" aria-label="Touch movement controls">
+      <div class="directions">
+        <button data-key="KeyW" aria-label="Move forward">↑</button>
+        <button data-key="KeyA" aria-label="Move left">←</button>
+        <button data-key="KeyS" aria-label="Move backward">↓</button>
+        <button data-key="KeyD" aria-label="Move right">→</button>
+      </div>
+      <div class="actions">
+        <button data-key="Space">Jump</button>
+        <button data-key="KeyC">Crouch</button>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

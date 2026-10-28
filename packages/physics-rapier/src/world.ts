@@ -11,6 +11,10 @@ import {
   type PhysicsVelocity,
   type RaycastHit,
   type RaycastOptions,
+  type CapsuleShape,
+  type CapsuleQueryOptions,
+  type CapsuleContact,
+  type CapsuleCastHit,
   splitTransform,
 } from "@drawcall/physics";
 import { initialVelocity, type Member } from "@drawcall/physics/backend";
@@ -25,6 +29,7 @@ import { applyDrives } from "./drive.js";
 import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import { RapierJointBinding, prepareJoint } from "./joint.js";
 import { raycast, type Owner } from "./query.js";
+import { capsuleContacts, castCapsule } from "./capsule.js";
 import { TriggerBinding, prepareTrigger, releaseTrigger } from "./trigger.js";
 import { decomposes } from "./shapes.js";
 import { SoftBinding } from "./soft/body.js";
@@ -190,6 +195,40 @@ export class RapierWorld extends PhysicsWorld {
   }
   protected readSoftPositions(object: SoftBody): Float32Array {
     return need(this.softBodies, object).native.particlePositions();
+  }
+  protected capsuleContactQuery(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    maxDistance: number,
+    options: CapsuleQueryOptions,
+  ): CapsuleContact[] {
+    this.simulation.propagateModifiedBodyPositionsToColliders();
+    return capsuleContacts(
+      this.api,
+      this.simulation,
+      this.owners(),
+      shape,
+      pose,
+      maxDistance,
+      options,
+    );
+  }
+  protected capsuleCastQuery(
+    shape: CapsuleShape,
+    pose: Matrix4,
+    displacement: Vector3,
+    options: CapsuleQueryOptions,
+  ): CapsuleCastHit | null {
+    this.simulation.propagateModifiedBodyPositionsToColliders();
+    return castCapsule(
+      this.api,
+      this.simulation,
+      this.owners(),
+      shape,
+      pose,
+      displacement,
+      options,
+    );
   }
   protected writeSoftImpulse(
     object: SoftBody,

@@ -58,6 +58,31 @@ importers:
         specifier: ^8.2.1
         version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
 
+  examples/character:
+    dependencies:
+      '@drawcall/physics':
+        specifier: workspace:*
+        version: link:../../packages/physics
+      '@drawcall/physics-mujoco':
+        specifier: workspace:*
+        version: link:../../packages/physics-mujoco
+      '@drawcall/physics-rapier':
+        specifier: workspace:*
+        version: link:../../packages/physics-rapier
+      three:
+        specifier: ^0.185.1
+        version: 0.185.1
+    devDependencies:
+      '@types/three':
+        specifier: ^0.185.0
+        version: 0.185.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.2.1
+        version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
+
   examples/ragdoll:
     dependencies:
       '@drawcall/physics':

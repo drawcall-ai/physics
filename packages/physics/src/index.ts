@@ -69,6 +69,12 @@ export {
   type JointReading,
 } from "./joints/reading.js";
 export { type RaycastOptions, type RaycastHit } from "./raycast.js";
+export type {
+  CapsuleShape,
+  CapsuleQueryOptions,
+  CapsuleContact,
+  CapsuleCastHit,
+} from "./capsule.js";
 export { clone } from "./clone.js";
 export { splitTransform } from "./transforms.js";
 export { resolveCollider } from "./colliders/shapes.js";
