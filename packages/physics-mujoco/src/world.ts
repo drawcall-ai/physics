@@ -29,6 +29,16 @@ import { carryState } from "./model/state.js";
 import { modelOptions, type MujocoWorldOptions } from "./options.js";
 import { softMesh, type SoftMesh } from "./soft/mesh.js";
 import { attachment, type Attachment } from "./soft/model.js";
+import { reducedMesh, type ReducedMesh } from "./reduced/model.js";
+import {
+  applyReduced,
+  carryReduced,
+  checkReducedMount,
+  reducedLoad,
+  reducedPositions,
+  writeReducedGeometry,
+} from "./reduced/state.js";
+import { checkReducedContacts } from "./reduced/guard.js";
 import {
   carrySoft,
   dampSoft,
@@ -60,7 +70,23 @@ import {
 
 /**
  * Simulates its members in one compiled MuJoCo model, which it rebuilds whenever membership or
- * an authored property the model bakes in changes.
+ * an authored property the model bakes in changes. Rebuilds preserve poses, joint velocities,
+ * and kinematic targets. Collider edits, joint enablement, and drive replacement rebuild;
+ * drive target changes do not. Scale is fixed when a member first joins.
+ *
+ * Constrained joints form a tree with one parent joint per dynamic `body1`, no cycles, and
+ * initially aligned locked coordinates; distance and fully free generic joints need no tree.
+ * Fixed joints cannot enable `collideConnected`. Scalar limits need a nonzero range, and an
+ * unbounded distance maximum needs a zero minimum. Velocity commands require a free root;
+ * teleport moves its articulation and rejects articulations anchored to the world or a
+ * static/kinematic base. Manual sleeping is unsupported.
+ *
+ * Kinematic targets track compliantly and can lag under load; colliderless kinematic bodies
+ * use unit mass and inertia unless mass properties are supplied. Static and dynamic friction
+ * must match. Friction uses the larger collider value; torsional and rolling friction act per
+ * contact point, so holding torque depends on the contact manifold. Restitution maps to contact
+ * damping. Collision groups that need more than 32 contact bits, engine warnings, and
+ * non-finite simulation state throw.
  */
 export class MujocoWorld extends PhysicsWorld {
   private readonly options: ModelOptions;
@@ -69,6 +95,8 @@ export class MujocoWorld extends PhysicsWorld {
   private readonly joints = new Map<Joint, JointBinding>();
   private readonly triggers = new Set<Trigger>();
   private readonly soft = new Map<SoftBody, SoftMesh>();
+  private readonly reduced = new Map<SoftBody, ReducedMesh>();
+  private readonly reducedAttachments = new Set<SoftAttachment>();
   private readonly attachments = new Map<SoftAttachment, Attachment>();
   private softForces: { body: SoftBody; force: Vector3; point?: Vector3 }[] =
     [];
@@ -95,8 +123,13 @@ export class MujocoWorld extends PhysicsWorld {
   }
   protected add(object: Member): void {
     if (object instanceof SoftBody) {
-      this.soft.set(object, softMesh(object));
+      if (object.model) this.reduced.set(object, reducedMesh(object));
+      else this.soft.set(object, softMesh(object));
     } else if (object instanceof SoftAttachment) {
+      if (this.reduced.has(object.options.body)) {
+        this.reducedAttachments.add(object);
+        return;
+      }
       const mesh = this.soft.get(object.options.body);
       if (!mesh) throw new Error("Soft attachment requires a joined body");
       const positions = this.simulation.soft.has(object.options.body)
@@ -115,9 +148,12 @@ export class MujocoWorld extends PhysicsWorld {
     this.compiled = undefined;
     if (object instanceof SoftAttachment) {
       this.attachments.delete(object);
+      this.reducedAttachments.delete(object);
     } else if (object instanceof SoftBody) {
       this.soft.delete(object);
       this.simulation.soft.delete(object);
+      this.reduced.delete(object);
+      this.simulation.reduced.delete(object);
       this.softForces = this.softForces.filter(({ body }) => body !== object);
     } else if (object instanceof Joint) {
       this.joining.delete(object);
@@ -140,10 +176,6 @@ export class MujocoWorld extends PhysicsWorld {
   }
   protected step(): void {
     const { api, simulation } = this;
-    for (const { body, force, point } of this.forces.splice(0))
-      wrench(api, simulation, bodyId(simulation, body), force, { point });
-    for (const { body, force, point } of this.softForces.splice(0))
-      softLoad(api, simulation, body, force, point, false);
     let moved = false;
     for (const [body, matrix] of this.targets) {
       const id = simulation.targets.get(body);
@@ -152,18 +184,37 @@ export class MujocoWorld extends PhysicsWorld {
     }
     this.targets.clear();
     refreshPoses(api, simulation, moved);
-    damp(api, simulation, this.fixedDelta);
-    dampSoft(simulation, this.fixedDelta);
-    applyDrives(api, simulation, this.joints, this.fixedDelta);
-    // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
-    // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
-    api.mj_step2(simulation.model, simulation.data);
-    const contacts = sampleContacts(api, simulation);
-    api.mj_step1(simulation.model, simulation.data);
-    checkState(api, simulation);
-    array(simulation.data.qfrc_applied).fill(0);
+    checkReducedContacts(api, simulation);
+    let contacts: ReturnType<typeof sampleContacts>;
+    try {
+      for (const { body, force, point } of this.forces.splice(0))
+        wrench(api, simulation, bodyId(simulation, body), force, { point });
+      for (const { body, force, point } of this.softForces.splice(0))
+        (body.model ? reducedLoad : softLoad)(
+          api,
+          simulation,
+          body,
+          force,
+          point,
+          false,
+        );
+      damp(api, simulation, this.fixedDelta);
+      dampSoft(simulation, this.fixedDelta);
+      applyDrives(api, simulation, this.joints, this.fixedDelta);
+      applyReduced(api, simulation);
+      // Reuse the current step1 result; the guard restores physical contacts after its query.
+      api.mj_step2(simulation.model, simulation.data);
+      contacts = sampleContacts(api, simulation);
+      checkReducedContacts(api, simulation);
+      if (!simulation.reduced.size)
+        api.mj_step1(simulation.model, simulation.data);
+      checkState(api, simulation);
+    } finally {
+      array(simulation.data.qfrc_applied).fill(0);
+    }
     writeBack(simulation);
     writeSoftGeometry(simulation);
+    writeReducedGeometry(simulation);
     for (const binding of this.joints.values()) binding.track();
     refreshPoses(api, simulation);
     this.interactions.replace(sampleOverlaps(api, simulation), contacts);
@@ -181,7 +232,10 @@ export class MujocoWorld extends PhysicsWorld {
     this.simulation.free();
   }
   protected readSoftPositions(body: SoftBody): Float32Array {
-    return softPositions(this.simulation, body);
+    return (body.model ? reducedPositions : softPositions)(
+      this.simulation,
+      body,
+    );
   }
   protected writeSoftForce(
     body: SoftBody,
@@ -195,7 +249,14 @@ export class MujocoWorld extends PhysicsWorld {
     impulse: Vector3,
     point?: Vector3,
   ): void {
-    softLoad(this.api, this.simulation, body, impulse, point, true);
+    (body.model ? reducedLoad : softLoad)(
+      this.api,
+      this.simulation,
+      body,
+      impulse,
+      point,
+      true,
+    );
   }
   protected readVelocity(body: RigidBody): PhysicsVelocity {
     return velocity(this.api, this.simulation, bodyId(this.simulation, body));
@@ -213,6 +274,9 @@ export class MujocoWorld extends PhysicsWorld {
     this.api.mj_forward(this.simulation.model, this.simulation.data);
   }
   protected writePoses(bodies: ReadonlySet<RigidBody>): void {
+    for (const body of bodies)
+      for (const mesh of this.reduced.values())
+        checkReducedMount(mesh, body, body.matrixWorld);
     const anchored = [...this.joints.keys()].some(
       (joint) =>
         treeJoint(joint) &&
@@ -228,6 +292,8 @@ export class MujocoWorld extends PhysicsWorld {
     for (const binding of this.joints.values()) binding.rebaseIfSplit(bodies);
   }
   protected writeTarget(body: RigidBody, pose: Matrix4): void {
+    for (const mesh of this.reduced.values())
+      checkReducedMount(mesh, body, pose);
     this.targets.set(body, pose.clone());
   }
   protected writeForce(body: RigidBody, force: Vector3, point?: Vector3): void {
@@ -272,6 +338,21 @@ export class MujocoWorld extends PhysicsWorld {
     );
   }
   private fingerprints(): Fingerprints {
+    for (const [body, mesh] of this.reduced) {
+      body.validate();
+      if (mesh.target?.bodyType === "static") {
+        mesh.target.updateWorldMatrix(true, false);
+        checkReducedMount(mesh, mesh.target, mesh.target.matrixWorld);
+      }
+      if (
+        body.matrixWorld.elements.some(
+          (entry, i) => Math.abs(entry - (mesh.pose.elements[i] ?? NaN)) > 1e-6,
+        )
+      )
+        throw new Error(
+          "Move reduced FEM through its attachment target; its component frame is fixed after joining",
+        );
+    }
     for (const [body, mesh] of this.soft) {
       body.validate();
       const scale = new Vector3().setFromMatrixScale(body.matrixWorld).x;
@@ -285,6 +366,8 @@ export class MujocoWorld extends PhysicsWorld {
       ...this.joining,
       ...this.soft.keys(),
       ...this.attachments.keys(),
+      ...this.reduced.keys(),
+      ...this.reducedAttachments,
     ];
     return new Map(members.map((member) => [member, fingerprint(member)]));
   }
@@ -308,10 +391,14 @@ export class MujocoWorld extends PhysicsWorld {
       this.options,
       this.soft,
       this.attachments.values(),
+      this.reduced,
+      [...this.reducedAttachments],
     );
     try {
       carryState(this.api, previous, next, joints);
       carrySoft(previous, next);
+      carryReduced(previous, next);
+      checkReducedContacts(this.api, next);
       this.api.mj_forward(next.model, next.data);
       checkState(this.api, next);
     } catch (error) {
@@ -320,6 +407,7 @@ export class MujocoWorld extends PhysicsWorld {
     this.simulation.free();
     this.simulation = next;
     writeSoftGeometry(next);
+    writeReducedGeometry(next);
     for (const [body, pose] of bodies) this.bodies.set(body, pose);
     for (const [joint, binding] of joints) this.joints.set(joint, binding);
     this.joining.clear();

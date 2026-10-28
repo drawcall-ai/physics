@@ -9,13 +9,16 @@
   "license": "MIT",
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fixture": "node scripts/fixture.ts",
+    "validate:usd": "python scripts/validate.py"
   },
   "dependencies": {
     "fflate": "^0.8.2"

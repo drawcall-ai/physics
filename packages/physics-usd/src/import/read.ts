@@ -61,6 +61,7 @@ function compose(
   files: Record<string, Uint8Array>,
   visited: Set<string>,
 ): Layer {
+  // The binary parser drops applied schemas, so USDC could silently lose physics without this guard.
   if (!text.startsWith("#usda 1.0"))
     throw new Error(
       "Physics USD import currently supports ASCII USDA layers; convert USDC to USDA first",

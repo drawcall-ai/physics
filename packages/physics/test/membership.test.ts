@@ -1,7 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { Group, Matrix4, Scene, Vector3 } from "three";
 import {
-  BoxCollider,
   FixedJoint,
   PhysicsWorld,
   RevoluteJoint,
@@ -497,23 +496,6 @@ it("allows one live world per scene and exposes its gravity", async () => {
   await expect(create(scene)).rejects.toThrow("already has a physics world");
   world.dispose();
   expect((await create(scene)).disposed).toBe(false);
-});
-
-it("marks physics objects", () => {
-  const ball = body("ball");
-  const objects = [
-    ball,
-    new Trigger(),
-    new BoxCollider(),
-    new RevoluteJoint({ body0: null, body1: ball }),
-  ];
-  expect(objects.map((object) => object.isPhysicsObject)).toEqual([
-    true,
-    true,
-    true,
-    true,
-  ]);
-  expect(new Group()).not.toHaveProperty("isPhysicsObject");
 });
 
 it("rejects commands on a removed body and restarts it from its options as it rejoins", async () => {

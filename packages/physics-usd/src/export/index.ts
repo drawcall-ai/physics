@@ -19,11 +19,19 @@ import { Hierarchy } from "./hierarchy.js";
 import { writeJoint } from "./joints.js";
 import { Prim, tuple } from "./prim.js";
 
+/** Visual USDZ options plus gravity. Nonempty `animations` and `onlyVisible: true` are rejected. */
 export interface PhysicsUSDExportOptions extends USDZExporterOptions {
   /** Defaults to Earth gravity along -Y. */
   gravity?: Vec3;
 }
 
+/**
+ * Exports visuals, rigid bodies, colliders, materials, and joints as a Y-up, meter/kilogram
+ * USDZ stage. Object names survive as display names. Unsupported physics is rejected:
+ * deformables, triggers, collision groups, damping, gravity-scale or sleep-policy overrides,
+ * torsional/rolling friction, and drive effort, velocity limits, friction loss, or armature.
+ * Drives require a target; distance drives use a package extension to USD Physics.
+ */
 export class PhysicsUSDExporter {
   private readonly visual = new USDZExporter();
 
@@ -31,6 +39,11 @@ export class PhysicsUSDExporter {
     this.visual.setTextureUtils(utils);
   }
 
+  /**
+   * Captures current transforms without changing scene membership or authored properties.
+   * Dynamic bodies export live velocity when joined to a world, otherwise their velocity option.
+   * Call the world's `reset()` first to capture join poses and initial velocities.
+   */
   async parseAsync(
     scene: Object3D,
     options: PhysicsUSDExportOptions = {},
@@ -73,6 +86,7 @@ export class PhysicsUSDExporter {
       jointScope,
       scenePrim(options.gravity ?? [0, -9.81, 0]),
     );
+    // Delegate visuals to Three and compose the physics root over its exported layer.
     const files = unzipSync(
       new Uint8Array(
         await this.visual.parseAsync(visuals, {

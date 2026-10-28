@@ -5,6 +5,7 @@ import {
   splitTransform,
   type Joint,
   type SoftBody,
+  type SoftAttachment,
 } from "@drawcall/physics";
 import { treeJoint, type JointBinding } from "@drawcall/physics/backend";
 import { shapes, type Geometry } from "./shapes.js";
@@ -12,6 +13,8 @@ import { contactAttributes, exclusions } from "./contacts.js";
 import { jointXml, driveOf, drives, type Coordinate } from "./joints.js";
 import { softXml, type Attachment } from "../soft/model.js";
 import type { SoftMesh } from "../soft/mesh.js";
+import { reducedXml, type ReducedMesh } from "../reduced/model.js";
+import { guardXml } from "../reduced/guard.js";
 import { name, placement } from "./markup.js";
 
 export interface ModelOptions {
@@ -29,6 +32,8 @@ export function modelXml(
   options: ModelOptions,
   soft: ReadonlyMap<SoftBody, SoftMesh> = new Map(),
   attachments: Iterable<Attachment> = [],
+  reduced: ReadonlyMap<SoftBody, ReducedMesh> = new Map(),
+  reducedAttachments: readonly SoftAttachment[] = [],
 ) {
   const parents = parentsOf(bodies, joints);
   const assets: string[] = [],
@@ -37,6 +42,7 @@ export function modelXml(
   const { sites, tendons, equalities } = distanceXml(joints);
   const attributes = contactAttributes(bodies, options.fixedDelta, [
     ...soft.keys(),
+    ...reduced.keys(),
   ]);
   const deformable = softXml(
     soft.values(),
@@ -44,12 +50,23 @@ export function modelXml(
     attributes,
     options.fixedDelta,
   );
+  const condensed = reducedXml(
+    reduced.values(),
+    reducedAttachments,
+    attributes,
+    options.fixedDelta,
+  );
+  const guards = guardXml(reduced.values());
+  tendons.push(...condensed.tendons);
+  equalities.push(...condensed.equalities);
+  for (const [owner, entries] of condensed.sites)
+    sites.set(owner, [...(sites.get(owner) ?? []), ...entries]);
   tendons.push(...deformable.tendons);
   equalities.push(...deformable.equalities);
   for (const [owner, entries] of deformable.sites)
     sites.set(owner, [...(sites.get(owner) ?? []), ...entries]);
   function contents(owner: RigidBody | Trigger): string {
-    const result = shapes(owner, attributes);
+    const result = shapes(owner, attributes, reduced.size > 0);
     assets.push(...result.assets);
     geometries.push(...result.geometries);
     return result.xml;
@@ -114,7 +131,8 @@ export function modelXml(
   const size =
     options.memory === undefined ? "" : `<size memory="${options.memory}"/>`;
   // Include position stiffness in the implicit solve; implicitfast lets stiff servos oscillate.
-  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"${soft.size ? ' solver="CG"' : ""}><flag filterparent="disable"/></option>${size}<asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${deformable.bodies}${(sites.get(null) ?? []).join("")}</worldbody><deformable>${deformable.flexes}</deformable><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
+  // Independent XYZ flex particles support the default Newton solver, including connect attachments.
+  const xml = `<mujoco><compiler angle="radian" fusestatic="false"/><option timestep="${options.fixedDelta}" gravity="${options.gravity.join(" ")}" iterations="${options.solverIterations}" cone="${options.frictionCone}" impratio="${options.frictionImpedanceRatio}" integrator="discrete"><flag filterparent="disable"/></option>${size}<asset>${assets.join("")}</asset><worldbody>${xmlBodies}${xmlTargets}${xmlTriggers}${deformable.bodies}${condensed.bodies}${(sites.get(null) ?? []).join("")}</worldbody><deformable>${deformable.flexes}${condensed.flexes}${guards}</deformable><contact>${exclusions(bodies, joints.keys())}</contact><tendon>${tendons.join("")}</tendon><equality>${equalities.join("")}</equality><actuator>${actuators}</actuator></mujoco>`;
   return { xml, geometries, coordinates };
 }
 

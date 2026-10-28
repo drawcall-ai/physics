@@ -141,7 +141,10 @@ export class SoftBinding {
       .setMasses(this.volumes.map((volume) => volume * density))
       .setLinearDamping(this.object.linearDamping)
       .setMaterial(material(this.api, this.object))
-      .setSelfContacts(this.object.options.selfCollision ?? false)
+      .setSelfContacts(
+        "shape" in this.object.options &&
+          (this.object.options.selfCollision ?? false),
+      )
       .setSurfaceCollider(
         this.api.ColliderDesc.ball(0.01)
           .setFriction(friction(this.object))
@@ -230,7 +233,10 @@ function material(api: typeof Rapier, body: SoftBody): Rapier.SoftBodyMaterial {
           dampingRatio: elasticity.bend.dampingRatio,
         }
       : { naturalFrequency: 0, dampingRatio: 0 };
-  } else if (elasticity.model !== "saintVenantKirchhoff") {
+  } else if (
+    elasticity.model === "corotational" ||
+    elasticity.model === "neoHookean"
+  ) {
     result.youngModulus = elasticity.youngModulus;
     result.poissonRatio = elasticity.poissonRatio;
     result.elasticDampingRatio = elasticity.dampingRatio ?? 0;
@@ -250,6 +256,8 @@ function friction(body: SoftBody): number {
 }
 
 function validateMaterial(body: SoftBody): void {
+  if (!("shape" in body.options))
+    throw new Error("Rapier does not support reduced FEM models");
   const {
     elasticity,
     staticFriction,
@@ -257,6 +265,8 @@ function validateMaterial(body: SoftBody): void {
     rollingFriction,
     torsionalFriction,
   } = body.material;
+  if (elasticity.model === "linear")
+    throw new Error("Rapier does not support linear elasticity");
   if (body.options.shape.kind === "volume" && elasticity.model === "spring")
     throw new Error("Rapier volumes require solid elasticity");
   if (body.options.shape.kind !== "volume" && elasticity.model !== "spring")

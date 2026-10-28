@@ -1,10 +1,18 @@
 node_modules/
 dist/
+build/
+.cache/
 coverage/
+__pycache__/
+*.pyc
+*.tsbuildinfo
 packages/physics/generated/
+packages/physics-fem/generated/
+packages/physics-mujoco/generated/
 packages/physics/src/colliders/decomposition/coacd.ts
 
 # Copied from the root by the publish workflow.
 packages/physics/README.md
 packages/*/LICENSE
 *.tgz
+public/_vitecache/*

@@ -5,6 +5,10 @@ export type { RapierWorld } from "./world.js";
 
 /**
  * Builds the world that simulates the physics objects under `options.scene`.
+ * Omitted `solverIterations` preserves the engine's default. Triangle meshes stay exact on
+ * static bodies; moving meshes use convex decomposition. Static and dynamic friction must
+ * match; torsional and rolling friction are unsupported.
+ *
  * Soft surfaces and curves use spring elasticity; volumes use corotational or neo-Hookean
  * elasticity, with either explicit tetrahedra or automatic meshing of a closed surface.
  * Spring frequencies describe individual constraints and depend on mesh resolution;

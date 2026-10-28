@@ -1,0 +1,38 @@
+Third-party preparation assets
+==============================
+
+The package's MIT license covers its original implementation. Bundled upstream
+software retains its own copyrights and licenses; the MIT license does not
+replace those terms.
+
+gmsh/
+  Gmsh and the GMSH-JS wrapper: GPL version 2 or later, with Gmsh's upstream
+  linking exception. Full terms and contributor notices are in
+  GMSH-LICENSE.txt, GMSH-JS-LICENSE.txt and GMSH-CREDITS.txt.
+  provenance.json identifies the exact upstream source revisions, compiler,
+  configuration and artifact checksums. This build uses no OpenCASCADE or
+  OpenMP and makes no changes to upstream C++ or wrapper source.
+  To rebuild, install the Emscripten version in provenance.json, Node.js, Python 3, CMake and Git, then run:
+    node gmsh/build.mjs /path/to/build-directory /path/to/output-directory
+  The script fetches the pinned source repositories listed in provenance.json.
+
+pyodide/
+  Pyodide: Mozilla Public License 2.0.
+  CPython: Python Software Foundation license and historical notices.
+  Full license texts are in licenses/. provenance.json records their source
+  locations and license checksums. pyodide-lock.json records the runtime ABI
+  and upstream package metadata.
+
+  The NumPy, SciPy, scikit-fem and trimesh wheels
+  include their own license texts and third-party notices inside each wheel.
+  The original wheels are redistributed unchanged.
+
+Upstream sources:
+  https://gitlab.onelab.info/gmsh/gmsh
+  https://github.com/loumalouomega/GMSH-JS
+  https://github.com/pyodide/pyodide
+  https://github.com/python/cpython
+  https://github.com/numpy/numpy
+  https://github.com/scipy/scipy
+  https://github.com/kinnala/scikit-fem
+  https://github.com/mikedh/trimesh

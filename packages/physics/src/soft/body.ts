@@ -2,7 +2,8 @@ import {
   Group,
   Mesh,
   Vector3,
-  type BufferGeometry,
+  BufferGeometry,
+  Float32BufferAttribute,
   type Object3D,
 } from "three";
 import { RigidBody } from "../rigid/body.js";
@@ -14,18 +15,22 @@ import type { PhysicsWorld } from "../world.js";
 import type { Contact } from "../interactions.js";
 import { type SoftMaterial, copySoftMaterial } from "./material.js";
 import { type SoftShape, softGeometry } from "./shape.js";
+import type { ReducedModel } from "./model.js";
+import { bindSoftGeometry, copySoftGeometry } from "./render.js";
 
-export interface SoftBodyOptions {
+export interface SoftShapeOptions {
   readonly shape: SoftShape;
   readonly material: SoftMaterial;
   readonly selfCollision?: boolean;
 }
+export type SoftBodyOptions =
+  SoftShapeOptions | { readonly model: ReducedModel };
 
 /** A fixed-topology deformable. Add a Mesh using `body.geometry` to render its deformation. */
 export class SoftBody extends Group<BodyEventMap> {
   readonly isPhysicsObject = true;
   #options: SoftBodyOptions;
-  /** Instance-owned render geometry. Rest geometry remains in options.shape. */
+  /** Instance-owned render geometry. Rest geometry remains in the shape or reduced model. */
   readonly geometry: BufferGeometry;
   version = 0;
   private currentMaterial: SoftMaterial;
@@ -33,9 +38,26 @@ export class SoftBody extends Group<BodyEventMap> {
 
   constructor(options: SoftBodyOptions) {
     super();
+    const reduced = "model" in options;
     for (const key of Object.keys(options))
-      if (!["shape", "material", "selfCollision"].includes(key))
+      if (
+        !(
+          reduced ? ["model"] : ["shape", "material", "selfCollision"]
+        ).includes(key)
+      )
         throw new Error(`Unknown soft-body option: ${key}`);
+    if ("model" in options) {
+      this.geometry = new BufferGeometry();
+      this.geometry.setAttribute(
+        "position",
+        new Float32BufferAttribute(options.model.renderPositions, 3),
+      );
+      this.geometry.setIndex([...options.model.renderTriangles]);
+      this.geometry.computeVertexNormals();
+      this.currentMaterial = options.model.material;
+      this.#options = Object.freeze({ model: options.model });
+      return;
+    }
     const shape = copyShape(options.shape);
     this.geometry = softGeometry(shape);
     this.currentMaterial = copySoftMaterial(options.material);
@@ -47,6 +69,17 @@ export class SoftBody extends Group<BodyEventMap> {
   }
   get options(): SoftBodyOptions {
     return this.#options;
+  }
+  get model(): ReducedModel | undefined {
+    return "model" in this.#options ? this.#options.model : undefined;
+  }
+  /**
+   * Bind an attached visual mesh. Its topology, hierarchy and local transform stay fixed;
+   * the solver owns its positions. External buffer edits use three.js's needsUpdate flag.
+   */
+  bindGeometry(mesh: Mesh, vertices: ArrayLike<number>): this {
+    bindSoftGeometry(this, mesh, vertices);
+    return this;
   }
   get world(): PhysicsWorld | undefined {
     return joinedWorld(this);
@@ -69,9 +102,21 @@ export class SoftBody extends Group<BodyEventMap> {
     this.version++;
     return this;
   }
-  /** Replaces the complete material; supported edits preserve deformation and velocity. */
+  /**
+   * Replaces the complete material; supported edits preserve deformation and velocity.
+   * Reduced FEM density and elasticity are baked; only contact properties may change without preparation.
+   */
   setMaterial(value: SoftMaterial): this {
-    this.currentMaterial = copySoftMaterial(value);
+    const material = copySoftMaterial(value);
+    if (
+      this.model &&
+      (material.density !== this.model.material.density ||
+        !sameElasticity(material.elasticity, this.model.material.elasticity))
+    )
+      throw new Error(
+        "Reduced FEM density and elasticity are baked; prepare a new model",
+      );
+    this.currentMaterial = material;
     this.version++;
     return this;
   }
@@ -101,6 +146,8 @@ export class SoftBody extends Group<BodyEventMap> {
         throw new Error("Physics bodies cannot be nested; use an attachment");
     }
     const { scale } = splitTransform(this.matrixWorld);
+    if (this.model && scale.distanceTo(new Vector3(1, 1, 1)) > 1e-6)
+      throw new Error("Reduced FEM scale is baked; prepare a new model");
     if (
       Math.abs(scale.x - scale.y) > 1e-6 ||
       Math.abs(scale.y - scale.z) > 1e-6
@@ -108,16 +155,24 @@ export class SoftBody extends Group<BodyEventMap> {
       throw new Error("Soft bodies require uniform scale");
   }
 
+  /** Clones start at rest with independent deformed geometry; reduced mechanics and visual materials are shared. */
   override clone(recursive = true): this {
     const target = constructLike(this, [
-      { ...this.options, material: this.material },
+      "model" in this.options
+        ? this.options
+        : { ...this.options, material: this.material },
     ]);
     target.#options = this.#options;
     return target.copy(this, recursive);
   }
   override copy(source: this, recursive = true): this {
     if (source === this) return this;
-    if (source.options.shape !== this.options.shape)
+    const compatible =
+      "model" in source.options
+        ? "model" in this.options && source.options.model === this.options.model
+        : "shape" in this.options &&
+          source.options.shape === this.options.shape;
+    if (!compatible)
       throw new Error(
         "Soft-body copy requires the same immutable shape; use clone()",
       );
@@ -127,8 +182,23 @@ export class SoftBody extends Group<BodyEventMap> {
       if (child instanceof Mesh && child.geometry === source.geometry)
         child.geometry = this.geometry;
     });
+    copySoftGeometry(source, this);
     return this;
   }
+}
+
+function sameElasticity(
+  a: SoftMaterial["elasticity"],
+  b: SoftMaterial["elasticity"],
+): boolean {
+  const left = Object.entries(a).filter(([, value]) => value !== undefined);
+  const right = Object.entries(b).filter(([, value]) => value !== undefined);
+  return (
+    left.length === right.length &&
+    left.every(([key, value]) =>
+      right.some(([other, entry]) => key === other && value === entry),
+    )
+  );
 }
 
 function copyShape(shape: SoftShape): SoftShape {

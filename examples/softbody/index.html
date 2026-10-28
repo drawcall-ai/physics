@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soft-body lab · Drawcall Physics</title>
+    <style>
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: -0.04em;
+      }
+      .eyebrow {
+        color: #83d9cb;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .hint {
+        color: #b8c7d5;
+        line-height: 1.5;
+      }
+      #panel {
+        top: auto;
+        bottom: 20px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        width: min(420px, calc(100% - 32px));
+      }
+      fieldset {
+        margin: 0;
+        padding: 18px;
+        background: #18212cf2;
+        border: 1px solid #435568;
+        border-radius: 8px;
+        pointer-events: auto;
+      }
+      fieldset:disabled {
+        opacity: 0.5;
+      }
+      fieldset label {
+        margin: 0 0 14px;
+      }
+      #object {
+        flex: 1;
+        min-width: 0;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+      }
+      label span {
+        float: right;
+        color: #b8c7d5;
+        font-size: 12px;
+      }
+      input[type="range"] {
+        display: block;
+        width: 100%;
+        margin: 8px 0 0;
+        accent-color: #83d9cb;
+      }
+      output {
+        margin-top: 10px;
+        color: #83d9cb;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      aria-label="A soft gripper experimenting with different materials"
+    ></canvas>
+    <nav>
+      <p class="eyebrow">Drawcall Physics / Soft bodies</p>
+      <h1>Soft-body lab</h1>
+      <p class="hint">
+        <span id="description">Squeeze, lift, then open to release.</span><br />
+        Drag to orbit · scroll to zoom · P pauses · R resets
+      </p>
+    </nav>
+    <nav id="panel" aria-label="Gripper controls">
+      <fieldset id="controls" disabled>
+        <label>
+          Squeeze <span>Open → Closed</span>
+          <input id="grip" type="range" min="0" max="100" value="0" />
+        </label>
+        <label>
+          Lift <span>Low → High</span>
+          <input id="lift" type="range" min="0" max="100" value="0" />
+        </label>
+        <div class="actions">
+          <select id="object" aria-label="Object">
+            <option value="block">Block · rigid</option>
+            <option value="cloth">Cloth · surface</option>
+            <option value="rope">Rope · curve</option>
+          </select>
+          <button id="reset">Reset</button>
+        </div>
+      </fieldset>
+      <output role="status">Preparing the soft pads…</output>
+    </nav>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -64,6 +64,7 @@ export class SoftAttachment extends Object3D {
   get enabled(): boolean {
     return this.currentEnabled;
   }
+  /** Releases the nodes when disabled; re-enabling restores their original anchors. */
   setEnabled(value: boolean): this {
     this.currentEnabled = value;
     this.version++;

@@ -6,6 +6,7 @@ import {
   SphericalJoint,
   type Joint,
   type SoftBody,
+  type SoftAttachment,
 } from "@drawcall/physics";
 import {
   cleanup,
@@ -24,6 +25,8 @@ import {
   type Attachment,
 } from "../soft/model.js";
 import type { SoftState } from "../soft/state.js";
+import { jointName, type ReducedMesh } from "../reduced/model.js";
+import type { ReducedState } from "../reduced/state.js";
 import { at, array, rotation } from "../heap.js";
 export type { ModelOptions } from "./xml.js";
 
@@ -33,6 +36,7 @@ export interface Simulation {
   data: MjData;
   bodies: Map<RigidBody, number>;
   soft: Map<SoftBody, SoftState>;
+  reduced: Map<SoftBody, ReducedState>;
   targets: Map<RigidBody, number>;
   triggers: Map<Trigger, number>;
   geometries: Map<number, Geometry>;
@@ -47,9 +51,11 @@ export function compile(
   options: ModelOptions,
   soft: ReadonlyMap<SoftBody, SoftMesh> = new Map(),
   attachments: Iterable<Attachment> = [],
+  reduced: ReadonlyMap<SoftBody, ReducedMesh> = new Map(),
+  reducedAttachments: readonly SoftAttachment[] = [],
 ): Simulation {
   // The WASM distance query only accepts geoms; it cannot report flex-trigger overlaps.
-  if (soft.size && triggers.length)
+  if ((soft.size || reduced.size) && triggers.length)
     throw new Error(
       "MuJoCo soft bodies cannot share a world with triggers: flex overlap queries are unavailable",
     );
@@ -60,6 +66,8 @@ export function compile(
     options,
     soft,
     attachments,
+    reduced,
+    reducedAttachments,
   );
   const spec = api.parseXMLString(xml);
   const release = [() => spec.delete()];
@@ -165,6 +173,21 @@ export function compile(
             id: id(api.mjtObj.mjOBJ_FLEX.value, name(body)),
             nodes: Array.from(mesh.volumes, (_, node) =>
               id(api.mjtObj.mjOBJ_BODY.value, nodeName(mesh, node)),
+            ),
+          },
+        ]),
+      ),
+      reduced: new Map(
+        [...reduced].map(([body, mesh]) => [
+          body,
+          {
+            mesh,
+            id: id(api.mjtObj.mjOBJ_FLEX.value, name(body)),
+            joints: Array.from({ length: mesh.model.dofs + 3 }, (_, i) =>
+              id(api.mjtObj.mjOBJ_JOINT.value, jointName(body, i)),
+            ),
+            springs: Array.from({ length: mesh.model.dofs }, (_, i) =>
+              id(api.mjtObj.mjOBJ_TENDON.value, `${name(body)}k${i}`),
             ),
           },
         ]),

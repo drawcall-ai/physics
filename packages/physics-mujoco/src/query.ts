@@ -145,7 +145,7 @@ export function raycast(
   const vertex = new api.IntBuffer(1),
     normal = new api.DoubleBuffer(3);
   try {
-    for (const [body, state] of sim.soft) {
+    for (const [body, state] of [...sim.soft, ...sim.reduced]) {
       if (options.excludeBodies?.includes(body)) continue;
       const distance = api.mj_rayFlex(
         sim.model,

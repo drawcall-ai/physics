@@ -37,6 +37,7 @@ export const decomposes: Decomposes = (body, geometry) =>
 export function shapes(
   owner: RigidBody | Trigger,
   contact: (geometry: Geometry) => string,
+  reduced = false,
 ): Shapes {
   const assets: string[] = [],
     geometries: Geometry[] = [],
@@ -77,7 +78,25 @@ export function shapes(
           `<geom name="${key}" ${placement(matrix)} ${attributes} density="${unitDensity ? 1 : (material?.density ?? 0)}" ${contact(geometry)}/>`,
         );
       };
-      if (shape.kind === "box")
+      if (reduced && shape.kind === "capsule")
+        throw new Error(
+          "MuJoCo reduced FEM does not support capsule collisions; use a convex mesh",
+        );
+      if (shape.kind === "box" && reduced) {
+        // MuJoCo 3.16's boxTriangle tests vertices only and misses face-interior cuts.
+        // The identical convex hull uses the complete native convex collision algorithm.
+        const vertices = [-1, 1].flatMap((x) =>
+          [-1, 1].flatMap((y) =>
+            [-1, 1].flatMap((z) => [
+              (x * shape.size[0]) / 2,
+              (y * shape.size[1]) / 2,
+              (z * shape.size[2]) / 2,
+            ]),
+          ),
+        );
+        assets.push(`<mesh name="${prefix}" vertex="${vertices.join(" ")}"/>`);
+        add("", `type="mesh" mesh="${prefix}"`);
+      } else if (shape.kind === "box")
         add("", `type="box" size="${shape.size.map((v) => v / 2).join(" ")}"`);
       else if (shape.kind === "sphere")
         add("", `type="sphere" size="${shape.radius}"`);

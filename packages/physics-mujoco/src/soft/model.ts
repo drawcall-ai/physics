@@ -62,6 +62,8 @@ export function softXml(
   const sites = new Map<RigidBody | null, string[]>();
   for (const mesh of meshes) {
     const { body, dimension, radius, rest, volumes } = mesh;
+    if (!("shape" in body.options))
+      throw new Error("Reduced FEM requires its reduced model adapter");
     const material = body.material;
     const friction = material.dynamicFriction ?? material.staticFriction ?? 0.5;
     if ((material.staticFriction ?? friction) !== friction)

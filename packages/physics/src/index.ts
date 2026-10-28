@@ -49,6 +49,7 @@ export {
   type PhysicsVelocity,
 } from "./rigid/velocity.js";
 export { SoftBody, type SoftBodyOptions } from "./soft/body.js";
+export type { ReducedModel, ReducedRegion } from "./soft/model.js";
 export {
   SoftAttachment,
   type SoftAttachmentOptions,

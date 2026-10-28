@@ -20,6 +20,7 @@ export interface TriggerEventMap extends Object3DEventMap {
 /**
  * Detects the rigid bodies, static ones included, that overlap the colliders added beneath it.
  * Only explicit colliders count; meshes beneath it generate none.
+ * A trigger under a rigid body follows it and ignores its parent body. Triggers do not detect other triggers.
  */
 export class Trigger extends Group<TriggerEventMap> {
   readonly isPhysicsObject = true;

@@ -7,12 +7,14 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
+    "generated",
+    "skills",
     "README.md",
     "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "build": "node scripts/embed.mjs && rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "bench": "node bench/contacts.ts",

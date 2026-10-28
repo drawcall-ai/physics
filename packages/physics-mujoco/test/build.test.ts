@@ -1,3 +1,7 @@
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import {
   BoxCollider,
@@ -128,3 +132,23 @@ test("collides a triangle mesh on a moving body as its convex parts", async () =
   for (let i = 0; i < 50; i++) world.update(0.01);
   expect(body.position.y).toBeLessThan(-0.5);
 }, 15000);
+
+test("honors a WASM override and retries the same URL after initialization fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "physics-mujoco-"));
+  const wasmUrl = join(directory, "mujoco.wasm");
+  const body = new RigidBody({ mass: 1 }).add(new BoxCollider());
+  const scene = new Scene().add(body);
+  try {
+    await expect(createWorld({ ...earth, scene, wasmUrl })).rejects.toThrow();
+    expect(body.world).toBeUndefined();
+    await copyFile(
+      fileURLToPath(import.meta.resolve("@mujoco/mujoco/mujoco.wasm")),
+      wasmUrl,
+    );
+    const world = await createWorld({ ...earth, scene, wasmUrl });
+    world.update(world.fixedDelta);
+    expect(body.position.y).toBeLessThan(0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

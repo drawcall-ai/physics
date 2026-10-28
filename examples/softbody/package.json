@@ -1,24 +1,25 @@
 {
-  "name": "@drawcall/example-hammock",
+  "name": "@drawcall/example-softbody",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node prepare.ts && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --testTimeout=120000"
   },
   "dependencies": {
+    "@drawcall/glts": "2.0.0",
     "@drawcall/physics": "workspace:*",
+    "@drawcall/physics-fem": "workspace:*",
     "@drawcall/physics-mujoco": "workspace:*",
-    "@drawcall/physics-rapier": "workspace:*",
-    "@mujoco/mujoco": "3.16.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
-    "vite": "^8.2.1"
+    "vite": "^8.2.2",
+    "vitecache": "0.1.1"
   }
 }

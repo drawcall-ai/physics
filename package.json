@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.0",
+  "prettier": {
+    "proseWrap": "never"
+  },
   "scripts": {
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
@@ -14,7 +17,6 @@
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-mujoco": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
-    "@mujoco/mujoco": "3.16.0",
     "@types/three": "^0.185.0",
     "prettier": "^3.9.6",
     "three": "0.185.1",

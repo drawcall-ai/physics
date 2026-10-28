@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: 5.0.2
       - run: pnpm install --frozen-lockfile
       - name: Build CoACD WASM
         run: pnpm --filter @drawcall/physics build:coacd

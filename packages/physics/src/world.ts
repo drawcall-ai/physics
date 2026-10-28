@@ -48,6 +48,10 @@ export let readJoint: (joint: Joint) => JointReading;
  * The fixed-step clock, step callbacks, event dispatch and command validation every backend
  * shares. Before every step and query, the world syncs its membership with the objects under its
  * scene and prepares the members, so every member has live backend state.
+ * A scene has one live world; commands require membership in a built world. An invalid scene
+ * member blocks synchronization until it is fixed or removed.
+ * Contact and trigger events dispatch after each step. Listener failures are reported after
+ * all queued events are delivered; removal emits ending events, while reset and disposal do not.
  *
  * A backend implements the protected hooks below. The base class calls them only for joined
  * members and with validated arguments: finite vectors, rigid poses, and the body type a command
@@ -325,6 +329,7 @@ export abstract class PhysicsWorld {
    * Syncs, then returns the members to the pose and velocity they joined with, clearing contacts
    * and overlaps without events; `time` restarts at 0. Throws when called from a step callback or
    * event listener.
+   * Scene membership, step callbacks, drive targets, and application state remain unchanged.
    */
   reset(): void {
     this.assertIdle();

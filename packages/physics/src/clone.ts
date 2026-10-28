@@ -4,7 +4,10 @@ import { SoftAttachment } from "./soft/attachment.js";
 import { SoftBody } from "./soft/body.js";
 import { Mesh } from "three";
 
-/** Copy bodies before constructing joints so immutable connections point at their copies. */
+/**
+ * Clones a hierarchy and reconnects its joints and soft attachments to the cloned bodies.
+ * Connections to bodies outside the hierarchy remain external. Rigid visuals share geometry and materials.
+ */
 export function clone<T extends Object3D>(root: T): T {
   const copies = new Map<Object3D, Object3D>();
   const joints: (Joint | SoftAttachment)[] = [];

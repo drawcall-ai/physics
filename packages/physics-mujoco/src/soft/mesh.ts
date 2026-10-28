@@ -18,6 +18,8 @@ export interface SoftMesh {
 
 export function softMesh(body: SoftBody): SoftMesh {
   body.validate();
+  if (!("shape" in body.options))
+    throw new Error("Reduced FEM bodies use their prepared model");
   const scale = new Vector3().setFromMatrixScale(body.matrixWorld);
   const shape = body.options.shape;
   let local: Float32Array;

@@ -54,6 +54,8 @@ export function sampleContacts(api: MainModule, sim: Simulation): Contacts {
           const id = at(contact.flex, side);
           for (const [body, state] of sim.soft)
             if (state.id === id) return body;
+          for (const [body, state] of sim.reduced)
+            if (state.id === id) return body;
           return undefined;
         };
         const a = owner(contact.geom1, 0),

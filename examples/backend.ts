@@ -1,7 +1,6 @@
 import type { PhysicsWorldOptions } from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
-import wasmUrl from "@mujoco/mujoco/mujoco.wasm?url";
 
 const url = new URL(location.href);
 export const backend = url.searchParams.get("backend") ?? "rapier";
@@ -30,7 +29,5 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 export function buildWorld(options: PhysicsWorldOptions) {
-  return backend === "mujoco"
-    ? buildMujoco({ ...options, wasmUrl })
-    : buildRapier(options);
+  return backend === "mujoco" ? buildMujoco(options) : buildRapier(options);
 }

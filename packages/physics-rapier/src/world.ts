@@ -15,7 +15,12 @@ import {
 } from "@drawcall/physics";
 import { initialVelocity, type Member } from "@drawcall/physics/backend";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import { BodyBinding, prepareBody, writePose, writeBack } from "./rigid/body.js";
+import {
+  BodyBinding,
+  prepareBody,
+  writePose,
+  writeBack,
+} from "./rigid/body.js";
 import { applyDrives } from "./drive.js";
 import { sampleContacts, sampleOverlaps } from "./interactions.js";
 import { RapierJointBinding, prepareJoint } from "./joint.js";
@@ -25,6 +30,22 @@ import { decomposes } from "./shapes.js";
 import { SoftBinding } from "./soft/body.js";
 import { SoftMount } from "./soft/attachment.js";
 
+/**
+ * Updates bodies, colliders, and joints individually as scene membership changes.
+ * Body type, sleep policy, scale, joint anchors, and limits are captured when joining;
+ * damping and gravity scale update live. A failed collider rebuild keeps the previous shapes.
+ * Teleporting an assembly anchored to the world or a static/kinematic base applies the pose;
+ * the next step resolves the remaining constraint error. Joints split by a teleport restart
+ * their continuous turn count.
+ *
+ * Distance joints require a zero minimum. Drives reject `maxVelocity`, `frictionLoss`,
+ * `armature`, and capped combinations of feedback gains with effort. A revolute position
+ * target with stiffness must stay less than pi radians from the current continuous angle.
+ *
+ * Contacts can include predicted points with zero force before touching. Triangle-mesh
+ * contacts report zero force and can repeat points along shared edges. Raycasts include
+ * newly joined or teleported colliders without requiring a simulation step.
+ */
 export class RapierWorld extends PhysicsWorld {
   private readonly softBodies = new Map<SoftBody, SoftBinding>();
   private readonly attachments = new Map<SoftAttachment, SoftMount>();

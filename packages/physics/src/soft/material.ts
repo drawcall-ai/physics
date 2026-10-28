@@ -15,13 +15,22 @@ export interface Softness {
 
 export type Elasticity =
   | {
+      /** Infinitesimal strain and rotation about the rest configuration. */
+      readonly model: "linear";
+      /** Pa. */
+      readonly youngModulus: number;
+      readonly poissonRatio: number;
+      /** Stiffness-proportional damping, seconds. */
+      readonly dampingTime?: number;
+    }
+  | {
       readonly model: "corotational" | "neoHookean";
       /** Pa. */
       readonly youngModulus: number;
       readonly poissonRatio: number;
       /** Dimensionless internal elastic damping, not damping of bulk motion. */
       readonly dampingRatio?: number;
-      /** Stiffness-proportional Rayleigh damping in seconds; MuJoCo neoHookean only. Mutually exclusive with dampingRatio. */
+      /** Stiffness-proportional damping in seconds; native MuJoCo neoHookean or reduced FEM. Mutually exclusive with dampingRatio. */
       readonly dampingTime?: number;
     }
   | {
@@ -83,7 +92,7 @@ export function copySoftMaterial(value: SoftMaterial): SoftMaterial {
     });
   }
   if (
-    !["corotational", "neoHookean", "saintVenantKirchhoff"].includes(
+    !["linear", "corotational", "neoHookean", "saintVenantKirchhoff"].includes(
       elasticity.model,
     )
   )
@@ -95,7 +104,9 @@ export function copySoftMaterial(value: SoftMaterial): SoftMaterial {
       "youngModulus",
       "poissonRatio",
       "dampingTime",
-      ...(elasticity.model === "saintVenantKirchhoff" ? [] : ["dampingRatio"]),
+      ...(["linear", "saintVenantKirchhoff"].includes(elasticity.model)
+        ? []
+        : ["dampingRatio"]),
     ],
     "solid elasticity",
   );
@@ -108,7 +119,7 @@ export function copySoftMaterial(value: SoftMaterial): SoftMaterial {
   )
     throw new Error("Poisson ratio must be in [0, 0.5)");
   const ratio =
-    elasticity.model === "saintVenantKirchhoff"
+    elasticity.model === "saintVenantKirchhoff" || elasticity.model === "linear"
       ? undefined
       : elasticity.dampingRatio;
   if (ratio !== undefined && elasticity.dampingTime !== undefined)

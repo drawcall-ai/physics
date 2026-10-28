@@ -23,6 +23,7 @@ import { parseJoint } from "./joints.js";
 import { readShape } from "./shapes.js";
 
 export interface PhysicsUSDImportOptions {
+  /** Receives texture loading progress and errors. */
   manager?: LoadingManager;
 }
 
@@ -34,6 +35,14 @@ export interface PhysicsUSD {
 
 type Input = ArrayBuffer | Uint8Array | string;
 
+/**
+ * Loads ASCII USDA strings/bytes or USDZ archives containing ASCII layers into physics objects.
+ * Stages require meters, kilograms, and Y-up; unsupported schemas, transforms, animated physics,
+ * partial/per-collider mass properties, articulations, cone limits, and breaking thresholds
+ * are rejected. Embedded sublayers and visual-only references are supported. Flatten physics
+ * references, payloads, variants, and over/class specs, and convert binary USDC layers to USDA
+ * before importing. Velocities become body velocity options; only one physics scene is supported.
+ */
 export class PhysicsUSDLoader {
   constructor(private readonly options: PhysicsUSDImportOptions = {}) {}
 
@@ -42,12 +51,14 @@ export class PhysicsUSDLoader {
     return this.prepare(input, path).result;
   }
 
+  /** Parses a stage and waits for its textures; `path` resolves external visual assets. */
   async parseAsync(input: Input, path = ""): Promise<PhysicsUSD> {
     const { result, textures } = this.prepare(input, path);
     await Promise.all(textures);
     return result;
   }
 
+  /** Fetches and parses a stage, resolving visual assets relative to its URL. */
   async loadAsync(url: string): Promise<PhysicsUSD> {
     const response = await fetch(url);
     if (!response.ok)

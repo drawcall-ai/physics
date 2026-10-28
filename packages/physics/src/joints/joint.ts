@@ -6,6 +6,10 @@ import { assertRigidTransform, splitTransform } from "../transforms.js";
 import { joinedWorld } from "../membership.js";
 import type { PhysicsWorld } from "../world.js";
 
+/**
+ * Connects body0 (or the world when null) to body1. Without explicit body-local frames,
+ * the joint object's world placement defines both anchors when the joint joins a world.
+ */
 export type JointOptions = {
   readonly body0: RigidBody | null;
   readonly body1: RigidBody;

@@ -1,0 +1,15 @@
+import { BoxGeometry, Mesh, MeshStandardMaterial } from "three";
+import { scene, onDispose } from "@drawcall/glts";
+import { thickness, height, width } from "./pad.ts";
+
+const geometry = new BoxGeometry(thickness, height, width, 1, 2, 2);
+geometry.translate(thickness / 2, 0, 0);
+const material = new MeshStandardMaterial({
+  color: "#65cdbb",
+  roughness: 0.75,
+});
+scene.add(new Mesh(geometry, material));
+onDispose(() => {
+  geometry.dispose();
+  material.dispose();
+});

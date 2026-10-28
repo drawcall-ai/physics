@@ -4,6 +4,8 @@ export { type Member } from "./membership.js";
 export { surfaceMesh } from "./soft/shape.js";
 export { selectSoftNodes } from "./soft/attachment.js";
 export { updateSoftGeometry } from "./soft/render.js";
+export { updateReducedGeometry } from "./soft/render.js";
+export { copySoftMaterial } from "./soft/material.js";
 export { initialVelocity } from "./rigid/velocity.js";
 export { Interactions, addContact, type Contacts } from "./interactions.js";
 export { cleanup, rollback } from "./cleanup.js";

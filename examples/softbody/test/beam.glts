@@ -1,0 +1,15 @@
+import { BoxGeometry, Mesh, MeshStandardMaterial } from "three";
+import { scene, onDispose } from "@drawcall/glts";
+import { length, width, thickness } from "./beam.ts";
+
+const geometry = new BoxGeometry(length, thickness, width, 8, 1, 1);
+geometry.translate(length / 2, 0, 0);
+const material = new MeshStandardMaterial({
+  color: "#eab66b",
+  roughness: 0.65,
+});
+scene.add(new Mesh(geometry, material));
+onDispose(() => {
+  geometry.dispose();
+  material.dispose();
+});

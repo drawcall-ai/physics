@@ -13,8 +13,7 @@
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
     "three": "^0.185.1",
-    "@drawcall/physics-mujoco": "workspace:*",
-    "@mujoco/mujoco": "3.16.0"
+    "@drawcall/physics-mujoco": "workspace:*"
   },
   "devDependencies": {
     "@types/three": "^0.185.0",

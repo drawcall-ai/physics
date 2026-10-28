@@ -4,6 +4,8 @@ import { surfaceMesh } from "@drawcall/physics/backend";
 import { Matrix4, Vector3 } from "three";
 
 export function shape(api: typeof Rapier, body: SoftBody, transform: Matrix4) {
+  if (!("shape" in body.options))
+    throw new Error("Rapier does not support reduced FEM models");
   const shape = body.options.shape;
   const elasticity = body.material.elasticity;
   const stretch =

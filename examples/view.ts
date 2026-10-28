@@ -11,7 +11,8 @@ export function view(
   const canvas = document.querySelector("canvas");
   const status = document.querySelector("output");
   if (!canvas || !status) throw new Error("Missing canvas or status output");
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 3));
+  const ambient = new THREE.HemisphereLight(0xffffff, 0x667788, 3);
+  scene.add(ambient);
   const light = new THREE.DirectionalLight(0xffffff, 3);
   scene.add(light, light.target);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -39,6 +40,9 @@ export function view(
     canvas,
     camera,
     controls,
+    renderer,
+    light,
+    ambient,
     run(update: () => string = () => "") {
       renderer.setAnimationLoop(() => {
         timer.update();
