@@ -23,8 +23,8 @@
     "build:gmsh": "node scripts/gmsh.mjs"
   },
   "dependencies": {
-    "@drawcall/glts": "2.0.0",
-    "vitecache": "0.1.1",
+    "@drawcall/glts": "4.0.0",
+    "vitecache": "0.2.1",
     "ws": "8.22.0"
   },
   "peerDependencies": {

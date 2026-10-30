@@ -41,7 +41,7 @@ export function input(source: Source, options: FEMOptions): FEMInput {
   return structuredClone({
     positions: source.positions,
     triangles: source.triangles,
-    material,
+    material: { ...material, elasticity: elastic },
     mount: options.mount,
     contact: options.contact,
     mesh,

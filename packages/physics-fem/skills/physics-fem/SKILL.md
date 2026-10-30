@@ -51,12 +51,11 @@ loader.dispose();
 
 Use exactly one enabled attachment covering the baked mount. Plan the component around the mount and motion supported by the [MuJoCo backend](https://github.com/drawcall-ai/physics/blob/main/packages/physics-mujoco/skills/physics-mujoco/SKILL.md); a prepared component does not gain new deformation or attachment capabilities when placed in a larger scene.
 
-## Author inside GLTS
+## Prepare an existing mesh
 
-Inside a GLTS script, prepare a completed rest mesh directly:
+Pass a completed rest mesh as `object` instead of a `url`:
 
 ```ts
-import { scene } from "@drawcall/glts";
 import { FEMLoader } from "@drawcall/physics-fem";
 
 const finger = await new FEMLoader().loadAsync({
@@ -68,11 +67,11 @@ const finger = await new FEMLoader().loadAsync({
 scene.add(finger);
 ```
 
-Add the returned body to display the deforming visual, rather than also adding the original rest mesh. Keep the script and its source dependencies in the project so edits can invalidate prepared components. For asset authoring and hosting, use the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
+Add the returned body to display the deforming visual, rather than also adding the original rest mesh. This also works inside a GLTS script; share `@drawcall/physics` and `@drawcall/physics-fem` with scripts so the host's world recognizes the body; see the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
 
 ## Prepare for deployment
 
-The same request can prepare a cache miss in Node or the browser without a Python installation. Prepare common components before deployment and include their cache files so visitors can load them immediately. Keep the geometry and physical request identical between preparation and loading, and coordinate the preparation directory with the deployed cache URL through `setCachePath`.
+The same request can prepare a cache miss in Node or the browser without a Python installation. Prepare common components before deployment and include their cache files so visitors can load them immediately. Prepared files are keyed by the snapshotted rest geometry and physical request, not by source files, so keep both identical between preparation and loading, and coordinate the preparation directory with the deployed cache URL through `setCachePath`.
 
 Allow workers and WebAssembly in the application's content security policy when visitors may need to prepare uncached components.
 
