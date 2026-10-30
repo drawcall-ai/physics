@@ -53,10 +53,9 @@ Use exactly one enabled attachment covering the baked mount. Plan the component 
 
 ## Prepare an existing mesh
 
-Pass a completed rest mesh as `object` instead of a `url`, anywhere, including inside a GLTS script:
+Pass a completed rest mesh as `object` instead of a `url`:
 
 ```ts
-import { scene } from "@drawcall/glts";
 import { FEMLoader } from "@drawcall/physics-fem";
 
 const finger = await new FEMLoader().loadAsync({
@@ -68,7 +67,7 @@ const finger = await new FEMLoader().loadAsync({
 scene.add(finger);
 ```
 
-Add the returned body to display the deforming visual, rather than also adding the original rest mesh. Inside GLTS, share `@drawcall/physics` and `@drawcall/physics-fem` with scripts so the host's world recognizes the body; see the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
+Add the returned body to display the deforming visual, rather than also adding the original rest mesh. This also works inside a GLTS script; share `@drawcall/physics` and `@drawcall/physics-fem` with scripts so the host's world recognizes the body; see the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
 
 ## Prepare for deployment
 

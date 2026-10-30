@@ -7,8 +7,6 @@ export async function cache(
   basePath?: string,
 ): Promise<CacheEntry> {
   const { density, elasticity } = input.material;
-  if (elasticity.model === "spring")
-    throw new Error("FEMLoader requires a continuum material, not springs");
   const encoded = new TextEncoder().encode(
     JSON.stringify({
       positions: input.positions,
@@ -26,11 +24,7 @@ export async function cache(
       },
       mount: { min: input.mount.min, max: input.mount.max },
       contact: { min: input.contact.min, max: input.contact.max },
-      mesh: input.mesh && {
-        cellSize: input.mesh.cellSize,
-        order: input.mesh.order ?? 2,
-        maxDofs: input.mesh.maxDofs ?? 60,
-      },
+      mesh: input.mesh,
     }),
   );
   const hash = await globalThis.crypto.subtle.digest("SHA-256", encoded);

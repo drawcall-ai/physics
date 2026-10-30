@@ -1,5 +1,5 @@
 import type { Object3D } from "three";
-import type { SoftMaterial, Vec3 } from "@drawcall/physics";
+import type { Elasticity, SoftMaterial, Vec3 } from "@drawcall/physics";
 
 /** Included in every cache key. Bump when meshing, reduction or numerical dependencies change. */
 export const REDUCER_VERSION = "fem-wasm@3";
@@ -36,7 +36,12 @@ export type FEMRequest = FEMOptions &
     | { readonly object: Object3D; readonly url?: never }
   );
 
+/** A validated request with resolved mesh settings; the cache key and the preparation both read it. */
 export interface FEMInput extends FEMOptions {
   readonly positions: readonly number[];
   readonly triangles: readonly number[];
+  readonly material: SoftMaterial & {
+    readonly elasticity: Exclude<Elasticity, { model: "spring" }>;
+  };
+  readonly mesh: Required<NonNullable<FEMOptions["mesh"]>>;
 }
