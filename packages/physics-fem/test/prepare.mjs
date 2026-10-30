@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { GLTSLoader } from "@drawcall/glts";
 import { join } from "node:path";
 import test from "node:test";
-import { BoxGeometry, CylinderGeometry, LoadingManager, Mesh } from "three";
+import { BoxGeometry, CylinderGeometry, Mesh } from "three";
 import { FEMLoader } from "../dist/index.js";
 
 const material = {
@@ -30,41 +28,11 @@ test(
   "WASM preparation recovers from invalid mounting and reproduces a P1/P2 clamped bar",
   { timeout: 180000 },
   async (t) => {
-    await mkdir(join(process.cwd(), ".cache"), { recursive: true });
-    const directory = await mkdtemp(
-      join(process.cwd(), ".cache", "fem-prepare-"),
-    );
-    t.after(() => rm(directory, { recursive: true, force: true }));
     const cache = await mkdtemp(join(tmpdir(), "fem-prepare-"));
     t.after(() => rm(cache, { recursive: true, force: true }));
     const loader = new FEMLoader().setCachePath(cache);
-    const url = pathToFileURL(join(directory, "fixture.glts"));
-    await writeFile(
-      url,
-      `
-      import { scene } from "@drawcall/glts";
-      import { prepare } from "native";
-      scene.userData.body = await prepare();
-    `,
-    );
-    async function prepare(object, options) {
-      let result;
-      const host = new GLTSLoader(new LoadingManager(), {
-        modules: {
-          native: {
-            prepare: () => (result = loader.loadAsync({ object, ...options })),
-          },
-        },
-      });
-      try {
-        return (await host.loadAsync(url)).userData.body;
-      } catch (error) {
-        if (result) await result;
-        throw error;
-      } finally {
-        host.dispose();
-      }
-    }
+    const prepare = (object, options) =>
+      loader.loadAsync({ object, ...options });
     const object = new Mesh(new BoxGeometry(0.02, 0.01, 0.01));
     await assert.rejects(
       prepare(object, {

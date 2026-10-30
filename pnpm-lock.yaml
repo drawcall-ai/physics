@@ -139,8 +139,8 @@ importers:
   examples/softbody:
     dependencies:
       '@drawcall/glts':
-        specifier: 2.0.0
-        version: 2.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 4.0.0
+        version: 4.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
       '@drawcall/physics':
         specifier: workspace:*
         version: link:../../packages/physics
@@ -164,8 +164,8 @@ importers:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
       vitecache:
-        specifier: 0.1.1
-        version: 0.1.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 0.2.1
+        version: 0.2.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
 
   packages/physics:
     dependencies:
@@ -180,14 +180,14 @@ importers:
   packages/physics-fem:
     dependencies:
       '@drawcall/glts':
-        specifier: 2.0.0
-        version: 2.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 4.0.0
+        version: 4.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
       three:
         specifier: '>=0.185.0'
         version: 0.185.1
       vitecache:
-        specifier: 0.1.1
-        version: 0.1.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 0.2.1
+        version: 0.2.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -334,8 +334,8 @@ packages:
   '@dimforge/rapier3d-compat@0.21.0':
     resolution: {integrity: sha512-tCl1HPGwOhn5aCQbgqWbOH+Nx/5fnr3IPAnzQuR7zIhC/raqi2yxC6LhvZqjdI2El5hQgY5RDAwDrAjAi2FdPA==}
 
-  '@drawcall/glts@2.0.0':
-    resolution: {integrity: sha512-0R/QI4LSdCOhknur/P079zfJ9juM2EmTw5mAr7jj6CFASMrCHy49vIkUzDJ/cNJf8hG4+IbScrBf3seRusA+0A==}
+  '@drawcall/glts@4.0.0':
+    resolution: {integrity: sha512-oI/PZVnWiy9tYH9THfO9Wpysh1kPgYvubfEcf7s0XqwQJxrpSu/K7Zo6lFM178E704GjEEg7DpJBy+Hz9i7Hhg==}
     engines: {node: ^22.18.0 || >=24.11.0}
     hasBin: true
     peerDependencies:
@@ -1428,8 +1428,8 @@ packages:
       yaml:
         optional: true
 
-  vitecache@0.1.1:
-    resolution: {integrity: sha512-VxFksLBw3vFoqgMfKey8BOsQxGKtryr84OiXTxduRYgaM2dOhSK/+S9jEVwONOQ96f7Vq28N4/8Ed7N4ndGeVg==}
+  vitecache@0.2.1:
+    resolution: {integrity: sha512-eIGq0VyfAXrGTmABcaImaGHKEcric6jTOq3132bD+ACZAdopFqZE7+hOwhtJAixMYhBC9M+Hhf43PsqTekxzSQ==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       vite: '>=6.0.0'
@@ -1588,7 +1588,7 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.21.0': {}
 
-  '@drawcall/glts@2.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))':
+  '@drawcall/glts@4.0.0(@types/node@24.13.6)(three@0.185.1)(typescript@5.9.3)(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))':
     dependencies:
       '@babel/standalone': 8.0.9
       '@babel/types': 8.0.8
@@ -2434,7 +2434,7 @@ snapshots:
       esbuild: 0.28.2
       fsevents: 2.3.3
 
-  vitecache@0.1.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2)):
+  vitecache@0.2.1(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2)):
     dependencies:
       '@noble/hashes': 2.4.0
     optionalDependencies:

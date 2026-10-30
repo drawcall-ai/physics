@@ -10,7 +10,7 @@
     "test": "vitest run --testTimeout=120000"
   },
   "dependencies": {
-    "@drawcall/glts": "2.0.0",
+    "@drawcall/glts": "4.0.0",
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-fem": "workspace:*",
     "@drawcall/physics-mujoco": "workspace:*",
@@ -20,6 +20,6 @@
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2",
-    "vitecache": "0.1.1"
+    "vitecache": "0.2.1"
   }
 }

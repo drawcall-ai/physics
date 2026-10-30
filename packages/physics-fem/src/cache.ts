@@ -4,7 +4,6 @@ import { REDUCER_VERSION } from "./types.js";
 
 export async function cache(
   input: FEMInput,
-  files: readonly string[],
   basePath?: string,
 ): Promise<CacheEntry> {
   const { density, elasticity } = input.material;
@@ -40,15 +39,7 @@ export async function cache(
   ).join("");
   return new CacheEntry({
     version: REDUCER_VERSION,
-    dependencies: {
-      input: { value: digest },
-      ...Object.fromEntries(
-        files.map((url, index) => [
-          index === 0 ? "source" : `dependency${index - 1}`,
-          { url },
-        ]),
-      ),
-    },
+    dependencies: { input: { value: digest } },
     basePath,
   });
 }

@@ -29,7 +29,7 @@ export interface FEMOptions {
   };
 }
 
-/** Object requests must run inside GLTS so their source dependencies can be captured; the object remains caller-owned. */
+/** Object requests snapshot the object, which remains caller-owned. */
 export type FEMRequest = FEMOptions &
   (
     | { readonly url: string; readonly object?: never }

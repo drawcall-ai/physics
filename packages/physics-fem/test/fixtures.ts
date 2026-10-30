@@ -1,16 +1,9 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 import { afterEach, vi } from "vitest";
-import { GLTSLoader } from "@drawcall/glts";
-import { LoadingManager, type Object3D } from "three";
-import { SoftBody } from "@drawcall/physics";
-import type { FEMLoader } from "../src/loader.js";
 import type { FEMInput, FEMOptions } from "../src/types.js";
 
-const contexts: GLTSLoader[] = [];
-let contextURL: string | undefined;
 const folders: string[] = [];
 const reducer = vi.hoisted(() =>
   vi.fn<(input: FEMInput) => Promise<Uint8Array>>(),
@@ -19,8 +12,6 @@ vi.mock("../src/prepare/index.js", () => ({ prepare: reducer }));
 export { reducer };
 
 afterEach(async () => {
-  for (const loader of contexts.splice(0)) loader.dispose();
-  contextURL = undefined;
   reducer.mockReset();
   vi.unstubAllGlobals();
   await Promise.all(
@@ -80,45 +71,4 @@ export function fixture(
     renderBasis: basis,
   };
   return new TextEncoder().encode(JSON.stringify({ ...data, ...changes }));
-}
-
-export async function loadObject(
-  loader: FEMLoader,
-  object: Object3D,
-  options: FEMOptions,
-): Promise<SoftBody> {
-  if (!contextURL) {
-    const directory = await sourceFolder();
-    contextURL = pathToFileURL(join(directory, "context.glts")).href;
-    await writeFile(
-      new URL(contextURL),
-      `
-      import { scene } from "@drawcall/glts";
-      import { load } from "native";
-      await Promise.resolve();
-      scene.userData.body = await load();
-    `,
-    );
-  }
-  let result: Promise<SoftBody> | undefined;
-  const host = new GLTSLoader(new LoadingManager(), {
-    modules: {
-      native: {
-        load: () => (result = loader.loadAsync({ object, ...options })),
-      },
-    },
-  });
-  contexts.push(host);
-  let scene;
-  try {
-    scene = await host.loadAsync(contextURL);
-  } catch (error) {
-    // Preserve FEM diagnostics instead of the GLTS execution wrapper.
-    if (result) await result;
-    throw error;
-  }
-  const body: unknown = scene.userData.body;
-  if (!(body instanceof SoftBody))
-    throw new Error("Missing GLTS-prepared body");
-  return body;
 }
