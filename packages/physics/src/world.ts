@@ -310,7 +310,12 @@ export abstract class PhysicsWorld {
     this.refresh();
     return this.cast(origin, unit, maxDistance, options);
   }
-  /** Contacts within `maxDistance` of a capsule at an arbitrary rigid pose. */
+  /**
+   * Contacts within `maxDistance` of a capsule at an arbitrary rigid pose, with one witness
+   * per native collider. MuJoCo rejects heightfields unless excluded from the query.
+   * Deep symmetric overlap may throw when native geometry cannot resolve a contact normal
+   * or surface witness; general recovery from deep penetration is unsupported.
+   */
   capsuleContacts(
     shape: CapsuleShape,
     pose: Matrix4,
@@ -328,9 +333,14 @@ export abstract class PhysicsWorld {
     return this.capsuleContactQuery(shape, pose, maxDistance, options);
   }
   /**
-   * Sweeps a capsule by a world-space translation, without rotating it. Returns the first
-   * blocking contact; touching or penetrating convex surfaces allow motion away or tangent.
-   * Zero translation has no hit; use capsuleContacts to inspect the starting pose.
+   * Sweeps a capsule by a world-space translation, without rotating it, against current
+   * obstacle poses. It does not predict obstacle motion or resolve crushing. Returns the
+   * first blocking contact; touching or penetrating convex surfaces allow motion away or tangent.
+   * Zero translation has no hit; use `capsuleContacts` to inspect the starting pose.
+   * The geometry and deep-overlap limits of `capsuleContacts` also apply here.
+   * Start with positive clearance: Rapier can miss exact-touch hits or report unreliable
+   * normals, including on aligned capsules. Initial overlap and tangent contact on concave
+   * triangle meshes also retain native numerical limitations.
    */
   castCapsule(
     shape: CapsuleShape,

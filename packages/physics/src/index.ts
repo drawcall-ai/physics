@@ -75,6 +75,7 @@ export type {
   CapsuleContact,
   CapsuleCastHit,
 } from "./capsule.js";
+export { CapsuleMotor } from "./motor.js";
 export { clone } from "./clone.js";
 export { splitTransform } from "./transforms.js";
 export { resolveCollider } from "./colliders/shapes.js";

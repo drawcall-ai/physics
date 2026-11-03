@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { Group, Matrix4, Quaternion, Scene, Vector3 } from "three";
-import { BoxCollider, RigidBody, type PhysicsWorld } from "@drawcall/physics";
+import {
+  BoxCollider,
+  CapsuleMotor,
+  RigidBody,
+  type PhysicsWorld,
+} from "@drawcall/physics";
 import { buildWorld as buildRapier } from "@drawcall/physics-rapier";
 import { buildWorld as buildMujoco } from "@drawcall/physics-mujoco";
-import { CharacterController } from "../character/controller";
-import { CapsuleMotor } from "../character/motor";
+import { CharacterController } from "../../../packages/physics/skills/physics-controllers/assets/character/controller.js";
 
 const worlds: PhysicsWorld[] = [];
 afterEach(() => {

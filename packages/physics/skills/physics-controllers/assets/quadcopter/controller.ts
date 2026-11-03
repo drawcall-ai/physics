@@ -1,7 +1,7 @@
 import { Euler, MathUtils, Quaternion, Vector3 } from "three";
 import type { PhysicsWorld } from "@drawcall/physics";
-import { steer } from "../flight";
-import { specification, type Quadcopter } from "./model";
+import { steer } from "../flight.js";
+import { specification, type Quadcopter } from "./model.js";
 
 export class QuadController {
   readonly input = { direction: new Vector3(), climb: 0, yaw: 0, boost: false };

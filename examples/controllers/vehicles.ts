@@ -1,10 +1,10 @@
 import { Vector3 } from "three";
-import { createCar } from "./car/model";
-import { CarController } from "./car/controller";
-import { createPlane } from "./plane/model";
-import { PlaneController } from "./plane/controller";
-import { createQuadcopter } from "./quadcopter/model";
-import { QuadController } from "./quadcopter/controller";
+import { createCar } from "../../packages/physics/skills/physics-controllers/assets/car/model.js";
+import { CarController } from "../../packages/physics/skills/physics-controllers/assets/car/controller.js";
+import { createPlane } from "../../packages/physics/skills/physics-controllers/assets/plane/model.js";
+import { PlaneController } from "../../packages/physics/skills/physics-controllers/assets/plane/controller.js";
+import { createQuadcopter } from "../../packages/physics/skills/physics-controllers/assets/quadcopter/model.js";
+import { QuadController } from "../../packages/physics/skills/physics-controllers/assets/quadcopter/controller.js";
 import { createField } from "./field";
 import { direction, held, type Demo } from "./demo";
 

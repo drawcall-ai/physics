@@ -3,8 +3,8 @@ import { Scene, Vector3 } from "three";
 import { BoxCollider, RigidBody, type PhysicsWorld } from "@drawcall/physics";
 import { buildWorld as rapier } from "@drawcall/physics-rapier";
 import { buildWorld as mujoco } from "@drawcall/physics-mujoco";
-import { createCar } from "../car/model";
-import { CarController } from "../car/controller";
+import { createCar } from "../../../packages/physics/skills/physics-controllers/assets/car/model.js";
+import { CarController } from "../../../packages/physics/skills/physics-controllers/assets/car/controller.js";
 
 const worlds: PhysicsWorld[] = [];
 afterEach(() => {

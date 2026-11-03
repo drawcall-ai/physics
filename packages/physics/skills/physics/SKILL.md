@@ -9,6 +9,8 @@ Author bodies, colliders, constraints, and triggers as ordinary Three.js objects
 
 Use [physics-fem](https://github.com/drawcall-ai/physics/blob/main/packages/physics-fem/skills/physics-fem/SKILL.md) to prepare mounted deformable solids, and [physics-usd](https://github.com/drawcall-ai/physics/blob/main/packages/physics-usd/skills/physics-usd/SKILL.md) to exchange authored scenes through USD Physics.
 
+For playable characters, arcade cars, planes, and quadcopters, use the [controller skill](../physics-controllers/SKILL.md). It combines the core `CapsuleMotor` with copyable game-controller source files bundled in this package.
+
 ## Build the scene before the world
 
 Work in metres, kilograms, seconds, and radians. Finish object scale, joint placement, and mounting regions before adding an assembly to a running scene. Let the scene graph control world membership instead of maintaining a second object list.

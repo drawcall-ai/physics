@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CharacterController } from "./controller";
+import { CharacterController } from "../../../packages/physics/skills/physics-controllers/assets/character/controller.js";
 import { createCourse, simulationOptions } from "./course";
 import { direction, held, type Demo } from "../demo";
 

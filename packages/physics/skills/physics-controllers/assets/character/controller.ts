@@ -1,6 +1,9 @@
 import { Matrix4, Vector3, type Object3D } from "three";
-import type { PhysicsWorld, RigidBody } from "@drawcall/physics";
-import { CapsuleMotor } from "./motor";
+import {
+  CapsuleMotor,
+  type PhysicsWorld,
+  type RigidBody,
+} from "@drawcall/physics";
 
 interface Support {
   body: RigidBody;
@@ -35,23 +38,16 @@ export class CharacterController {
     const radius = options.radius ?? 0.35;
     this.standingHeight = options.height ?? 1.8;
     if (
-      !Number.isFinite(radius) ||
-      !Number.isFinite(this.standingHeight) ||
-      radius <= 0 ||
-      this.standingHeight <= radius * 2
-    )
-      throw new Error("Character height must exceed twice its positive radius");
-    this.crouchingHeight = Math.min(
-      this.standingHeight,
-      Math.max(radius * 2 + 0.1, this.standingHeight * 0.62),
-    );
-    if (
       world.gravity[0] !== 0 ||
       world.gravity[2] !== 0 ||
       world.gravity[1] >= 0
     )
-      throw new Error("This example requires downward Y gravity");
+      throw new Error("Character locomotion requires downward Y gravity");
     this.motor = new CapsuleMotor(world, object, radius, this.standingHeight);
+    this.crouchingHeight = Math.min(
+      this.standingHeight,
+      Math.max(radius * 2 + 0.1, this.standingHeight * 0.62),
+    );
     this.spawn = this.motor.position.clone();
     // Query completed body poses so translating and rotating supports work in either engine.
     this.unsubscribe = world.onAfterStep((delta) => this.update(delta));

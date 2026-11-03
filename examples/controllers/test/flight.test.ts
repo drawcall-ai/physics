@@ -8,10 +8,10 @@ import {
 } from "@drawcall/physics";
 import { buildWorld as rapier } from "@drawcall/physics-rapier";
 import { buildWorld as mujoco } from "@drawcall/physics-mujoco";
-import { createPlane } from "../plane/model";
-import { PlaneController } from "../plane/controller";
-import { createQuadcopter } from "../quadcopter/model";
-import { QuadController } from "../quadcopter/controller";
+import { createPlane } from "../../../packages/physics/skills/physics-controllers/assets/plane/model.js";
+import { PlaneController } from "../../../packages/physics/skills/physics-controllers/assets/plane/controller.js";
+import { createQuadcopter } from "../../../packages/physics/skills/physics-controllers/assets/quadcopter/model.js";
+import { QuadController } from "../../../packages/physics/skills/physics-controllers/assets/quadcopter/controller.js";
 
 const backends = [
   { name: "Rapier", build: rapier },

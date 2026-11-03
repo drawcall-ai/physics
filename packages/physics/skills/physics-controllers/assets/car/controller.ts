@@ -1,6 +1,6 @@
 import { MathUtils, Quaternion, Vector3 } from "three";
 import { RigidBody, type PhysicsWorld } from "@drawcall/physics";
-import { tuning, type Car } from "./model";
+import { tuning, type Car } from "./model.js";
 
 /** Four suspension rays and bounded tire forces: a small, tunable arcade car. */
 export class CarController {

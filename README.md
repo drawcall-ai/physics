@@ -1,6 +1,6 @@
 # @drawcall/physics
 
-Physics scene objects for Three.js. Build rigid and soft bodies, colliders, and joints as ordinary `Object3D`s, then simulate them with a backend.
+Physics scene objects for Three.js. Build rigid and soft bodies, colliders, and joints as ordinary `Object3D`s, then simulate them with a backend. Use `CapsuleMotor` for collision-aware character movement.
 
 | Package | Purpose |
 | --- | --- |
@@ -32,6 +32,8 @@ world.dispose(); // when done
 ```
 
 For MuJoCo, import `buildWorld` from `@drawcall/physics-mujoco` instead. The shipped [physics skill](https://github.com/drawcall-ai/physics/blob/main/packages/physics/skills/physics/SKILL.md) covers scene authoring and links to each package's workflows.
+
+The shipped [game-controller skill](https://github.com/drawcall-ai/physics/blob/main/packages/physics/skills/physics-controllers/SKILL.md) includes source files to copy and adapt for characters, cars, planes, and quadcopters.
 
 ## Examples
 
