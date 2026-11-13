@@ -13,11 +13,11 @@
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
     "@pmndrs/pointer-events": "^6.6.30",
-    "three": "^0.185.1",
+    "three": "^0.187.0",
     "@drawcall/physics-mujoco": "workspace:*"
   },
   "devDependencies": {
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.187.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.1"
   }

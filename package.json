@@ -17,9 +17,9 @@
     "@drawcall/physics": "workspace:*",
     "@drawcall/physics-mujoco": "workspace:*",
     "@drawcall/physics-rapier": "workspace:*",
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.187.0",
     "prettier": "^3.9.6",
-    "three": "0.185.1",
+    "three": "0.187.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
   }
