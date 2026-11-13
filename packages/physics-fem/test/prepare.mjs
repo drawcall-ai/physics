@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 import { BoxGeometry, CylinderGeometry, Mesh } from "three";
-import { FEMLoader } from "../dist/index.js";
+import { prepareSoftBody } from "../dist/index.js";
 
 const material = {
   density: 1000,
@@ -27,29 +24,24 @@ function close(actual, expected, tolerance, label) {
 test(
   "WASM preparation recovers from invalid mounting and reproduces a P1/P2 clamped bar",
   { timeout: 180000 },
-  async (t) => {
-    const cache = await mkdtemp(join(tmpdir(), "fem-prepare-"));
-    t.after(() => rm(cache, { recursive: true, force: true }));
-    const loader = new FEMLoader().setCachePath(cache);
-    const prepare = (object, options) =>
-      loader.loadAsync({ object, ...options });
+  async () => {
     const object = new Mesh(new BoxGeometry(0.02, 0.01, 0.01));
     await assert.rejects(
-      prepare(object, {
+      prepareSoftBody(object, {
         ...options,
         mount: { min: [1, 1, 1], max: [2, 2, 2] },
       }),
       /mount must select at least three non-collinear nodes/,
     );
     await assert.rejects(
-      prepare(object, {
+      prepareSoftBody(object, {
         ...options,
         mesh: { ...options.mesh, maxDofs: 9 },
       }),
       /Contact surface cannot fit maxDofs/,
     );
     await assert.rejects(
-      prepare(new Mesh(new CylinderGeometry(0.01, 0.01, 0.02, 16)), {
+      prepareSoftBody(new Mesh(new CylinderGeometry(0.01, 0.01, 0.02, 16)), {
         ...options,
         mount: { min: [-0.02, -0.0101, -0.02], max: [0.02, -0.0099, 0.02] },
         contact: { min: [-0.02, -0.0099, -0.02], max: [0.02, 0.02, 0.02] },
@@ -59,7 +51,7 @@ test(
     );
 
     for (const order of [1, 2]) {
-      const body = await prepare(object, {
+      const body = await prepareSoftBody(object, {
         ...options,
         mesh: { ...options.mesh, order },
       });

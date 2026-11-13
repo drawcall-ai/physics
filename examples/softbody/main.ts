@@ -33,7 +33,7 @@ description.textContent = {
   cloth: "Pinch the cloth, lift it, then watch it drape.",
   rope: "Grip the cord, lift it, then let it swing.",
 }[kind];
-export const model = await gripper(`${import.meta.env.BASE_URL}pad.glts`, kind);
+export const model = await gripper(kind);
 export const world = await buildWorld({
   scene: model.scene,
   ...simulationOptions,

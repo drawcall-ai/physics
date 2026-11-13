@@ -1,4 +1,3 @@
-import type { Object3D } from "three";
 import type { Elasticity, SoftMaterial, Vec3 } from "@drawcall/physics";
 
 /** Included in every cache key. Bump when meshing, reduction or numerical dependencies change. */
@@ -29,12 +28,10 @@ export interface FEMOptions {
   };
 }
 
-/** Object requests snapshot the object, which remains caller-owned. */
-export type FEMRequest = FEMOptions &
-  (
-    | { readonly url: string; readonly object?: never }
-    | { readonly object: Object3D; readonly url?: never }
-  );
+export interface FEMRequest extends FEMOptions {
+  /** A .glts asset; in Node, which warms the cache, a root-absolute URL names a file in publicDir. */
+  readonly url: string;
+}
 
 /** A validated request with resolved mesh settings; the cache key and the preparation both read it. */
 export interface FEMInput extends FEMOptions {

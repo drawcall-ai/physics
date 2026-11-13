@@ -7,9 +7,9 @@ import {
   Scene,
 } from "three";
 import { RigidBody, SoftAttachment, SoftBody } from "@drawcall/physics";
-import { FEMLoader } from "@drawcall/physics-fem";
+import { CachedFEMLoader } from "@drawcall/physics-fem";
 import type { MujocoWorldOptions } from "@drawcall/physics-mujoco";
-import { thickness, height, width } from "./public/pad.ts";
+import { thickness, width } from "./public/pad.ts";
 import { payload, type PayloadKind } from "./payload.ts";
 
 export const simulationOptions = {
@@ -20,9 +20,8 @@ export const simulationOptions = {
   frictionImpedanceRatio: 50,
 } satisfies Omit<MujocoWorldOptions, "scene">;
 
-export async function gripper(url: string, kind: PayloadKind = "block") {
+export async function gripper(kind: PayloadKind = "block") {
   const scene = new Scene();
-  const loader = new FEMLoader();
   const geometry = new BoxGeometry(1, 1, 1);
   const metal = new MeshStandardMaterial({
     color: "#8a9eac",
@@ -48,8 +47,9 @@ export async function gripper(url: string, kind: PayloadKind = "block") {
   const jaws: RigidBody[] = [];
   const pads: SoftBody[] = [];
   for (const side of [-1, 1]) {
-    const pad = await loader.loadAsync({
-      url,
+    // vitecache warms only literal loads, so the regions repeat pad.ts's dimensions.
+    const pad = await new CachedFEMLoader().loadAsync({
+      url: "/pad.glts",
       material: {
         density: 1100,
         dynamicFriction: 0.7,
@@ -60,8 +60,8 @@ export async function gripper(url: string, kind: PayloadKind = "block") {
           dampingTime: 0.03,
         },
       },
-      mount: { min: [-0.0001, -height, -width], max: [0.0001, height, width] },
-      contact: { min: [0, -height, -width], max: [thickness, height, width] },
+      mount: { min: [-0.0001, -0.08, -0.06], max: [0.0001, 0.08, 0.06] },
+      contact: { min: [0, -0.08, -0.06], max: [0.025, 0.08, 0.06] },
       mesh: { cellSize: 0.02, order: 2, maxDofs: 90 },
     });
     if (!pad.model) throw new Error("Missing reduced pad model");
@@ -131,8 +131,16 @@ export async function gripper(url: string, kind: PayloadKind = "block") {
         pad.traverse((object) => {
           if (object instanceof Mesh) object.geometry.dispose();
         });
+        // The pad's visual is the loaded GLTS scene, whose script owns its resources.
+        const scene = pad.children[0];
+        if (
+          !scene ||
+          !("dispose" in scene) ||
+          typeof scene.dispose !== "function"
+        )
+          throw new Error("Expected the pad's GLTS scene");
+        scene.dispose();
       }
-      loader.dispose();
       item.dispose();
       geometry.dispose();
       metal.dispose();

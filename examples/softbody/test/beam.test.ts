@@ -1,14 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PlaneGeometry, Scene, Vector3 } from "three";
+import { BoxGeometry, Mesh, PlaneGeometry, Scene, Vector3 } from "three";
 import {
   RigidBody,
   SoftAttachment,
   SoftBody,
   SphereCollider,
 } from "@drawcall/physics";
-import { FEMLoader } from "@drawcall/physics-fem";
+import { prepareSoftBody } from "@drawcall/physics-fem";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import { expect, test } from "vitest";
 import {
@@ -21,11 +18,10 @@ import {
 } from "./beam.ts";
 
 test("a reduced cantilever and native cloth settle together and preserve analytical force balance", async () => {
-  const cache = await mkdtemp(join(tmpdir(), "fem-beam-"));
-  const loader = new FEMLoader().setCachePath(cache);
+  const solid = new BoxGeometry(length, thickness, width, 8, 1, 1);
+  solid.translate(length / 2, 0, 0);
   try {
-    const beam = await loader.loadAsync({
-      url: new URL("./beam.glts", import.meta.url).href,
+    const beam = await prepareSoftBody(new Mesh(solid), {
       material: {
         density,
         elasticity: {
@@ -132,7 +128,6 @@ test("a reduced cantilever and native cloth settle together and preserve analyti
       world.dispose();
     }
   } finally {
-    loader.dispose();
-    await rm(cache, { recursive: true, force: true });
+    solid.dispose();
   }
 });

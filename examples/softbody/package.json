@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node prepare.ts && vite build",
+    "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --testTimeout=120000"
   },
@@ -20,6 +20,6 @@
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2",
-    "vitecache": "0.2.1"
+    "vitecache": "0.5.1"
   }
 }

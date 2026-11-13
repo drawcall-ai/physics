@@ -10,9 +10,11 @@ export function input(source: Source, options: FEMOptions): FEMInput {
     elastic.model !== "neoHookean" &&
     elastic.model !== "saintVenantKirchhoff"
   )
-    throw new Error(`FEMLoader does not support ${elastic.model} elasticity`);
+    throw new Error(
+      `FEM preparation does not support ${elastic.model} elasticity`,
+    );
   if ("dampingRatio" in elastic && elastic.dampingRatio)
-    throw new Error("FEMLoader uses dampingTime, not dampingRatio");
+    throw new Error("FEM preparation uses dampingTime, not dampingRatio");
   bounds(options.mount, "mount");
   bounds(options.contact, "contact");
   const minima = [Infinity, Infinity, Infinity];
@@ -37,7 +39,7 @@ export function input(source: Source, options: FEMOptions): FEMInput {
     !Number.isSafeInteger(mesh.maxDofs) ||
     mesh.maxDofs < 9
   )
-    throw new Error("Invalid FEMLoader mesh settings");
+    throw new Error("Invalid FEM mesh settings");
   return structuredClone({
     positions: source.positions,
     triangles: source.triangles,
@@ -58,7 +60,5 @@ function bounds(region: Bounds, label: string): void {
     ![...region.min, ...region.max].every(Number.isFinite) ||
     region.min.some((minimum, i) => minimum > (region.max[i] ?? -Infinity))
   )
-    throw new Error(
-      `FEMLoader ${label} must be finite rest-local min/max bounds`,
-    );
+    throw new Error(`FEM ${label} must be finite rest-local min/max bounds`);
 }

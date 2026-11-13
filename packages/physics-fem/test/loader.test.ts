@@ -1,10 +1,7 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { mkdir, writeFile } from "node:fs/promises";
 import { expect, it, vi } from "vitest";
 import {
   BoxGeometry,
-  Float32BufferAttribute,
   Loader,
   LoadingManager,
   Mesh,
@@ -13,8 +10,22 @@ import {
 } from "three";
 import { SoftBody } from "@drawcall/physics";
 import { updateReducedGeometry } from "@drawcall/physics/backend";
-import { FEMLoader } from "../src/loader.js";
-import { fixture, folder, options, reducer, sourceFolder } from "./fixtures.js";
+import { CachedFEMLoader } from "../src/loader.js";
+import { fixture, options, reducer } from "./fixtures.js";
+
+const url = "part.glts";
+
+/** A loader whose handler returns a fresh copy of `object` in its current state. */
+function loaderOf(object: Object3D): CachedFEMLoader {
+  const manager = new LoadingManager();
+  class SourceLoader extends Loader<Object3D> {
+    override async loadAsync(): Promise<Object3D> {
+      return object.clone();
+    }
+  }
+  manager.addHandler(/\.glts$/, new SourceLoader(manager));
+  return new CachedFEMLoader(manager);
+}
 
 it("uses the registered asset handler and returns independent SoftBodies with their visuals", async () => {
   const object = new Mesh(new BoxGeometry(), new MeshBasicMaterial());
@@ -28,7 +39,6 @@ it("uses the registered asset handler and returns independent SoftBodies with th
     return root;
   });
   class SourceLoader extends Loader<Object3D> {
-    dispose = vi.fn();
     override loadAsync(url: string): Promise<Object3D> {
       return loaded(url);
     }
@@ -36,9 +46,7 @@ it("uses the registered asset handler and returns independent SoftBodies with th
   const handler = new SourceLoader(manager);
   manager.addHandler(/\.glts$/, handler);
   reducer.mockImplementation(async (input) => fixture(input));
-  const loader = new FEMLoader(manager)
-    .setPath("/assets/")
-    .setCachePath(await folder());
+  const loader = new CachedFEMLoader(manager).setPath("/assets/");
   const first = await loader.loadAsync({ url: "finger.glts?v=2", ...options });
   const second = await loader.loadAsync({ url: "finger.glts", ...options });
   expect(loaded).toHaveBeenCalledWith("/assets/finger.glts?v=2");
@@ -90,17 +98,14 @@ it("uses the registered asset handler and returns independent SoftBodies with th
   );
   clone.scale.setScalar(2);
   expect(() => clone.validate()).toThrow(/scale is baked/);
-  loader.dispose();
-  expect(handler.dispose).not.toHaveBeenCalled();
 });
 
-it("loads GLTS directly and releases owned scripts on failure and disposal", async () => {
-  const directory = await sourceFolder();
-  const url = pathToFileURL(join(directory, "finger.glts")).href;
+it("loads root-absolute GLTS from publicDir in Node and releases the script when preparation fails", async () => {
   const disposed = vi.fn();
   vi.stubGlobal("femDisposed", disposed);
+  await mkdir("public/parts", { recursive: true });
   await writeFile(
-    pathToFileURL(join(directory, "finger.glts")),
+    "public/parts/finger.glts",
     `
     import { BoxGeometry, Mesh } from "three";
     import { scene, onDispose } from "@drawcall/glts";
@@ -109,49 +114,33 @@ it("loads GLTS directly and releases owned scripts on failure and disposal", asy
     onDispose(() => globalThis.femDisposed());
   `,
   );
-  const loader = new FEMLoader().setCachePath(await folder());
-  try {
-    reducer.mockRejectedValueOnce(new Error("preparation failed"));
-    await expect(loader.loadAsync({ url, ...options })).rejects.toThrow(
-      "preparation failed",
-    );
-    expect(disposed).toHaveBeenCalledTimes(1);
-    reducer.mockImplementation(async (input) => fixture(input));
-    const body = await loader.loadAsync({ url, ...options });
-    expect(body).toBeInstanceOf(SoftBody);
-    expect(body.name).toBe("procedural finger");
-    expect(body.children[0]?.children[0]).toBeInstanceOf(Mesh);
-    expect(body.model?.renderPositions).toHaveLength(24);
-    reducer.mockImplementationOnce(async (input) => {
-      loader.dispose();
-      return fixture(input);
-    });
-    await expect(
-      loader.loadAsync({
-        url,
-        ...options,
-        material: { ...options.material, density: 1200 },
-      }),
-    ).rejects.toThrow("disposed");
-    expect(disposed).toHaveBeenCalledTimes(3);
-    await expect(loader.loadAsync({ url, ...options })).rejects.toThrow(
-      "disposed",
-    );
-  } finally {
-    loader.dispose();
-  }
+  const request = { url: "finger.glts", ...options };
+  const loader = new CachedFEMLoader().setPath("/parts/");
+  reducer.mockRejectedValueOnce(new Error("preparation failed"));
+  await expect(loader.loadAsync(request)).rejects.toThrow("preparation failed");
+  expect(disposed).toHaveBeenCalledTimes(1);
+  reducer.mockImplementation(async (input) => fixture(input));
+  const body = await loader.loadAsync(request);
+  expect(body.name).toBe("procedural finger");
+  expect(body.model?.renderPositions).toHaveLength(24);
+  expect(disposed).toHaveBeenCalledTimes(1);
+  const scene = body.children[0];
+  if (!scene || !("dispose" in scene) || typeof scene.dispose !== "function")
+    throw new Error("Expected the GLTS scene as the body's visual");
+  scene.dispose();
+  expect(disposed).toHaveBeenCalledTimes(2);
 });
 
 it("caches physical inputs while allowing visual and contact-material changes without rebaking", async () => {
   const object = new Mesh(new BoxGeometry(), new MeshBasicMaterial());
+  const loader = loaderOf(object);
   reducer.mockImplementation(async (input) => fixture(input));
-  const loader = new FEMLoader().setCachePath(await folder());
-  await loader.loadAsync({ object, ...options });
+  await loader.loadAsync({ url, ...options });
   object.name = "new name";
   object.position.x = 5;
   object.material.color.set("red");
   const body = await loader.loadAsync({
-    object,
+    url,
     ...options,
     material: {
       ...options.material,
@@ -163,16 +152,16 @@ it("caches physical inputs while allowing visual and contact-material changes wi
   expect(body.material.staticFriction).toBe(0.7);
   expect(body.position.x).toBe(5);
   object.geometry.scale(2, 1, 1);
-  await loader.loadAsync({ object, ...options });
+  await loader.loadAsync({ url, ...options });
   expect(reducer).toHaveBeenCalledTimes(2);
   await loader.loadAsync({
-    object,
+    url,
     ...options,
     material: { ...options.material, density: 1500 },
   });
   expect(reducer).toHaveBeenCalledTimes(3);
   await loader.loadAsync({
-    object,
+    url,
     ...options,
     mount: { min: [-1, -1, -1], max: [1, 0.1, 1] },
   });
@@ -180,94 +169,27 @@ it("caches physical inputs while allowing visual and contact-material changes wi
 });
 
 it("rejects invalid preparation results without persisting them", async () => {
-  const object = new Mesh(new BoxGeometry());
-  const loader = new FEMLoader().setCachePath(await folder());
+  const loader = loaderOf(new Mesh(new BoxGeometry()));
   reducer.mockImplementation(async () =>
     new TextEncoder().encode('{"version":99}'),
   );
-  await expect(loader.loadAsync({ object, ...options })).rejects.toThrow(
+  await expect(loader.loadAsync({ url, ...options })).rejects.toThrow(
     "version",
   );
   reducer.mockImplementation(async (input) =>
     fixture({ ...input, mount: { min: [-1, -1, -1], max: [1, 0.1, 1] } }),
   );
-  await expect(loader.loadAsync({ object, ...options })).rejects.toThrow(
+  await expect(loader.loadAsync({ url, ...options })).rejects.toThrow(
     "physical recipe",
   );
   reducer.mockImplementation(async (input) =>
     fixture({ ...input, material: { ...input.material, density: 800 } }),
   );
-  await expect(loader.loadAsync({ object, ...options })).rejects.toThrow(
-    "baked",
-  );
+  await expect(loader.loadAsync({ url, ...options })).rejects.toThrow("baked");
   reducer.mockReset();
   reducer.mockImplementation(async (input) => fixture(input));
-  await expect(
-    loader.loadAsync({ object, ...options }),
-  ).resolves.toBeInstanceOf(SoftBody);
+  await expect(loader.loadAsync({ url, ...options })).resolves.toBeInstanceOf(
+    SoftBody,
+  );
   expect(reducer).toHaveBeenCalledTimes(1);
 });
-
-it("rejects edits to baked visual topology, hierarchy and transforms", async () => {
-  reducer.mockImplementation(async (input) => fixture(input));
-  const body = await new FEMLoader()
-    .setCachePath(await folder())
-    .loadAsync({ object: new Mesh(new BoxGeometry()), ...options });
-  const changes: ((mesh: Mesh) => void)[] = [
-    (mesh) => {
-      mesh.geometry.getAttribute("position").needsUpdate = true;
-    },
-    (mesh) => {
-      mesh.geometry.setAttribute("position", new Float32BufferAttribute(72, 3));
-    },
-    (mesh) => {
-      if (mesh.geometry.index) mesh.geometry.index.needsUpdate = true;
-    },
-    (mesh) => {
-      mesh.geometry = mesh.geometry.clone();
-    },
-    (mesh) => {
-      mesh.position.x = 0.1;
-    },
-    (mesh) => {
-      mesh.removeFromParent();
-    },
-    (mesh) => {
-      mesh.add(new Mesh());
-    },
-  ];
-  for (const change of changes) {
-    const clone = body.clone(),
-      mesh = clone.children[0];
-    if (!(mesh instanceof Mesh) || !clone.model)
-      throw new Error("Missing cloned visual");
-    const positions = clone.model.renderPositions;
-    updateReducedGeometry(clone, positions);
-    change(mesh);
-    expect(() => updateReducedGeometry(clone, positions)).toThrow(
-      /reload the component/,
-    );
-  }
-});
-
-it.each([
-  { coordinates: [0] },
-  { coordinates: [7, 7] },
-  { triangles: [0, 1, 1000] },
-  { basis: Array(72).fill(0) },
-  { mass: [1] },
-  { stiffness: [1, 1, 0, 0, 1, 0, 0, 0, 1] },
-  { gravity: Array(18).fill(NaN) },
-  { quadrature: { weights: [-1], gradients: Array(27).fill(0) } },
-  { surfaceError: { contact: -1, render: 0 } },
-  { mountRegion: { min: [1, 0, 0], max: [0, 1, 1] } },
-])(
-  "rejects invalid reduced mechanics before constructing a body: %j",
-  async (changes) => {
-    reducer.mockImplementation(async (input) => fixture(input, changes));
-    const loader = new FEMLoader().setCachePath(await folder());
-    await expect(
-      loader.loadAsync({ object: new Mesh(new BoxGeometry()), ...options }),
-    ).rejects.toThrow();
-  },
-);

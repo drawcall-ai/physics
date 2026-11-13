@@ -1,31 +1,22 @@
 import { Loader, LoaderUtils, type Object3D } from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTSLoader } from "@drawcall/glts";
+import { publicURL } from "vitecache";
 import { rollback } from "@drawcall/physics/backend";
-import { SoftBody } from "@drawcall/physics";
-import { parse } from "./model.js";
+import type { SoftBody } from "@drawcall/physics";
+import { build, reduce } from "./body.js";
 import { cache } from "./cache.js";
 import { input } from "./input.js";
-import { sceneOf, source, type Source } from "./source.js";
-import type { FEMOptions, FEMRequest } from "./types.js";
+import { sceneOf, source } from "./source.js";
+import type { FEMRequest } from "./types.js";
 
 /**
- * Prepares static, closed glTF or GLTS solids as reduced SoftBody components with bound visuals.
- * Scale and local mesh transforms are baked. Registered manager handlers override built-in loaders.
- * Prepared results are cached by the snapshotted geometry and physical recipe, not by source files.
+ * Prepares static, closed GLTS solids as reduced SoftBodies and caches them. The vitecache plugin warms each literal
+ * `new CachedFEMLoader().loadAsync({ ... })` in Node, so browsers read the prepared result.
+ * The loaded scene becomes the body's visual and is caller-owned; a GLTS scene keeps running until disposed.
+ * Scale and local mesh transforms are baked. A registered manager handler loads its URLs instead; the plugin warms
+ * without one, so it prepares only the GLTS file.
  */
-export class FEMLoader extends Loader<SoftBody, FEMRequest> {
-  private gltf: GLTFLoader | undefined;
-  private glts: GLTSLoader | undefined;
-  private disposed = false;
-  private cachePath: string | undefined;
-
-  /** Node disk directory or browser URL prefix; coordinate these locations when deploying prepared cache files. */
-  setCachePath(path: string): this {
-    this.cachePath = path;
-    return this;
-  }
-
+export class CachedFEMLoader extends Loader<SoftBody, FEMRequest> {
   override load(
     request: FEMRequest,
     onLoad: (body: SoftBody) => void,
@@ -39,19 +30,20 @@ export class FEMLoader extends Loader<SoftBody, FEMRequest> {
   }
 
   override async loadAsync(request: FEMRequest): Promise<SoftBody> {
-    this.assertActive();
-    if (request.object !== undefined) {
-      if (request.url !== undefined)
-        throw new Error("FEMLoader expects either url or object");
-      return this.build(source(request.object), request);
-    }
-    let dispose: (() => void) | undefined;
     const url = LoaderUtils.resolveURL(request.url, this.path);
+    let dispose: (() => void) | undefined;
     this.manager.itemStart(url);
     try {
       const asset = await this.loadSource(url);
       dispose = asset.dispose;
-      return await this.build(source(asset.object, true), request);
+      const snapshot = source(asset.object, true);
+      const recipe = input(snapshot, request);
+      const entry = cache(recipe);
+      const cached = await entry.load();
+      const bytes = cached ?? (await reduce(recipe));
+      const body = build(snapshot, recipe, bytes);
+      if (cached === undefined) await entry.save(bytes);
+      return body;
     } catch (error) {
       rollback(
         error,
@@ -63,85 +55,21 @@ export class FEMLoader extends Loader<SoftBody, FEMRequest> {
     }
   }
 
-  /** Releases owned GLTS scripts and their resources. Pending and future preparations reject. Custom handlers remain caller-owned. */
-  dispose(): void {
-    this.disposed = true;
-    this.glts?.dispose();
-  }
-
-  private assertActive(): void {
-    if (this.disposed) throw new Error("FEMLoader has been disposed");
-  }
-
-  private async build(
-    snapshot: Source,
-    options: FEMOptions,
-  ): Promise<SoftBody> {
-    const request = input(snapshot, options);
-    const entry = await cache(request, this.cachePath);
-    let bytes = await entry.load();
-    const missing = bytes === undefined;
-    if (bytes === undefined) {
-      const { prepare } = await import("./prepare/index.js");
-      bytes = await prepare(request);
-    }
-    const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    const model = parse(data);
-    if (
-      !equal(model.renderPositions, request.positions) ||
-      !equal(model.renderTriangles, request.triangles) ||
-      !equal(model.mountRegion.min, request.mount.min) ||
-      !equal(model.mountRegion.max, request.mount.max) ||
-      !equal(model.contactRegion.min, request.contact.min) ||
-      !equal(model.contactRegion.max, request.contact.max)
-    )
-      throw new Error(
-        "FEMLoader reduction does not match the source geometry or physical recipe",
-      );
-    const body = new SoftBody({ model });
-    body.setMaterial(request.material);
-    if (missing) await entry.save(bytes);
-    this.assertActive();
-    body.add(snapshot.visual);
-    for (const skin of snapshot.skins)
-      body.bindGeometry(skin.mesh, skin.vertices);
-    body.position.setFromMatrixPosition(snapshot.pose);
-    body.quaternion.setFromRotationMatrix(snapshot.pose);
-    body.name = snapshot.visual.name;
-    return body;
-  }
-
   private async loadSource(
     url: string,
   ): Promise<{ object: Object3D; dispose?: () => void }> {
     const path = url.split(/[?#]/)[0] ?? "";
-    const extension = /\.(glb|gltf|glts)$/i.exec(path)?.[1]?.toLowerCase();
-    if (!extension)
-      throw new Error("FEMLoader expects a .glb, .gltf or .glts asset");
     const handler =
       this.manager.getHandler(url) ?? this.manager.getHandler(path);
     if (handler) return { object: sceneOf(await handler.loadAsync(url)) };
-    if (extension === "glts") {
-      this.glts ??= new GLTSLoader(this.manager);
-      this.glts
-        .setCrossOrigin(this.crossOrigin)
-        .setWithCredentials(this.withCredentials)
-        .setRequestHeader(this.requestHeader);
-      const object = await this.glts.loadAsync(url);
-      return { object, dispose: () => object.dispose() };
-    }
-    this.gltf ??= new GLTFLoader(this.manager);
-    this.gltf
+    if (!/\.glts$/i.test(path))
+      throw new Error("CachedFEMLoader expects a .glts asset");
+    // In Node, which warms the cache, a root-absolute URL names a file in publicDir.
+    const object = await new GLTSLoader(this.manager)
       .setCrossOrigin(this.crossOrigin)
       .setWithCredentials(this.withCredentials)
-      .setRequestHeader(this.requestHeader);
-    return { object: (await this.gltf.loadAsync(url)).scene };
+      .setRequestHeader(this.requestHeader)
+      .loadAsync(publicURL(url));
+    return { object, dispose: () => object.dispose() };
   }
-}
-
-function equal(left: readonly number[], right: readonly number[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
 }

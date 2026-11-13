@@ -7,10 +7,7 @@ import type { PayloadKind } from "../payload.ts";
 test.each<PayloadKind>(["block", "cloth", "rope"])(
   "deformable pads lift, hold, release, and reset %s",
   async (kind) => {
-    const model = await gripper(
-      new URL("../public/pad.glts", import.meta.url).href,
-      kind,
-    );
+    const model = await gripper(kind);
     const world = await buildWorld({
       scene: model.scene,
       ...simulationOptions,

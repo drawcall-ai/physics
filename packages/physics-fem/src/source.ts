@@ -27,13 +27,13 @@ export interface Source {
 export function source(object: Object3D, owned = false): Source {
   if (owned && object.parent)
     throw new Error(
-      "FEMLoader asset handler returned an object already attached to a scene",
+      "CachedFEMLoader asset handler returned an object already attached to a scene",
     );
   const visual = owned ? object : object.clone(true);
   const matrix = object.matrixAutoUpdate
     ? new Matrix4().compose(object.position, object.quaternion, object.scale)
     : object.matrix;
-  const { pose, scale } = splitTransform(matrix, "FEMLoader source");
+  const { pose, scale } = splitTransform(matrix, "FEM source");
   visual.position.set(0, 0, 0);
   visual.quaternion.identity();
   visual.scale.copy(scale);
@@ -50,45 +50,50 @@ export function source(object: Object3D, owned = false): Source {
       flag(node, "isBatchedMesh")
     )
       throw new Error(
-        "FEMLoader requires ordinary meshes in their rest configuration",
+        "FEM preparation requires ordinary meshes in their rest configuration",
       );
     if (!isMesh(node)) return;
     const geometry = node.geometry;
     if (Object.keys(geometry.morphAttributes).length)
-      throw new Error("FEMLoader does not accept morph targets");
+      throw new Error("FEM preparation does not accept morph targets");
     const positions = geometry.getAttribute("position");
     if (!positions || positions.itemSize !== 3)
-      throw new Error("FEMLoader requires three-dimensional mesh positions");
+      throw new Error(
+        "FEM preparation requires three-dimensional mesh positions",
+      );
     const count = geometry.index?.count ?? positions.count;
     if (
       geometry.drawRange.start !== 0 ||
       (geometry.drawRange.count !== Infinity &&
         geometry.drawRange.count !== count)
     )
-      throw new Error("FEMLoader does not accept partial mesh draw ranges");
+      throw new Error(
+        "FEM preparation does not accept partial mesh draw ranges",
+      );
     if (
       !Number.isFinite(node.matrixWorld.determinant()) ||
       node.matrixWorld.determinant() <= 0
     )
-      throw new Error("FEMLoader requires finite, positive mesh transforms");
+      throw new Error(
+        "FEM preparation requires finite, positive mesh transforms",
+      );
     const start = points.length / 3;
     for (let i = 0; i < positions.count; i++) {
       point.fromBufferAttribute(positions, i).applyMatrix4(node.matrixWorld);
       if (![point.x, point.y, point.z].every(Number.isFinite))
-        throw new Error("FEMLoader requires finite mesh positions");
+        throw new Error("FEM preparation requires finite mesh positions");
       points.push(point.x, point.y, point.z);
     }
     for (let i = 0; i < count; i++) {
       const vertex = geometry.index?.getX(i) ?? i;
       if (!Number.isInteger(vertex) || vertex < 0 || vertex >= positions.count)
-        throw new Error("FEMLoader mesh index is out of range");
+        throw new Error("FEM mesh index is out of range");
       triangles.push(start + vertex);
     }
     node.geometry = geometry.clone();
     meshes.push({ mesh: node, start, count: positions.count });
   });
-  if (!meshes.length)
-    throw new Error("FEMLoader source contains no visible meshes");
+  if (!meshes.length) throw new Error("FEM source contains no visible meshes");
   const merged = new BufferGeometry();
   merged.setAttribute("position", new Float32BufferAttribute(points, 3));
   merged.setIndex(triangles);
@@ -125,7 +130,9 @@ export function sceneOf(value: unknown): Object3D {
       ? Reflect.get(value, "scene")
       : undefined;
   if (isObject3D(scene)) return scene;
-  throw new Error("FEMLoader handler must return an Object3D or a glTF scene");
+  throw new Error(
+    "CachedFEMLoader handler must return an Object3D or a glTF scene",
+  );
 }
 
 function isObject3D(value: unknown): value is Object3D {

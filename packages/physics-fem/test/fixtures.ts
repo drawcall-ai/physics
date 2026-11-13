@@ -1,24 +1,27 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { FEMInput, FEMOptions } from "../src/types.js";
 
-const folders: string[] = [];
 const reducer = vi.hoisted(() =>
   vi.fn<(input: FEMInput) => Promise<Uint8Array>>(),
 );
 vi.mock("../src/prepare/index.js", () => ({ prepare: reducer }));
 export { reducer };
 
+// vitecache keeps Node entries below the working directory, so each test runs in a fresh one. It lies inside the
+// package so that GLTS scripts written there resolve the package's dependencies.
+const root = process.cwd();
+beforeEach(async () => {
+  await mkdir(join(root, ".cache"), { recursive: true });
+  process.chdir(await mkdtemp(join(root, ".cache", "fem-test-")));
+});
 afterEach(async () => {
   reducer.mockReset();
   vi.unstubAllGlobals();
-  await Promise.all(
-    folders
-      .splice(0)
-      .map((folder) => rm(folder, { recursive: true, force: true })),
-  );
+  const folder = process.cwd();
+  process.chdir(root);
+  await rm(folder, { recursive: true, force: true });
 });
 
 export const options: FEMOptions = {
@@ -30,17 +33,6 @@ export const options: FEMOptions = {
   contact: { min: [-1, 0, -1], max: [1, 1, 1] },
   mesh: { cellSize: 0.2, order: 1 },
 };
-
-export async function folder(base = tmpdir()): Promise<string> {
-  await mkdir(base, { recursive: true });
-  const value = await mkdtemp(join(base, "fem-test-"));
-  folders.push(value);
-  return value;
-}
-
-export function sourceFolder(): Promise<string> {
-  return folder(join(process.cwd(), ".cache"));
-}
 
 export function fixture(
   input: FEMInput,
