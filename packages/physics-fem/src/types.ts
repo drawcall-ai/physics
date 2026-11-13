@@ -1,3 +1,4 @@
+import type { Object3D } from "three";
 import type { Elasticity, SoftMaterial, Vec3 } from "@drawcall/physics";
 
 /** Included in every cache key. Bump when meshing, reduction or numerical dependencies change. */
@@ -29,8 +30,11 @@ export interface FEMOptions {
 }
 
 export interface FEMRequest extends FEMOptions {
-  /** A .glts asset; in Node, which warms the cache, a root-absolute URL names a file in publicDir. */
-  readonly url: string;
+  /**
+   * Creates the unattached rest solid. Write it inline in the load: vitecache warms it from its source in Node, so it
+   * may use only globals, its own declarations and what it imports dynamically.
+   */
+  readonly object: () => Object3D | Promise<Object3D>;
 }
 
 /** A validated request with resolved mesh settings; the cache key and the preparation both read it. */

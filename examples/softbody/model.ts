@@ -9,7 +9,7 @@ import {
 import { RigidBody, SoftAttachment, SoftBody } from "@drawcall/physics";
 import { CachedFEMLoader } from "@drawcall/physics-fem";
 import type { MujocoWorldOptions } from "@drawcall/physics-mujoco";
-import { thickness, width } from "./public/pad.ts";
+import { material as padMaterial, thickness, width } from "./pad.ts";
 import { payload, type PayloadKind } from "./payload.ts";
 
 export const simulationOptions = {
@@ -49,7 +49,10 @@ export async function gripper(kind: PayloadKind = "block") {
   for (const side of [-1, 1]) {
     // vitecache warms only literal loads, so the regions repeat pad.ts's dimensions.
     const pad = await new CachedFEMLoader().loadAsync({
-      url: "/pad.glts",
+      object: async () => {
+        const { pad } = await import("./pad.ts");
+        return pad();
+      },
       material: {
         density: 1100,
         dynamicFriction: 0.7,
@@ -131,16 +134,8 @@ export async function gripper(kind: PayloadKind = "block") {
         pad.traverse((object) => {
           if (object instanceof Mesh) object.geometry.dispose();
         });
-        // The pad's visual is the loaded GLTS scene, whose script owns its resources.
-        const scene = pad.children[0];
-        if (
-          !scene ||
-          !("dispose" in scene) ||
-          typeof scene.dispose !== "function"
-        )
-          throw new Error("Expected the pad's GLTS scene");
-        scene.dispose();
       }
+      padMaterial.dispose();
       item.dispose();
       geometry.dispose();
       metal.dispose();

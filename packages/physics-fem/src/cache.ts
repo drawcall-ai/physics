@@ -2,7 +2,10 @@ import { CacheEntry } from "vitecache";
 import type { FEMInput } from "./types.js";
 import { REDUCER_VERSION } from "./types.js";
 
-/** Keyed by the inputs that shape the reduction; contact friction and restitution stay adjustable without rebaking. */
+/**
+ * Keyed by the inputs that shape the reduction: the geometry the object function creates rather than its source, while
+ * contact friction and restitution stay adjustable without rebaking.
+ */
 export function cache(input: FEMInput): CacheEntry {
   const { density, elasticity } = input.material;
   return new CacheEntry({

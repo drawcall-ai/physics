@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { FEMInput, FEMOptions } from "../src/types.js";
@@ -9,16 +10,13 @@ const reducer = vi.hoisted(() =>
 vi.mock("../src/prepare/index.js", () => ({ prepare: reducer }));
 export { reducer };
 
-// vitecache keeps Node entries below the working directory, so each test runs in a fresh one. It lies inside the
-// package so that GLTS scripts written there resolve the package's dependencies.
+// vitecache keeps Node entries below the working directory, so each test runs in a fresh one.
 const root = process.cwd();
 beforeEach(async () => {
-  await mkdir(join(root, ".cache"), { recursive: true });
-  process.chdir(await mkdtemp(join(root, ".cache", "fem-test-")));
+  process.chdir(await mkdtemp(join(tmpdir(), "fem-test-")));
 });
 afterEach(async () => {
   reducer.mockReset();
-  vi.unstubAllGlobals();
   const folder = process.cwd();
   process.chdir(root);
   await rm(folder, { recursive: true, force: true });

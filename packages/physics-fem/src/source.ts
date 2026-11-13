@@ -23,11 +23,11 @@ export interface Source {
   readonly pose: Matrix4;
 }
 
-/** Snapshot rest geometry. Owned loader results retain their root identity for GLTS lifecycle tracking. */
+/** Snapshot rest geometry. An owned object becomes the visual itself; otherwise a clone does. */
 export function source(object: Object3D, owned = false): Source {
   if (owned && object.parent)
     throw new Error(
-      "CachedFEMLoader asset handler returned an object already attached to a scene",
+      "CachedFEMLoader requires an object not attached to a scene",
     );
   const visual = owned ? object : object.clone(true);
   const matrix = object.matrixAutoUpdate
@@ -121,20 +121,4 @@ function flag(object: unknown, name: string): boolean {
 
 function isMesh(object: Object3D): object is Mesh {
   return flag(object, "isMesh");
-}
-
-export function sceneOf(value: unknown): Object3D {
-  if (isObject3D(value)) return value;
-  const scene: unknown =
-    typeof value === "object" && value !== null
-      ? Reflect.get(value, "scene")
-      : undefined;
-  if (isObject3D(scene)) return scene;
-  throw new Error(
-    "CachedFEMLoader handler must return an Object3D or a glTF scene",
-  );
-}
-
-function isObject3D(value: unknown): value is Object3D {
-  return flag(value, "isObject3D");
 }

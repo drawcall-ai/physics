@@ -1,6 +1,6 @@
 ---
 name: physics-fem
-description: Prepare reduced FEM soft bodies from static Three.js solids or GLTS assets, cache them with vitecache so browsers load them prepared, attach them to mounts, and simulate them with @drawcall/physics-mujoco in Node or browsers.
+description: Prepare reduced FEM soft bodies from static Three.js solids, cache them with vitecache so browsers load them prepared, attach them to mounts, and simulate them with @drawcall/physics-mujoco in Node or browsers.
 ---
 
 # Reduced FEM components
@@ -9,7 +9,7 @@ Use `CachedFEMLoader` for a deformable solid whose rest shape, material, and mou
 
 ## Prepare and mount a component
 
-Start with a closed, consistently wound solid in metres. Finish scaling, local mesh transforms, and source-asset loading before preparation. Place the prepared component in the scene before building the world. Keep its geometry and visual hierarchy fixed while it is simulated; rebuild the component when its rest shape or physical recipe changes.
+Start with a closed, consistently wound solid in metres. Finish scaling and local mesh transforms before preparation. Place the prepared component in the scene before building the world. Keep its geometry and visual hierarchy fixed while it is simulated; rebuild the component when its rest shape or physical recipe changes.
 
 Choose a mounting region that represents the real fixture and a contact region covering every surface another object may touch. Keep other colliders clear of uncovered surfaces, including near the mounting boundary. An unsupported intersection is a modeling error, not an invitation to disable the contact guard.
 
@@ -20,7 +20,10 @@ import { CachedFEMLoader } from "@drawcall/physics-fem";
 import { buildWorld } from "@drawcall/physics-mujoco";
 
 const finger = await new CachedFEMLoader().loadAsync({
-  url: "/finger.glts",
+  object: async () => {
+    const { finger } = await import("./finger.ts");
+    return finger();
+  },
   // Illustrative values and regions; replace with the component's measurements.
   material: {
     density: 1200,
@@ -43,13 +46,13 @@ const world = await buildWorld({ scene });
 world.update(1 / 60); // each rendered frame, with elapsed seconds
 ```
 
-The loaded scene becomes the body's visual and belongs to the caller, as any loaded asset does: a GLTS scene keeps its scripts running until its own `dispose()`.
+The created object becomes the body's visual and belongs to the caller, so dispose its resources with the body.
 
 Use exactly one enabled attachment covering the baked mount. Plan the component around the mount and motion supported by the [MuJoCo backend](https://github.com/drawcall-ai/physics/blob/main/packages/physics-mujoco/skills/physics-mujoco/SKILL.md); a prepared component does not gain new deformation or attachment capabilities when placed in a larger scene.
 
 ## Prepare an existing mesh
 
-Pass a completed rest mesh to `prepareSoftBody`:
+Pass a rest mesh that exists only at runtime to `prepareSoftBody`:
 
 ```ts
 import { prepareSoftBody } from "@drawcall/physics-fem";
@@ -58,11 +61,11 @@ const finger = await prepareSoftBody(mesh, { material, mount, contact });
 scene.add(finger);
 ```
 
-Add the returned body to display the deforming visual, a clone of the mesh, rather than also adding the original rest mesh. This also works inside a GLTS script; share `@drawcall/physics` and `@drawcall/physics-fem` with scripts so the host's world recognizes the body; see the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
+Add the returned body to display the deforming visual, a clone of the mesh, rather than also adding the original rest mesh. This also works inside a GLTS script, where `CachedFEMLoader` cannot run because a public script cannot pass the inline `object` function; share `@drawcall/physics` and `@drawcall/physics-fem` with scripts so the host's world recognizes the body; see the [GLTS skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md).
 
 ## Prepare for deployment
 
-Preparation runs in Node or the browser without a Python installation, but takes seconds. Add the [vitecache](https://github.com/drawcall-ai/vitecache/blob/main/packages/vitecache/skills/vitecache/SKILL.md) Vite plugin so components are prepared ahead of visitors: write one literal `new CachedFEMLoader().loadAsync({ ... })` per component, as above, with dimensions inlined rather than imported, and a root-absolute `url` naming a `.glts` file in `public/`. Results are keyed by the snapshotted rest geometry and physical recipe, so editing a script without changing its geometry keeps the prepared result.
+Preparation runs in Node or the browser without a Python installation, but takes seconds. Add the [vitecache](https://github.com/drawcall-ai/vitecache/blob/main/packages/vitecache/skills/vitecache/SKILL.md) Vite plugin so components are prepared ahead of visitors: write one literal `new CachedFEMLoader().loadAsync({ ... })` per component, as above, with dimensions inlined rather than imported, and an inline `object` function that imports what it uses dynamically, since warming runs it from its source in Node. Results are keyed by the created rest geometry and physical recipe, so editing the function or the materials it assigns without changing that geometry keeps the prepared result.
 
 `prepareSoftBody` prepares on every call; use `CachedFEMLoader` for components known ahead of time.
 
