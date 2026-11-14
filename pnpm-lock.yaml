@@ -161,8 +161,8 @@ importers:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
       vitecache:
-        specifier: 0.6.0
-        version: 0.6.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 0.7.0
+        version: 0.7.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
 
   packages/physics:
     dependencies:
@@ -205,8 +205,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@24.13.6)(esbuild@0.28.2)
       vitecache:
-        specifier: 0.6.0
-        version: 0.6.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
+        specifier: 0.7.0
+        version: 0.7.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2))
 
   packages/physics-mujoco:
     dependencies:
@@ -861,8 +861,8 @@ packages:
       yaml:
         optional: true
 
-  vitecache@0.6.0:
-    resolution: {integrity: sha512-X7RGor24RsuDOoeZSq7+b2bgf9Bp5RqFcmdl9gT9vLuKzy71lJIubhgBiqFs2OR3zk3TOtnUnp/TD2FaUV5hnA==}
+  vitecache@0.7.0:
+    resolution: {integrity: sha512-ZNrentYfLQaz6l4cYxtQMj57niEXCBjaniV5SAuNuTys0iqI/CZbeFx0EH4f0bRtKxnJbApO9M4PKGqCsqZslA==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       vite: '>=8.0.0'
@@ -1358,7 +1358,7 @@ snapshots:
       esbuild: 0.28.2
       fsevents: 2.3.3
 
-  vitecache@0.6.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2)):
+  vitecache@0.7.0(vite@8.2.2(@types/node@24.13.6)(esbuild@0.28.2)):
     dependencies:
       '@noble/hashes': 2.4.0
       magic-string: 0.30.21

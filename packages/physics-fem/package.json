@@ -28,7 +28,7 @@
   "peerDependencies": {
     "@drawcall/physics": "^0.1.0",
     "three": ">=0.185.0",
-    "vitecache": "^0.6.0"
+    "vitecache": "^0.7.0"
   },
   "devDependencies": {
     "@drawcall/physics": "workspace:*",
@@ -38,7 +38,7 @@
     "pyodide": "314.0.7",
     "three-mesh-bvh": "0.9.18",
     "vite": "8.2.2",
-    "vitecache": "0.6.0"
+    "vitecache": "0.7.0"
   },
   "license": "MIT",
   "repository": {
